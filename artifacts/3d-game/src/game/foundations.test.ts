@@ -6,7 +6,16 @@ import {
   createInitialQuests,
   normalizeQuestStates,
 } from './quests';
-import { addCameraOrbit, consumeCameraRecenterRequest, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
+import {
+  CAMERA_ZOOM_MAX,
+  CAMERA_ZOOM_MIN,
+  addCameraOrbit,
+  adjustCameraZoom,
+  consumeCameraRecenterRequest,
+  getCameraInput,
+  recenterCamera,
+  stepCameraInput,
+} from './cameraInput';
 import { clearInteractionCandidates, registerInteractionCandidate, resolveInteractionCandidate } from './interactionFocus';
 import { getNavigationTarget, getPortalWaypoints } from './navigation';
 import {
@@ -142,6 +151,13 @@ const directYaw = getCameraInput().yaw;
 stepCameraInput(1 / 30);
 stepCameraInput(1 / 120);
 assert.equal(getCameraInput().yaw, directYaw, 'camera drag does not accumulate frame-dependent inertia');
+adjustCameraZoom(100);
+assert.equal(getCameraInput().targetZoom, CAMERA_ZOOM_MAX, 'camera zoom clamps to its far limit');
+const zoomBeforeEase = getCameraInput().zoom;
+stepCameraInput(1 / 60);
+assert.ok(getCameraInput().zoom > zoomBeforeEase, 'camera zoom eases toward its target');
+adjustCameraZoom(-100);
+assert.equal(getCameraInput().targetZoom, CAMERA_ZOOM_MIN, 'camera zoom clamps to its near limit');
 
 clearInteractionCandidates();
 const fartherQuestTarget = {

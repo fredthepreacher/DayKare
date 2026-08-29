@@ -6,7 +6,7 @@ import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
 import { CharacterModel } from './CharacterModel';
-import { addCameraOrbit, consumeCameraRecenterRequest, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
+import { addCameraOrbit, adjustCameraZoom, consumeCameraRecenterRequest, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
 import { PLAYER_RADIUS, TRICYCLE_RADIUS, resolveCameraPosition, resolveMovement, trackPlayerPosition } from './world';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
@@ -53,6 +53,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     const onPointerMove = (event: PointerEvent) => {
       if (mouseDragging.current && event.pointerType === 'mouse') addCameraOrbit(event.movementX, event.movementY);
     };
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      adjustCameraZoom(Math.sign(event.deltaY) * Math.min(1.1, Math.abs(event.deltaY) * 0.012));
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === 'KeyR') recenterCamera();
     };
@@ -60,11 +64,13 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('keydown', onKeyDown);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('keydown', onKeyDown);
+      canvas.removeEventListener('wheel', onWheel);
     };
   }, [gl]);
 
@@ -174,10 +180,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     // Locomotion turns the character, not the camera. Only a deliberate
     // recenter changes the camera's world-facing baseline.
     const heading = cameraBaseHeading.current + orbit.yaw;
-    const horizontalDistance = 7.4 * Math.cos(orbit.pitch);
+    const horizontalDistance = orbit.zoom * Math.cos(orbit.pitch);
     idealCameraPosition.current.set(
       localRef.current.position.x + Math.sin(heading) * horizontalDistance,
-      localRef.current.position.y + 3.8 + Math.sin(orbit.pitch) * 4,
+      localRef.current.position.y + 3.8 + Math.sin(orbit.pitch) * orbit.zoom * 0.54,
       localRef.current.position.z + Math.cos(heading) * horizontalDistance,
     );
     cameraFocus.current.lerp(localRef.current.position, 1 - Math.exp(-10 * delta));

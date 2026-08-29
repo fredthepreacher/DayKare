@@ -697,7 +697,7 @@ export function UI() {
           <div className="flex justify-between gap-4"><span>Move</span> <span className="text-gray-300">Arrows / WASD</span></div>
           <div className="flex justify-between gap-4"><span>Jump</span> <span className="text-gray-300">Space</span></div>
           <div className="flex justify-between gap-4"><span>Run</span> <span className="text-gray-300">Shift</span></div>
-          <div className="flex justify-between gap-4"><span>Orbit</span> <span className="text-gray-300">Drag mouse · R centers</span></div>
+          <div className="flex justify-between gap-4"><span>Camera</span> <span className="text-gray-300">Drag orbit · Wheel zoom · R centers</span></div>
           <div className="flex justify-between gap-4"><span>Crouch</span> <span className="text-gray-300">C</span></div>
           <div className="flex justify-between gap-4"><span>Interact</span> <span className="text-gray-300">E</span></div>
           <div className="flex justify-between gap-4"><span>Journal</span> <span className="text-gray-300">J/Tab</span></div>

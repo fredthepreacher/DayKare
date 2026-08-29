@@ -134,6 +134,11 @@
   background-size: 20px 20px;
 }
 
+.daykare-app-shell {
+  height: 100dvh;
+  min-height: 100svh;
+}
+
 .daykare-touch-ui {
   display: none;
 }
@@ -154,14 +159,14 @@
 
   .daykare-touch-look {
     position: absolute;
-    inset: 18% 0 22% 46%;
+    inset: 18% 0 24% 40%;
     pointer-events: auto;
     touch-action: none;
   }
 
   .daykare-touch-recenter {
     position: absolute;
-    right: 1rem;
+    right: max(12px, env(safe-area-inset-right));
     top: 0;
     border: 1px solid rgb(255 255 255 / 35%);
     border-radius: 999px;
@@ -173,10 +178,42 @@
     pointer-events: auto;
   }
 
+  .daykare-touch-camera-controls {
+    position: absolute;
+    top: 50px;
+    right: max(12px, env(safe-area-inset-right));
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: auto;
+  }
+
+  .daykare-touch-camera-controls button {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgb(255 255 255 / 35%);
+    border-radius: 13px;
+    background: rgb(41 30 24 / 72%);
+    color: white;
+    font-size: 1.35rem;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 6px 16px rgb(33 24 38 / 20%);
+    backdrop-filter: blur(10px);
+    touch-action: manipulation;
+  }
+
+  .daykare-touch-camera-controls button:active {
+    transform: scale(0.92);
+    background: rgb(237 125 55 / 88%);
+  }
+
   .daykare-touch-movement {
     position: absolute;
-    left: max(14px, env(safe-area-inset-left));
-    bottom: max(14px, env(safe-area-inset-bottom));
+    left: max(14px, calc(env(safe-area-inset-left) + 10px));
+    bottom: max(28px, calc(env(safe-area-inset-bottom) + 22px));
     pointer-events: auto;
   }
 
@@ -257,8 +294,8 @@
 
   .daykare-touch-interact {
     position: absolute;
-    right: max(16px, env(safe-area-inset-right));
-    bottom: max(24px, env(safe-area-inset-bottom));
+    right: max(16px, calc(env(safe-area-inset-right) + 8px));
+    bottom: max(30px, calc(env(safe-area-inset-bottom) + 24px));
     min-height: 64px;
     max-width: min(190px, 45vw);
     display: flex;
@@ -327,6 +364,10 @@
     gap: 7px;
     transform: scale(0.8);
     transform-origin: top left;
+  }
+
+  .daykare-hud-left > div:last-child {
+    max-width: min(54vw, 230px);
   }
 
   .daykare-hud-right {
@@ -399,6 +440,10 @@
 }
 
 @media (max-width: 520px) {
+  .daykare-touch-look {
+    left: 34%;
+  }
+
   .daykare-touch-pad {
     width: 124px;
     height: 124px;
@@ -414,5 +459,14 @@
     width: 38px;
     height: 38px;
     flex-basis: 38px;
+  }
+
+  .daykare-touch-movement {
+    bottom: max(30px, calc(env(safe-area-inset-bottom) + 24px));
+  }
+
+  .daykare-touch-camera-controls button {
+    width: 36px;
+    height: 36px;
   }
 }

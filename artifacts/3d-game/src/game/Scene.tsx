@@ -64,7 +64,7 @@ export function DayKareApp() {
   const quality = useGameStore(s => s.quality);
   return (
     <KeyboardControls map={keyMap}>
-      <div className="w-full h-screen relative bg-black overflow-hidden">
+      <div className="daykare-app-shell w-full relative bg-black overflow-hidden">
         <Canvas shadows={quality === 'high'} camera={{ position: [0, 5, 8], fov: 60 }}>
           <GameScene />
         </Canvas>
