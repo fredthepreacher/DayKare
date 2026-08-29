@@ -4,6 +4,8 @@ import { Player } from './Player';
 import { Environment } from './Environment';
 import { NPCs } from './NPCs';
 import { Interactables } from './Interactables';
+import { HubDetails } from './HubDetails';
+import { HubProgression } from './HubProgression';
 import { keyMap } from './Controls';
 import { UI } from './UI';
 import { useRef } from 'react';
@@ -30,6 +32,8 @@ function GameScene() {
       )}
       
       <Environment />
+      <HubDetails />
+      <HubProgression playerRef={playerRef} />
       <Interactables playerRef={playerRef} />
       <NPCs playerRef={playerRef} />
       <Player ref={playerRef} />

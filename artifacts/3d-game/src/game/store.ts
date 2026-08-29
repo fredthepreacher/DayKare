@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import {
+  createInitialProgression,
+  getUnlockedRoutes,
+  normalizeProgression,
+  PROGRESSION_VERSION,
+  type ProgressionState,
+} from './progression';
 
 export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -48,6 +55,7 @@ export interface GameState {
   journalOpen: boolean;
   tricycleColorIndex: number;
   teleportTrigger: number;
+  progression: ProgressionState;
   
   // Actions
   setQuality: (q: 'low' | 'high') => void;
@@ -76,6 +84,8 @@ export interface GameState {
   toggleJournal: () => void;
   cycleTricycleColor: () => void;
   triggerTeleport: () => void;
+  completeActivity: (activityId: string, tokenReward: number, reputationReward: number) => void;
+  addProgressionTokens: (amount: number) => void;
   resetGame: () => void;
 }
 
@@ -86,6 +96,14 @@ const getScheduleForTime = (time: number): ScheduleState => {
   if (time < 15.5) return 'outdoor-play';
   return 'pickup';
 };
+
+const withQualifiedRoutes = (progression: ProgressionState): ProgressionState => ({
+  ...progression,
+  routeUnlocks: Array.from(new Set([
+    ...progression.routeUnlocks,
+    ...getUnlockedRoutes(progression),
+  ])),
+});
 
 const initialFriends: Record<string, FriendState> = {
   Leo: { mood: 'sad', friendship: 10, recentMemory: 'Lost his favorite toy.' },
@@ -129,6 +147,7 @@ const initialState = {
   journalOpen: false,
   tricycleColorIndex: 0,
   teleportTrigger: 0,
+  progression: createInitialProgression(),
 };
 
 export const useGameStore = create<GameState>()(
@@ -148,15 +167,36 @@ export const useGameStore = create<GameState>()(
       toggleImagination: () => set((state) => ({ isImaginationMode: !state.isImaginationMode })),
       toggleRain: () => set((state) => ({ isRainy: !state.isRainy })),
       
-      pickUp: (item) => set((state) => ({ 
-        inventory: [...state.inventory, item] 
-      })),
+      pickUp: (item) => set((state) => {
+        if (state.inventory.includes(item)) return state;
+        return {
+          inventory: [...state.inventory, item],
+          progression: {
+            ...state.progression,
+            collectibleProgress: {
+              ...state.progression.collectibleProgress,
+              [item]: (state.progression.collectibleProgress[item] ?? 0) + 1,
+            },
+          },
+        };
+      }),
       
       drop: (item) => set((state) => ({ 
         inventory: state.inventory.filter(i => i !== item) 
       })),
 
-      setIsRiding: (r) => set({ isRiding: r }),
+      setIsRiding: (r) => set((state) => ({
+        isRiding: r,
+        progression: state.isRiding && !r
+          ? {
+              ...state.progression,
+              vehicleProgress: {
+                ...state.progression.vehicleProgress,
+                tricycleRides: (state.progression.vehicleProgress.tricycleRides ?? 0) + 1,
+              },
+            }
+          : state.progression,
+      })),
       
       updateFriend: (name, updates) => set((state) => ({
         friends: {
@@ -169,7 +209,17 @@ export const useGameStore = create<GameState>()(
         teacherSuspicion: typeof s === 'function' ? s(state.teacherSuspicion) : s
       })),
       
-      updateBinkyStatus: (status) => set({ binkyStatus: status }),
+      updateBinkyStatus: (status) => set((state) => {
+        if (status === 'returned-good' && state.binkyStatus !== 'returned-good') {
+          const progression = withQualifiedRoutes({
+            ...state.progression,
+            reputation: Math.min(100, state.progression.reputation + 8),
+            tokens: state.progression.tokens + 5,
+          });
+          return { binkyStatus: status, progression };
+        }
+        return { binkyStatus: status };
+      }),
       
       addClue: (clue) => set((state) => {
         if (!state.binkyClues.includes(clue)) {
@@ -216,6 +266,19 @@ export const useGameStore = create<GameState>()(
           const premiumMultiplier = state.juiceUpgrades.includes('premium-cups') ? 2 : 1;
           const cashEarned = 2 * premiumMultiplier;
           const servedId = state.waitingCustomers[0];
+          const progression = withQualifiedRoutes({
+            ...state.progression,
+            reputation: Math.min(100, state.progression.reputation + 1),
+            tokens: state.progression.tokens + 1,
+            activityRuns: {
+              ...state.progression.activityRuns,
+              'juice-club-service': (state.progression.activityRuns['juice-club-service'] ?? 0) + 1,
+            },
+            activityRewards: {
+              ...state.progression.activityRewards,
+              'juice-club-service': (state.progression.activityRewards['juice-club-service'] ?? 0) + 1,
+            },
+          });
           
           return {
             juiceStock: state.juiceStock - 1,
@@ -223,6 +286,7 @@ export const useGameStore = create<GameState>()(
             juiceClubCash: state.juiceClubCash + cashEarned,
             juiceClubCustomersServed: state.juiceClubCustomersServed + 1,
             waitingCustomers: state.waitingCustomers.slice(1),
+            progression,
             friends: {
               ...state.friends,
               [servedId]: {
@@ -241,6 +305,32 @@ export const useGameStore = create<GameState>()(
       toggleJournal: () => set((state) => ({ journalOpen: !state.journalOpen })),
       cycleTricycleColor: () => set((state) => ({ tricycleColorIndex: (state.tricycleColorIndex + 1) % 4 })),
       triggerTeleport: () => set((state) => ({ teleportTrigger: state.teleportTrigger + 1 })),
+      completeActivity: (activityId, tokenReward, reputationReward) => set((state) => {
+        const nextRuns = {
+          ...state.progression.activityRuns,
+          [activityId]: (state.progression.activityRuns[activityId] ?? 0) + 1,
+        };
+        const nextRewards = {
+          ...state.progression.activityRewards,
+          [activityId]: (state.progression.activityRewards[activityId] ?? 0) + tokenReward,
+        };
+        const nextProgression: ProgressionState = {
+          ...state.progression,
+          version: PROGRESSION_VERSION,
+          tokens: state.progression.tokens + tokenReward,
+          reputation: Math.min(100, state.progression.reputation + reputationReward),
+          activityRuns: nextRuns,
+          activityRewards: nextRewards,
+        };
+        return { progression: withQualifiedRoutes(nextProgression) };
+      }),
+      addProgressionTokens: (amount) => set((state) => {
+        const progression = withQualifiedRoutes({
+          ...state.progression,
+          tokens: Math.max(0, state.progression.tokens + amount),
+        });
+        return { progression };
+      }),
       resetGame: () => set(initialState),
     }),
     {
@@ -262,7 +352,35 @@ export const useGameStore = create<GameState>()(
         juiceClubSatisfaction: state.juiceClubSatisfaction,
         juiceUpgrades: state.juiceUpgrades,
         tricycleColorIndex: state.tricycleColorIndex,
+        progression: state.progression,
       }),
+      version: PROGRESSION_VERSION,
+      migrate: (persistedState, storedVersion) => {
+        const persisted = persistedState as Partial<GameState>;
+        if (storedVersion > PROGRESSION_VERSION) {
+          console.warn(
+            `DayKare save version ${storedVersion} is newer than supported version ${PROGRESSION_VERSION}; keeping legacy game fields and resetting only progression.`,
+          );
+          return {
+            ...initialState,
+            ...persisted,
+            progression: createInitialProgression(),
+          };
+        }
+        return {
+          ...initialState,
+          ...persisted,
+          progression: normalizeProgression(persisted.progression),
+        };
+      },
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<GameState>;
+        return {
+          ...currentState,
+          ...persisted,
+          progression: normalizeProgression(persisted.progression),
+        };
+      },
     }
   )
 );

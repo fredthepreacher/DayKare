@@ -16,6 +16,8 @@ export interface CharacterModelProps {
   isCrouching?: boolean;
   isTalking?: boolean;
   imaginationMode?: boolean;
+  motionSeed?: number;
+  idleEnergy?: number;
 }
 
 const moodBrowRotation: Record<Mood, number> = {
@@ -37,6 +39,8 @@ export function CharacterModel({
   isCrouching = false,
   isTalking = false,
   imaginationMode = false,
+  motionSeed = 0,
+  idleEnergy = 1,
 }: CharacterModelProps) {
   const rig = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -45,9 +49,13 @@ export function CharacterModel({
   const leftLeg = useRef<THREE.Group>(null);
   const rightLeg = useRef<THREE.Group>(null);
   const mouth = useRef<THREE.Mesh>(null);
+  const leftEye = useRef<THREE.Mesh>(null);
+  const rightEye = useRef<THREE.Mesh>(null);
   const phase = useRef(0);
   const lastPosition = useRef(new THREE.Vector3());
   const currentPosition = useRef(new THREE.Vector3());
+  const movementBlend = useRef(0);
+  const runningBlend = useRef(0);
 
   useFrame((state, delta) => {
     if (!rig.current) return;
@@ -57,28 +65,38 @@ export function CharacterModel({
     const speed = distance / Math.max(delta, 0.016);
     lastPosition.current.copy(currentPosition.current);
 
-    const moving = speed > 0.12;
-    const running = speed > 5.5;
-    phase.current += delta * (moving ? (running ? 13 : 8) : 2.2);
-    const stride = moving ? Math.sin(phase.current) * (running ? 0.55 : 0.34) : 0;
-    const idle = Math.sin(state.clock.elapsedTime * 2.1 + bodyColor.length) * 0.025;
+    const targetMovement = THREE.MathUtils.clamp((speed - 0.12) / 1.8, 0, 1);
+    const targetRunning = THREE.MathUtils.clamp((speed - 5.5) / 2.5, 0, 1);
+    movementBlend.current = THREE.MathUtils.lerp(movementBlend.current, targetMovement, 1 - Math.exp(-10 * delta));
+    runningBlend.current = THREE.MathUtils.lerp(runningBlend.current, targetRunning, 1 - Math.exp(-9 * delta));
+    phase.current += delta * THREE.MathUtils.lerp(2.2, 8 + runningBlend.current * 5, movementBlend.current);
+    const stride = Math.sin(phase.current) * movementBlend.current * THREE.MathUtils.lerp(0.34, 0.55, runningBlend.current);
+    const idle = Math.sin(state.clock.elapsedTime * 2.1 + motionSeed) * 0.025 * idleEnergy;
+    const idleGesture = Math.sin(state.clock.elapsedTime * 1.45 + motionSeed) * (1 - movementBlend.current) * idleEnergy;
+    const talkGesture = isTalking ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.14 : 0;
+    const blink = Math.pow(Math.max(0, Math.sin(state.clock.elapsedTime * 0.62 + motionSeed * 0.7)), 30);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
-      leftArm.current.rotation.x = stride * 0.8;
-      rightArm.current.rotation.x = -stride * 0.8;
+      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045;
+      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045;
       leftLeg.current.rotation.x = -stride * 0.7;
       rightLeg.current.rotation.x = stride * 0.7;
-      leftArm.current.rotation.z = -0.08;
-      rightArm.current.rotation.z = 0.08;
+      leftArm.current.rotation.z = -0.08 - idleGesture * 0.025 - talkGesture;
+      rightArm.current.rotation.z = 0.08 + idleGesture * 0.025 + talkGesture;
     }
 
     if (head.current) {
-      head.current.rotation.z = Math.sin(state.clock.elapsedTime * 1.7 + bodyColor.length) * 0.018;
+      head.current.rotation.z = Math.sin(state.clock.elapsedTime * 1.7 + motionSeed) * 0.018 * idleEnergy;
       head.current.rotation.x = isTalking ? -0.08 : idle;
     }
 
+    if (leftEye.current && rightEye.current) {
+      leftEye.current.scale.y = 1 - blink * 0.9;
+      rightEye.current.scale.y = 1 - blink * 0.9;
+    }
+
     if (mouth.current) {
-      const syllable = Math.abs(Math.sin(state.clock.elapsedTime * 11 + bodyColor.length));
+      const syllable = Math.abs(Math.sin(state.clock.elapsedTime * 11 + motionSeed));
       const targetMouthX = isTalking ? 0.9 + syllable * 0.35 : 0.75;
       const targetMouthY = isTalking ? 0.65 + syllable * 0.85 : 0.6;
       mouth.current.scale.x = THREE.MathUtils.lerp(mouth.current.scale.x, targetMouthX, delta * 14);
@@ -88,7 +106,8 @@ export function CharacterModel({
     if (rig.current) {
       const targetY = isCrouching ? 0.72 : 1;
       rig.current.scale.y = THREE.MathUtils.lerp(rig.current.scale.y, targetY, delta * 9);
-      rig.current.position.y = isCrouching ? 0.14 : 0.2 + idle;
+      const targetRootY = isCrouching ? 0.14 : 0.2 + idle;
+      rig.current.position.y = THREE.MathUtils.lerp(rig.current.position.y, targetRootY, 1 - Math.exp(-12 * delta));
     }
   });
 
@@ -225,11 +244,11 @@ export function CharacterModel({
           )}
         </group>
 
-        <mesh position={[-0.15, -0.02, -0.39]} scale={[0.8, 1.1, 0.3]}>
+        <mesh ref={leftEye} position={[-0.15, -0.02, -0.39]} scale={[0.8, 1.1, 0.3]}>
           <sphereGeometry args={[0.065, 10, 8]} />
           <meshStandardMaterial color={eyeColor} roughness={0.55} />
         </mesh>
-        <mesh position={[0.15, -0.02, -0.39]} scale={[0.8, 1.1, 0.3]}>
+        <mesh ref={rightEye} position={[0.15, -0.02, -0.39]} scale={[0.8, 1.1, 0.3]}>
           <sphereGeometry args={[0.065, 10, 8]} />
           <meshStandardMaterial color={eyeColor} roughness={0.55} />
         </mesh>

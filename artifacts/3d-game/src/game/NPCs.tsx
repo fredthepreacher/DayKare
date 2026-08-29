@@ -150,6 +150,8 @@ function Teacher({
           isTeacher
           isTalking={activeDialogue?.name === name}
           imaginationMode={isImaginationMode}
+          motionSeed={namePhase(name)}
+          idleEnergy={0.55}
         />
       </group>
     </group>
@@ -189,11 +191,13 @@ function Kid({
     if (schedule === 'outdoor-play' && !isRainy) {
       basePos.set(12 + Math.cos(timeOffset) * 3, 0, Math.sin(timeOffset) * 10);
     } else if (schedule === 'outdoor-play' && isRainy) {
-      basePos.set(Math.cos(timeOffset) * 4, 0, Math.sin(timeOffset) * 4); // Stay inside
+      basePos.set(4.8 + Math.cos(timeOffset) * 1.5, 0, -5.4 + Math.sin(timeOffset) * 1.1);
     } else if (schedule === 'art-time') {
       basePos.set(-12 + Math.cos(timeOffset) * 2, 0, -12 + Math.sin(timeOffset) * 2);
     } else if (schedule === 'juice-club') {
       basePos.set(Math.cos(timeOffset) * 4, 0, Math.sin(timeOffset) * 4);
+    } else if (schedule === 'pickup') {
+      basePos.set(-5.8 + Math.cos(timeOffset) * 1.2, 0, Math.sin(timeOffset) * 5.5);
     } else {
       basePos.set(defaultPos[0], defaultPos[1], defaultPos[2]);
     }
@@ -212,15 +216,20 @@ function Kid({
       else if (activeInteractable === `kid-${name}`) setActiveInteractable(null);
     }
 
-    // Move if not talking
-    if (activeInteractable !== `kid-${name}`) {
+    const pauseForAmbientMoment = Math.sin(state.clock.elapsedTime * 0.48 + timeOffset) > 0.78;
+
+    // Move in short, readable bursts, then pause for a look-around or reaction.
+    if (activeInteractable !== `kid-${name}` && !pauseForAmbientMoment) {
       ref.current.position.lerp(targetPos.current, delta * 1.5);
       if (targetPos.current.distanceTo(ref.current.position) > 0.1) {
         ref.current.lookAt(targetPos.current.x, ref.current.position.y, targetPos.current.z);
       }
-    } else {
+    } else if (activeInteractable === `kid-${name}`) {
       // Look at player when talking
       ref.current.lookAt(playerRef.current.position.x, ref.current.position.y, playerRef.current.position.z);
+    } else {
+      const targetYaw = Math.sin(state.clock.elapsedTime * 0.42 + timeOffset) * 0.35;
+      ref.current.rotation.y = THREE.MathUtils.lerp(ref.current.rotation.y, targetYaw, 1 - Math.exp(-2.4 * delta));
     }
   });
 
@@ -237,6 +246,8 @@ function Kid({
         mood={mood}
         isTalking={activeDialogue?.name === name}
         imaginationMode={isImaginationMode}
+        motionSeed={timeOffset}
+        idleEnergy={0.8 + (timeOffset % 0.5)}
       />
     </group>
   );

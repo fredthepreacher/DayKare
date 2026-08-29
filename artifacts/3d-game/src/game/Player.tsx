@@ -21,7 +21,15 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   
   // State
   const velocity = useRef(new THREE.Vector3());
+  const desiredVelocity = useRef(new THREE.Vector3());
   const yVelocity = useRef(0);
+  const forward = useRef(new THREE.Vector3());
+  const right = useRef(new THREE.Vector3());
+  const nextPosition = useRef(new THREE.Vector3());
+  const idealCameraPosition = useRef(new THREE.Vector3());
+  const cameraFocus = useRef(new THREE.Vector3());
+  const cameraLookTarget = useRef(new THREE.Vector3());
+  const turnVelocity = useRef(0);
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
   
@@ -38,7 +46,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       lastTeleport.current = teleportTrigger;
     }
     
-    if (activeDialogue) return;
+    if (activeDialogue) {
+      velocity.current.set(0, 0, 0);
+      return;
+    }
 
     const keys = getKeys();
     const touch = getTouchInput();
@@ -57,39 +68,48 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     if (crouching !== isCrouching) setIsCrouching(crouching);
 
     // Camera relative movement
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    forward.y = 0;
-    forward.normalize();
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    right.y = 0;
-    right.normalize();
+    forward.current.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    forward.current.y = 0;
+    forward.current.normalize();
+    right.current.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    right.current.y = 0;
+    right.current.normalize();
 
-    velocity.current.set(0, 0, 0);
+    desiredVelocity.current.set(0, 0, 0);
 
-    if (keys.forward) velocity.current.add(forward.clone().multiplyScalar(speed));
-    if (keys.back) velocity.current.add(forward.clone().multiplyScalar(-speed));
-    if (keys.left) velocity.current.add(right.clone().multiplyScalar(-speed));
-    if (keys.right) velocity.current.add(right.clone().multiplyScalar(speed));
+    if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
+    if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
+    if (keys.left) desiredVelocity.current.addScaledVector(right.current, -speed);
+    if (keys.right) desiredVelocity.current.addScaledVector(right.current, speed);
     if (Math.abs(touch.x) > 0.05 || Math.abs(touch.y) > 0.05) {
-      velocity.current.add(right.clone().multiplyScalar(touch.x * speed));
-      velocity.current.add(forward.clone().multiplyScalar(-touch.y * speed));
+      desiredVelocity.current.addScaledVector(right.current, touch.x * speed);
+      desiredVelocity.current.addScaledVector(forward.current, -touch.y * speed);
     }
 
-    if (velocity.current.length() > 0) {
-      velocity.current.normalize().multiplyScalar(speed);
+    if (desiredVelocity.current.length() > speed) {
+      desiredVelocity.current.normalize().multiplyScalar(speed);
+    }
+
+    const locomotionBlend = 1 - Math.exp(-(desiredVelocity.current.lengthSq() > 0 ? 12 : 16) * delta);
+    velocity.current.lerp(desiredVelocity.current, locomotionBlend);
+
+    if (velocity.current.length() > 0.08) {
       
       const targetAngle = Math.atan2(-velocity.current.x, -velocity.current.z);
       const currentRotation = localRef.current.rotation.y;
       
-      let diff = targetAngle - currentRotation;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      
-      localRef.current.rotation.y += diff * turnSpeed * delta;
+      const diff = THREE.MathUtils.euclideanModulo(targetAngle - currentRotation + Math.PI, Math.PI * 2) - Math.PI;
+      let wrappedDiff = diff;
+      if (wrappedDiff > Math.PI) wrappedDiff -= Math.PI * 2;
+      if (wrappedDiff < -Math.PI) wrappedDiff += Math.PI * 2;
+      turnVelocity.current = THREE.MathUtils.lerp(turnVelocity.current, wrappedDiff * turnSpeed, 1 - Math.exp(-14 * delta));
+      localRef.current.rotation.y += turnVelocity.current * delta;
+    } else {
+      turnVelocity.current = THREE.MathUtils.lerp(turnVelocity.current, 0, 1 - Math.exp(-10 * delta));
     }
 
     // Apply XZ movement
-    const nextPos = localRef.current.position.clone().addScaledVector(velocity.current, delta);
+    const nextPos = nextPosition.current.copy(localRef.current.position).addScaledVector(velocity.current, delta);
 
     // Collision Check (AABB)
     // Outer walls: -15.5 to 15.5
@@ -127,14 +147,19 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     
     localRef.current.position.y += yVelocity.current * delta;
 
-    // Update Camera
-    // Always follow player, allowing some smooth lag
-    const idealCameraPos = localRef.current.position.clone().add(cameraOffset);
-    // If we want player to control camera rotation, we'd need mouse look. 
-    // The prompt just says "camera-responsive movement", which we did above (movement is relative to camera forward/right).
-    // Let's keep camera tracking behind player smoothly.
-    camera.position.lerp(idealCameraPos, 0.1);
-    camera.lookAt(localRef.current.position.clone().add(new THREE.Vector3(0, 1, 0)));
+    // Follow with frame-rate-independent damping. Keep the camera inside the
+    // daycare shell so the outer walls never swallow the view.
+    idealCameraPosition.current.copy(localRef.current.position).add(cameraOffset);
+    idealCameraPosition.current.x = THREE.MathUtils.clamp(idealCameraPosition.current.x, -14.4, 14.4);
+    idealCameraPosition.current.z = THREE.MathUtils.clamp(idealCameraPosition.current.z, -14.4, 14.4);
+    idealCameraPosition.current.y = Math.max(2.8, idealCameraPosition.current.y);
+    const cameraBlend = 1 - Math.exp(-7 * delta);
+    camera.position.lerp(idealCameraPosition.current, cameraBlend);
+
+    cameraFocus.current.lerp(localRef.current.position, 1 - Math.exp(-10 * delta));
+    cameraLookTarget.current.copy(cameraFocus.current);
+    cameraLookTarget.current.y += isCrouching ? 0.78 : 1.0;
+    camera.lookAt(cameraLookTarget.current);
   });
 
   return (
@@ -148,6 +173,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
           mood="excited"
           isCrouching={isCrouching && !isRiding}
           imaginationMode={isImaginationMode}
+          motionSeed={1.3}
+          idleEnergy={1.05}
         />
       </group>
       

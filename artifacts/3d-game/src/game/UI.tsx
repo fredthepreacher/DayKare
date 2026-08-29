@@ -2,8 +2,25 @@ import { useGameStore } from './store';
 import { useEffect, useRef } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import { Controls } from './Controls';
-import { Clock, Book, CloudRain, Sun, Wand2, Backpack, DollarSign, Heart, AlertTriangle } from 'lucide-react';
+import {
+  Clock,
+  Book,
+  CloudRain,
+  Sun,
+  Wand2,
+  Backpack,
+  DollarSign,
+  Heart,
+  AlertTriangle,
+  MapPinned,
+  Sparkles,
+  Star,
+  Trophy,
+  LockKeyhole,
+  CheckCircle2,
+} from 'lucide-react';
 import { TouchControls } from './TouchControls';
+import { HUB_ROUTES, isRouteUnlocked, requirementLabel } from './progression';
 
 export function UI() {
   const {
@@ -12,6 +29,7 @@ export function UI() {
     isRainy,
     isImaginationMode,
     activeInteractable,
+    setActiveInteractable,
     journalOpen,
     binkyStatus,
     juiceClubCash,
@@ -39,7 +57,9 @@ export function UI() {
     serveCustomer,
     addWaitingCustomer,
     setIsRiding,
-    isRiding
+    isRiding,
+    progression,
+    completeActivity,
   } = useGameStore();
 
   const [subscribe] = useKeyboardControls<Controls>();
@@ -86,9 +106,12 @@ export function UI() {
         if (activeInteractable === 'binky') {
           updateBinkyStatus('found');
           pickUp('binky');
+          setActiveInteractable(null);
           setActiveDialogue({ name: 'System', text: 'You found Binky! Return it to Leo.' });
         } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block') {
           pickUp(activeInteractable);
+          setActiveInteractable(null);
+          setActiveDialogue({ name: 'Toy Box', text: 'Toy collected and tucked safely into your backpack.' });
         } else if (activeInteractable === 'juice-stand') {
           if (schedule === 'juice-club') {
             setActiveDialogue({
@@ -101,7 +124,7 @@ export function UI() {
                     if (waitingCustomers.length > 0) {
                       if (juiceStock > 0 && crackerStock > 0) {
                         serveCustomer();
-                        setActiveDialogue({ name: 'System', text: 'Served juice to a happy customer!' });
+                        setActiveDialogue({ name: 'System', text: 'Served a happy customer! +1 reputation and +1 Star Token.' });
                       } else {
                         setActiveDialogue({ name: 'System', text: 'Out of stock! Buy more in the Journal Business tab.' });
                       }
@@ -126,6 +149,25 @@ export function UI() {
               { label: 'Leave', action: () => setActiveDialogue(null) },
             ],
           });
+        } else if (activeInteractable === 'activity-rainbow-tidy-up') {
+          const nextRun = (progression.activityRuns['rainbow-tidy-up'] ?? 0) + 1;
+          completeActivity('rainbow-tidy-up', 2, 2);
+          setActiveDialogue({
+            name: 'Rainbow Tidy-Up',
+            text: `Everything is sorted and sparkling. Round ${nextRun} complete — +2 hub reputation and +2 Star Tokens!${nextRun === 3 ? ' Storybook Lane is now prepared for a future adventure.' : ''}`,
+          });
+        } else if (activeInteractable.startsWith('route-')) {
+          const routeId = activeInteractable.replace('route-', '');
+          const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
+          if (route) {
+            const unlocked = isRouteUnlocked(route, progression);
+            setActiveDialogue({
+              name: route.label,
+              text: unlocked
+                ? `${route.description} This connection is ready for a future district expansion.`
+                : `${route.subtitle}. Build ${requirementLabel(route)} to prepare this route.`,
+            });
+          }
         } else if (activeInteractable.startsWith('kid-')) {
           const kidName = activeInteractable.split('-')[1];
           handleKidInteraction(kidName);
@@ -144,7 +186,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression]);
 
   const handleKidInteraction = (name: string) => {
     // Binky Quest Logic
@@ -219,12 +261,33 @@ export function UI() {
     if (activeInteractable === 'binky') return 'Pick up Binky';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
+    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Start Rainbow Tidy-Up';
+    if (activeInteractable.startsWith('route-')) {
+      const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
+      if (!route) return 'Check Route';
+      return `${isRouteUnlocked(route, progression) ? 'Preview' : 'Check'} ${route.label}`;
+    }
     if (activeInteractable.startsWith('kid-')) return `Talk to ${activeInteractable.split('-')[1]}`;
     if (activeInteractable.includes('block')) return 'Pick up Toy';
     return 'Interact';
   };
 
   const interactionLabel = getInteractionLabel();
+  const getInteractionDetail = () => {
+    if (activeDialogue) return null;
+    if (!activeInteractable) return null;
+    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Repeatable · +2 reputation · +2 Star Tokens';
+    if (activeInteractable.startsWith('route-')) {
+      const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
+      if (!route) return 'Future access point';
+      return isRouteUnlocked(route, progression) ? 'Route prepared for expansion' : `Locked · ${requirementLabel(route)}`;
+    }
+    if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
+    if (activeInteractable === 'tricycle') return 'Ride or customize';
+    if (activeInteractable.startsWith('kid-')) return 'Friend interaction';
+    return 'Nearby object';
+  };
+  const interactionDetail = getInteractionDetail();
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">
@@ -293,6 +356,15 @@ export function UI() {
           <span className="font-bold hidden sm:block">Journal (J)</span>
           <Book className="w-6 h-6 text-primary" />
         </button>
+
+        <div className="daykare-progress-chip bg-card/90 backdrop-blur border-2 border-amber-400/25 px-3 py-2 rounded-xl shadow flex items-center gap-3 text-card-foreground">
+          <div className="flex items-center gap-1 font-bold text-amber-700">
+            <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
+            {progression.tokens}
+          </div>
+          <div className="w-px h-4 bg-amber-300/50" />
+          <div className="text-xs font-bold text-muted-foreground">{progression.reputation} REP</div>
+        </div>
         
         {schedule === 'juice-club' && (
           <div className="bg-card/90 backdrop-blur border-2 border-green-500/20 p-3 rounded-xl shadow flex flex-col items-end text-green-600 font-bold">
@@ -327,36 +399,24 @@ export function UI() {
             </div>
           ) : (
             <div className="text-sm text-muted-foreground animate-pulse mt-4 flex items-center gap-2">
-              <span className="bg-muted px-2 py-1 rounded">E</span> to close
+              <span className="bg-muted px-2 py-1 rounded">E</span> or tap to close
             </div>
           )}
         </div>
       )}
 
       {/* Interaction Prompt - Bottom Center */}
-      {activeInteractable && !journalOpen && !activeDialogue && (
-        <div className="daykare-desktop-interact absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
+      {interactionLabel && !journalOpen && !activeDialogue && (
+        <div className="daykare-desktop-interact daykare-interaction-prompt absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
           <div className="bg-primary text-primary-foreground font-mono font-bold w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner">
             E
           </div>
-          <div className="text-lg font-bold text-card-foreground">
-            {activeInteractable === 'binky' && "Pick up Binky"}
-            {activeInteractable === 'juice-stand' && schedule === 'juice-club' && "Manage Juice Stand"}
-            {activeInteractable === 'juice-stand' && schedule !== 'juice-club' && "Juice Club is closed"}
-            {activeInteractable === 'tricycle' && "Interact with Tricycle"}
-            {activeInteractable.startsWith('kid-') && `Talk to ${activeInteractable.split('-')[1]}`}
-            {activeInteractable.includes('block') && "Pick up Toy"}
+          <div>
+            <div className="text-lg font-bold text-card-foreground">{interactionLabel}</div>
+            {interactionDetail && (
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">{interactionDetail}</div>
+            )}
           </div>
-        </div>
-      )}
-
-      {/* Dismount Prompt */}
-      {isRiding && (
-        <div className="daykare-desktop-interact absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
-          <div className="bg-primary text-primary-foreground font-mono font-bold w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner">
-            E
-          </div>
-          <div className="text-lg font-bold text-card-foreground">Dismount</div>
         </div>
       )}
 
@@ -404,6 +464,30 @@ export function UI() {
                         ))}
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50/80 p-4 rounded-xl border border-amber-200">
+                  <h3 className="font-bold text-xl mb-3 flex items-center gap-2 text-[#5c3a21]">
+                    <Trophy className="w-5 h-5 text-amber-600" /> Hub Progress
+                  </h3>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="bg-white/70 p-2 rounded-lg text-center">
+                      <div className="text-xl font-black text-amber-700">{progression.reputation}</div>
+                      <div className="text-[10px] uppercase font-bold text-amber-900/60">Reputation</div>
+                    </div>
+                    <div className="bg-white/70 p-2 rounded-lg text-center">
+                      <div className="text-xl font-black text-amber-700">{progression.tokens}</div>
+                      <div className="text-[10px] uppercase font-bold text-amber-900/60">Star Tokens</div>
+                    </div>
+                    <div className="bg-white/70 p-2 rounded-lg text-center">
+                      <div className="text-xl font-black text-amber-700">{progression.activityRuns['rainbow-tidy-up'] ?? 0}</div>
+                      <div className="text-[10px] uppercase font-bold text-amber-900/60">Tidy Rounds</div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-amber-950/75 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    Repeat activities, help friends, and run the Juice Club to prepare new routes.
                   </div>
                 </div>
 
@@ -477,6 +561,28 @@ export function UI() {
                 <div className="absolute top-1/4 right-1/4 w-1/3 h-1/2 border-2 border-[#8b5a2b] bg-[#c2b2a1]/20 rounded flex items-center justify-center text-xs text-[#8b5a2b]">Playground</div>
               </div>
 
+              <div className="mb-7">
+                <h3 className="font-bold text-xl mb-3 text-[#5c3a21] flex items-center gap-2">
+                  <MapPinned className="w-5 h-5 text-purple-600" /> Future Routes
+                </h3>
+                <div className="space-y-2">
+                  {HUB_ROUTES.map((route) => {
+                    const unlocked = isRouteUnlocked(route, progression);
+                    return (
+                      <div key={route.id} className={`p-3 rounded-xl border flex items-start gap-3 ${unlocked ? 'bg-green-50 border-green-200' : 'bg-white/60 border-[#e5d8cc]'}`}>
+                        <div className={`w-9 h-9 shrink-0 rounded-lg grid place-items-center ${unlocked ? 'bg-green-100 text-green-700' : 'bg-stone-100 text-stone-500'}`}>
+                          {unlocked ? <CheckCircle2 className="w-5 h-5" /> : <LockKeyhole className="w-5 h-5" />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-sm text-[#5c3a21]">{route.label}</div>
+                          <div className="text-xs text-muted-foreground">{unlocked ? 'Prepared for future expansion' : requirementLabel(route)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div>
                 <h3 className="font-bold text-xl mb-3 text-[#5c3a21] flex items-center gap-2">
                   <Heart className="w-5 h-5 text-red-500" /> Friends Met
@@ -519,6 +625,7 @@ export function UI() {
       <TouchControls
         movementEnabled={!journalOpen && !activeDialogue}
         interactionLabel={journalOpen ? null : interactionLabel}
+        interactionDetail={journalOpen ? null : interactionDetail}
         onInteract={() => interactRef.current()}
       />
 

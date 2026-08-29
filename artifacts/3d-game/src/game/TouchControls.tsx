@@ -8,12 +8,14 @@ const TAP_MOVEMENT_LIMIT = 18;
 interface TouchControlsProps {
   movementEnabled: boolean;
   interactionLabel: string | null;
+  interactionDetail?: string | null;
   onInteract: () => void;
 }
 
 export function TouchControls({
   movementEnabled,
   interactionLabel,
+  interactionDetail,
   onInteract,
 }: TouchControlsProps) {
   const padRef = useRef<HTMLDivElement>(null);
@@ -175,8 +177,11 @@ export function TouchControls({
           onPointerDown={(event) => event.stopPropagation()}
           onClick={onInteract}
         >
-          <span className="daykare-touch-interact-mark">E</span>
-          <span>{interactionLabel}</span>
+          <span className="daykare-touch-interact-mark">ACT</span>
+          <span className="daykare-touch-interact-copy">
+            <strong>{interactionLabel}</strong>
+            {interactionDetail && <small>{interactionDetail}</small>}
+          </span>
         </button>
       )}
     </div>

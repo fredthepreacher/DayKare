@@ -270,9 +270,28 @@
     border-radius: 14px;
     color: white;
     font-family: var(--app-font-mono);
-    font-size: 17px;
+    font-size: 11px;
     background: hsl(var(--primary));
     box-shadow: inset 0 -3px 0 rgba(90, 39, 15, 0.15);
+  }
+
+  .daykare-touch-interact-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+
+  .daykare-touch-interact-copy strong {
+    font-size: 13px;
+  }
+
+  .daykare-touch-interact-copy small {
+    margin-top: 3px;
+    color: hsl(var(--muted-foreground));
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.2;
   }
 
   .daykare-desktop-only,
