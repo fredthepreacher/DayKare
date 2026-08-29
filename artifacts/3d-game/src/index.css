@@ -133,3 +133,246 @@
   background-image: radial-gradient(#e5d8cc 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
+.daykare-touch-ui {
+  display: none;
+}
+
+@media (pointer: coarse), (max-width: 767px) {
+  body {
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+
+  .daykare-touch-ui {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 45;
+  }
+
+  .daykare-touch-movement {
+    position: absolute;
+    left: max(14px, env(safe-area-inset-left));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    pointer-events: auto;
+  }
+
+  .daykare-touch-pad {
+    position: relative;
+    width: 138px;
+    height: 138px;
+    border-radius: 999px;
+    touch-action: none;
+    background:
+      radial-gradient(circle at 42% 36%, rgba(255, 255, 255, 0.22), transparent 34%),
+      rgba(34, 28, 37, 0.42);
+    border: 2px solid rgba(255, 255, 255, 0.48);
+    box-shadow:
+      inset 0 0 0 8px rgba(255, 255, 255, 0.06),
+      0 14px 32px rgba(33, 24, 38, 0.28);
+    backdrop-filter: blur(12px);
+  }
+
+  .daykare-touch-pad-ring {
+    position: absolute;
+    inset: 27px;
+    border: 1px dashed rgba(255, 255, 255, 0.35);
+    border-radius: inherit;
+  }
+
+  .daykare-touch-knob {
+    position: absolute;
+    width: 54px;
+    height: 54px;
+    left: calc(50% - 27px);
+    top: calc(50% - 27px);
+    border-radius: 999px;
+    background: linear-gradient(145deg, hsl(var(--primary)), #f6a84f);
+    border: 3px solid rgba(255, 255, 255, 0.8);
+    box-shadow:
+      inset 0 4px 8px rgba(255, 255, 255, 0.24),
+      0 7px 14px rgba(41, 25, 17, 0.3);
+    will-change: transform;
+  }
+
+  .daykare-touch-status {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 7px;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  }
+
+  .daykare-touch-status span {
+    padding: 4px 7px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 999px;
+    background: rgba(30, 24, 34, 0.42);
+    backdrop-filter: blur(8px);
+  }
+
+  .daykare-touch-status .is-active {
+    color: #fff6dc;
+    border-color: rgba(255, 196, 87, 0.8);
+    background: rgba(237, 125, 55, 0.8);
+  }
+
+  .daykare-touch-hint {
+    margin-top: 5px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-align: center;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
+  }
+
+  .daykare-touch-interact {
+    position: absolute;
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(24px, env(safe-area-inset-bottom));
+    min-height: 64px;
+    max-width: min(190px, 45vw);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px 10px 10px;
+    pointer-events: auto;
+    color: hsl(var(--card-foreground));
+    font-size: 13px;
+    font-weight: 800;
+    text-align: left;
+    border: 2px solid hsla(var(--primary), 0.8);
+    border-radius: 20px;
+    background: hsla(var(--card), 0.94);
+    box-shadow: 0 12px 32px rgba(44, 28, 20, 0.28);
+    backdrop-filter: blur(14px);
+    touch-action: manipulation;
+  }
+
+  .daykare-touch-interact:active {
+    transform: scale(0.96);
+  }
+
+  .daykare-touch-interact-mark {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 14px;
+    color: white;
+    font-family: var(--app-font-mono);
+    font-size: 17px;
+    background: hsl(var(--primary));
+    box-shadow: inset 0 -3px 0 rgba(90, 39, 15, 0.15);
+  }
+
+  .daykare-desktop-only,
+  .daykare-desktop-interact,
+  .daykare-crosshair {
+    display: none !important;
+  }
+
+  .daykare-hud-left {
+    top: max(10px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
+    gap: 7px;
+    transform: scale(0.8);
+    transform-origin: top left;
+  }
+
+  .daykare-hud-right {
+    top: max(10px, env(safe-area-inset-top));
+    right: max(10px, env(safe-area-inset-right));
+    transform: scale(0.84);
+    transform-origin: top right;
+  }
+
+  .daykare-suspicion {
+    top: max(82px, calc(env(safe-area-inset-top) + 72px));
+    max-width: calc(100vw - 32px);
+    padding: 7px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .daykare-dialogue {
+    bottom: max(104px, calc(env(safe-area-inset-bottom) + 96px));
+    width: calc(100% - 28px);
+    padding: 16px;
+    border-width: 3px;
+    border-radius: 20px;
+  }
+
+  .daykare-dialogue > div:first-child {
+    font-size: 20px;
+  }
+
+  .daykare-dialogue > div:nth-child(2) {
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  .daykare-dialogue button {
+    min-height: 44px;
+    flex: 1 1 auto;
+  }
+
+  .daykare-journal-shell {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .daykare-journal-book {
+    height: calc(100dvh - 16px);
+    flex-direction: column;
+    overflow-y: auto;
+    border-width: 5px;
+    border-radius: 20px;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+  }
+
+  .daykare-journal-book > div {
+    flex: none;
+    width: 100%;
+    padding: 20px;
+    overflow: visible;
+  }
+
+  .daykare-journal-book > div:first-child {
+    border-right: 0;
+    border-bottom: 1px solid #d4c3b3;
+  }
+
+  .daykare-journal-book h2 {
+    font-size: 29px;
+  }
+}
+
+@media (max-width: 520px) {
+  .daykare-touch-pad {
+    width: 124px;
+    height: 124px;
+  }
+
+  .daykare-touch-interact {
+    max-width: 43vw;
+    min-height: 58px;
+    padding-right: 12px;
+  }
+
+  .daykare-touch-interact-mark {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+}

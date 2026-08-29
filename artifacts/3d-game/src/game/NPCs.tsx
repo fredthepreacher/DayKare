@@ -2,29 +2,84 @@ import { useFrame } from '@react-three/fiber';
 import { useGameStore } from './store';
 import { useRef, useMemo, useState } from 'react';
 import * as THREE from 'three';
+import { CharacterModel, type CharacterModelProps } from './CharacterModel';
+
+type KidDefinition = {
+  name: string;
+  color: string;
+  accent: string;
+  hairColor: string;
+  hairStyle: NonNullable<CharacterModelProps['hairStyle']>;
+  skinColor: string;
+  defaultPos: [number, number, number];
+};
+
+const KID_CAST: KidDefinition[] = [
+  { name: 'Leo', color: '#e65a4f', accent: '#ffd166', hairColor: '#5b352c', hairStyle: 'sprout', skinColor: '#efb58f', defaultPos: [2, 0, 3] },
+  { name: 'Mia', color: '#54b9bd', accent: '#f1d985', hairColor: '#3f2927', hairStyle: 'ponytail', skinColor: '#c98562', defaultPos: [-3, 0, 4] },
+  { name: 'Sam', color: '#2a9d8f', accent: '#ecb56b', hairColor: '#2f231f', hairStyle: 'curls', skinColor: '#8f5139', defaultPos: [-12, 0, -10] },
+  { name: 'Zoe', color: '#e9aa45', accent: '#e76f8c', hairColor: '#8d5d2f', hairStyle: 'bob', skinColor: '#f2c4a0', defaultPos: [12, 0, -2] },
+  { name: 'Eli', color: '#f08a5d', accent: '#6a8caf', hairColor: '#d0a16d', hairStyle: 'cap', skinColor: '#f2c8a8', defaultPos: [13, 0, 4] },
+  { name: 'Noah', color: '#7654bd', accent: '#71d4b4', hairColor: '#4d2c25', hairStyle: 'curls', skinColor: '#b66f50', defaultPos: [5, 0, -5] },
+  { name: 'Lily', color: '#db568a', accent: '#8fd0c5', hairColor: '#202334', hairStyle: 'ponytail', skinColor: '#e4aa7f', defaultPos: [-6, 0, -6] },
+  { name: 'Finn', color: '#4c82d4', accent: '#f3ca52', hairColor: '#bd7448', hairStyle: 'sprout', skinColor: '#f1bf98', defaultPos: [0, 0, 6] },
+  { name: 'Ruby', color: '#e8613c', accent: '#8bc5db', hairColor: '#7a2d2d', hairStyle: 'bob', skinColor: '#d5916b', defaultPos: [-4, 0, 0] },
+  { name: 'Max', color: '#e6ae2f', accent: '#4b7f8c', hairColor: '#4b382c', hairStyle: 'cap', skinColor: '#d79b78', defaultPos: [4, 0, 2] },
+];
+
+function namePhase(name: string) {
+  return [...name].reduce((total, character) => total + character.charCodeAt(0), 0) * 0.37;
+}
 
 export function NPCs({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
     <group>
-      <Teacher name="Ms. Harper" color="#457b9d" defaultPos={[-2, 0, -2]} playerRef={playerRef} />
-      <Teacher name="Mr. Davis" color="#1d3557" defaultPos={[10, 0, 0]} playerRef={playerRef} />
-      
-      <Kid name="Leo" color="#e63946" defaultPos={[2, 0, 3]} playerRef={playerRef} />
-      <Kid name="Mia" color="#a8dadc" defaultPos={[-3, 0, 4]} playerRef={playerRef} />
-      <Kid name="Sam" color="#2a9d8f" defaultPos={[-12, 0, -10]} playerRef={playerRef} />
-      <Kid name="Zoe" color="#e9c46a" defaultPos={[12, 0, -2]} playerRef={playerRef} />
-      <Kid name="Eli" color="#f4a261" defaultPos={[13, 0, 4]} playerRef={playerRef} />
-      
-      <Kid name="Noah" color="#8338ec" defaultPos={[5, 0, -5]} playerRef={playerRef} />
-      <Kid name="Lily" color="#ff006e" defaultPos={[-6, 0, -6]} playerRef={playerRef} />
-      <Kid name="Finn" color="#3a86ff" defaultPos={[0, 0, 6]} playerRef={playerRef} />
-      <Kid name="Ruby" color="#fb5607" defaultPos={[-4, 0, 0]} playerRef={playerRef} />
-      <Kid name="Max" color="#ffbe0b" defaultPos={[4, 0, 2]} playerRef={playerRef} />
+      <Teacher
+        name="Ms. Harper"
+        color="#457b9d"
+        accent="#e4bd6a"
+        hairColor="#46352f"
+        hairStyle="bob"
+        skinColor="#c98562"
+        defaultPos={[-2, 0, -2]}
+        playerRef={playerRef}
+      />
+      <Teacher
+        name="Mr. Davis"
+        color="#355272"
+        accent="#68a9a7"
+        hairColor="#6a4a3c"
+        hairStyle="curls"
+        skinColor="#e6ad88"
+        defaultPos={[10, 0, 0]}
+        playerRef={playerRef}
+      />
+      {KID_CAST.map((kid) => (
+        <Kid key={kid.name} {...kid} playerRef={playerRef} />
+      ))}
     </group>
   );
 }
 
-function Teacher({ name, color, defaultPos, playerRef }: { name: string, color: string, defaultPos: [number, number, number], playerRef: React.RefObject<THREE.Group | null> }) {
+function Teacher({
+  name,
+  color,
+  accent,
+  hairColor,
+  hairStyle,
+  skinColor,
+  defaultPos,
+  playerRef,
+}: {
+  name: string;
+  color: string;
+  accent: string;
+  hairColor: string;
+  hairStyle: NonNullable<CharacterModelProps['hairStyle']>;
+  skinColor: string;
+  defaultPos: [number, number, number];
+  playerRef: React.RefObject<THREE.Group | null>;
+}) {
   const ref = useRef<THREE.Group>(null);
   const schedule = useGameStore(s => s.schedule);
   const isRainy = useGameStore(s => s.isRainy);
@@ -33,6 +88,8 @@ function Teacher({ name, color, defaultPos, playerRef }: { name: string, color: 
   
   const triggerTeleport = useGameStore(s => s.triggerTeleport);
   const setActiveDialogue = useGameStore(s => s.setActiveDialogue);
+  const isImaginationMode = useGameStore(s => s.isImaginationMode);
+  const activeDialogue = useGameStore(s => s.activeDialogue);
   
   const targetPos = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   
@@ -82,19 +139,33 @@ function Teacher({ name, color, defaultPos, playerRef }: { name: string, color: 
 
   return (
     <group ref={ref} position={defaultPos}>
-      <mesh position={[0, 1.5, 0]} castShadow>
-        <boxGeometry args={[0.9, 2, 0.9]} />
-        <meshStandardMaterial color={color} />
-      </mesh>
-      <mesh position={[0, 2.8, 0]} castShadow>
-        <boxGeometry args={[0.7, 0.7, 0.7]} />
-        <meshStandardMaterial color="#fcd5ce" />
-      </mesh>
+      <group scale={1.28}>
+        <CharacterModel
+          bodyColor={color}
+          accentColor={accent}
+          hairColor={hairColor}
+          hairStyle={hairStyle}
+          skinColor={skinColor}
+          mood="curious"
+          isTeacher
+          isTalking={activeDialogue?.name === name}
+          imaginationMode={isImaginationMode}
+        />
+      </group>
     </group>
   );
 }
 
-function Kid({ name, color, defaultPos, playerRef }: { name: string, color: string, defaultPos: [number, number, number], playerRef: React.RefObject<THREE.Group | null> }) {
+function Kid({
+  name,
+  color,
+  accent,
+  hairColor,
+  hairStyle,
+  skinColor,
+  defaultPos,
+  playerRef,
+}: KidDefinition & { playerRef: React.RefObject<THREE.Group | null> }) {
   const ref = useRef<THREE.Group>(null);
   const schedule = useGameStore(s => s.schedule);
   const isRainy = useGameStore(s => s.isRainy);
@@ -102,12 +173,14 @@ function Kid({ name, color, defaultPos, playerRef }: { name: string, color: stri
   
   const setActiveInteractable = useGameStore(s => s.setActiveInteractable);
   const activeInteractable = useGameStore(s => s.activeInteractable);
+  const activeDialogue = useGameStore(s => s.activeDialogue);
+  const mood = useGameStore(s => s.friends[name]?.mood ?? 'happy');
   
   const [canInteract, setCanInteract] = useState(false);
 
   const basePos = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const targetPos = useRef(new THREE.Vector3(...defaultPos));
-  const timeOffset = useMemo(() => Math.random() * 100, []);
+  const timeOffset = useMemo(() => namePhase(name), [name]);
 
   useFrame((state, delta) => {
     if (!ref.current || !playerRef.current) return;
@@ -155,14 +228,16 @@ function Kid({ name, color, defaultPos, playerRef }: { name: string, color: stri
 
   return (
     <group ref={ref} position={defaultPos}>
-      <mesh position={[0, 0.5, 0]} castShadow>
-        <boxGeometry args={[0.7, 1, 0.7]} />
-        <meshStandardMaterial color={activeColor} />
-      </mesh>
-      <mesh position={[0, 1.25, 0]} castShadow>
-        <boxGeometry args={[0.55, 0.55, 0.55]} />
-        <meshStandardMaterial color="#fcd5ce" />
-      </mesh>
+      <CharacterModel
+        bodyColor={activeColor}
+        accentColor={accent}
+        hairColor={hairColor}
+        hairStyle={hairStyle}
+        skinColor={skinColor}
+        mood={mood}
+        isTalking={activeDialogue?.name === name}
+        imaginationMode={isImaginationMode}
+      />
     </group>
   );
 }

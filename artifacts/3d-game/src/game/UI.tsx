@@ -1,8 +1,9 @@
 import { useGameStore } from './store';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import { Controls } from './Controls';
 import { Clock, Book, CloudRain, Sun, Wand2, Backpack, DollarSign, Heart, AlertTriangle } from 'lucide-react';
+import { TouchControls } from './TouchControls';
 
 export function UI() {
   const {
@@ -42,6 +43,7 @@ export function UI() {
   } = useGameStore();
 
   const [subscribe] = useKeyboardControls<Controls>();
+  const interactRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     return subscribe(
@@ -67,81 +69,80 @@ export function UI() {
   }, [schedule]);
 
   useEffect(() => {
+    const runInteraction = () => {
+      if (activeDialogue) {
+        if (!activeDialogue.options) {
+          setActiveDialogue(null);
+        }
+        return;
+      }
+
+      if (isRiding) {
+        setIsRiding(false);
+        return;
+      }
+
+      if (activeInteractable) {
+        if (activeInteractable === 'binky') {
+          updateBinkyStatus('found');
+          pickUp('binky');
+          setActiveDialogue({ name: 'System', text: 'You found Binky! Return it to Leo.' });
+        } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block') {
+          pickUp(activeInteractable);
+        } else if (activeInteractable === 'juice-stand') {
+          if (schedule === 'juice-club') {
+            setActiveDialogue({
+              name: 'Juice Stand',
+              text: waitingCustomers.length > 0 ? `${waitingCustomers[0]} is waiting for juice!` : 'Waiting for customers...',
+              options: [
+                {
+                  label: 'Serve Customer',
+                  action: () => {
+                    if (waitingCustomers.length > 0) {
+                      if (juiceStock > 0 && crackerStock > 0) {
+                        serveCustomer();
+                        setActiveDialogue({ name: 'System', text: 'Served juice to a happy customer!' });
+                      } else {
+                        setActiveDialogue({ name: 'System', text: 'Out of stock! Buy more in the Journal Business tab.' });
+                      }
+                    } else {
+                      setActiveDialogue({ name: 'System', text: 'No one is waiting right now.' });
+                    }
+                  },
+                },
+                { label: 'Leave', action: () => setActiveDialogue(null) },
+              ],
+            });
+          } else {
+            setActiveDialogue({ name: 'System', text: 'Juice Club is currently closed. Opens at 12:00 PM.' });
+          }
+        } else if (activeInteractable === 'tricycle') {
+          setActiveDialogue({
+            name: 'Tricycle',
+            text: 'What do you want to do?',
+            options: [
+              { label: 'Ride', action: () => { setIsRiding(true); setActiveDialogue(null); } },
+              { label: 'Paint', action: () => { cycleTricycleColor(); setActiveDialogue(null); } },
+              { label: 'Leave', action: () => setActiveDialogue(null) },
+            ],
+          });
+        } else if (activeInteractable.startsWith('kid-')) {
+          const kidName = activeInteractable.split('-')[1];
+          handleKidInteraction(kidName);
+        }
+      } else if (inventory.length > 0) {
+        const item = inventory[0];
+        drop(item);
+        setActiveDialogue({ name: 'System', text: `Dropped ${item}.` });
+      }
+    };
+
+    interactRef.current = runInteraction;
     return subscribe(
       (state) => state.interact,
       (pressed) => {
-        if (pressed) {
-          if (activeDialogue) {
-            // Close dialogue if no options
-            if (!activeDialogue.options) {
-              setActiveDialogue(null);
-            }
-            return;
-          }
-
-          if (isRiding) {
-            setIsRiding(false);
-            return;
-          }
-
-          if (activeInteractable) {
-            if (activeInteractable === 'binky') {
-              updateBinkyStatus('found');
-              pickUp('binky');
-              setActiveDialogue({ name: 'System', text: 'You found Binky! Return it to Leo.' });
-            } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block') {
-              pickUp(activeInteractable);
-            } else if (activeInteractable === 'juice-stand') {
-              if (schedule === 'juice-club') {
-                setActiveDialogue({
-                  name: 'Juice Stand',
-                  text: waitingCustomers.length > 0 ? `${waitingCustomers[0]} is waiting for juice!` : 'Waiting for customers...',
-                  options: [
-                    { 
-                      label: 'Serve Customer', 
-                      action: () => {
-                        if (waitingCustomers.length > 0) {
-                          if (juiceStock > 0 && crackerStock > 0) {
-                            serveCustomer();
-                            setActiveDialogue({ name: 'System', text: `Served juice to a happy customer!` });
-                          } else {
-                            setActiveDialogue({ name: 'System', text: 'Out of stock! Buy more in the Journal Business tab.' });
-                          }
-                        } else {
-                          setActiveDialogue({ name: 'System', text: 'No one is waiting right now.' });
-                        }
-                      }
-                    },
-                    { label: 'Leave', action: () => setActiveDialogue(null) }
-                  ]
-                });
-              } else {
-                setActiveDialogue({ name: 'System', text: 'Juice Club is currently closed. Opens at 12:00 PM.' });
-              }
-            } else if (activeInteractable === 'tricycle') {
-              // We could cycle color, but mount is better.
-              // Let's use E to Mount, maybe Q to paint? Or dialogue options?
-              setActiveDialogue({
-                name: 'Tricycle',
-                text: 'What do you want to do?',
-                options: [
-                  { label: 'Ride', action: () => { setIsRiding(true); setActiveDialogue(null); } },
-                  { label: 'Paint', action: () => { cycleTricycleColor(); setActiveDialogue(null); } },
-                  { label: 'Leave', action: () => setActiveDialogue(null) }
-                ]
-              });
-            } else if (activeInteractable.startsWith('kid-')) {
-              const kidName = activeInteractable.split('-')[1];
-              handleKidInteraction(kidName);
-            }
-          } else if (inventory.length > 0) {
-            // Drop item if not looking at anything
-            const item = inventory[0];
-            drop(item);
-            setActiveDialogue({ name: 'System', text: `Dropped ${item}.` });
-          }
-        }
-      }
+        if (pressed) runInteraction();
+      },
     );
   }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory]);
 
@@ -210,11 +211,26 @@ export function UI() {
     return s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
+  const getInteractionLabel = () => {
+    if (activeDialogue?.options) return null;
+    if (activeDialogue) return 'Continue';
+    if (isRiding) return 'Dismount';
+    if (!activeInteractable) return inventory.length > 0 ? `Drop ${inventory[0]}` : null;
+    if (activeInteractable === 'binky') return 'Pick up Binky';
+    if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
+    if (activeInteractable === 'tricycle') return 'Use Tricycle';
+    if (activeInteractable.startsWith('kid-')) return `Talk to ${activeInteractable.split('-')[1]}`;
+    if (activeInteractable.includes('block')) return 'Pick up Toy';
+    return 'Interact';
+  };
+
+  const interactionLabel = getInteractionLabel();
+
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">
       
       {/* HUD - Top Left */}
-      <div className="absolute top-6 left-6 flex flex-col gap-3 pointer-events-auto">
+      <div className="daykare-hud-left absolute top-6 left-6 flex flex-col gap-3 pointer-events-auto">
         <div className="bg-card/90 backdrop-blur border-2 border-primary/20 p-4 rounded-xl shadow-lg flex items-center gap-4 text-card-foreground">
           <div className="bg-primary/10 p-2 rounded-lg">
             <Clock className="w-6 h-6 text-primary" />
@@ -262,14 +278,14 @@ export function UI() {
 
       {/* Teacher Suspicion */}
       {teacherSuspicion > 0 && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
+        <div className="daykare-suspicion absolute top-6 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
           <AlertTriangle className="w-5 h-5" />
           Teacher Suspicion: {Math.round(teacherSuspicion)}%
         </div>
       )}
 
       {/* HUD - Top Right */}
-      <div className="absolute top-6 right-6 flex flex-col items-end gap-3 pointer-events-auto">
+      <div className="daykare-hud-right absolute top-6 right-6 flex flex-col items-end gap-3 pointer-events-auto">
         <button 
           onClick={toggleJournal}
           className="bg-card/90 backdrop-blur border-2 border-primary/20 p-3 rounded-xl shadow-lg flex items-center gap-3 hover:scale-105 transition-transform"
@@ -293,7 +309,7 @@ export function UI() {
 
       {/* Dialogue Overlay */}
       {activeDialogue && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-card border-4 border-primary p-6 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-8 pointer-events-auto">
+        <div className="daykare-dialogue absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-card border-4 border-primary p-6 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-8 pointer-events-auto">
           <div className="font-serif font-bold text-2xl text-primary mb-2">{activeDialogue.name}</div>
           <div className="text-lg text-card-foreground mb-4">{activeDialogue.text}</div>
           
@@ -319,7 +335,7 @@ export function UI() {
 
       {/* Interaction Prompt - Bottom Center */}
       {activeInteractable && !journalOpen && !activeDialogue && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
+        <div className="daykare-desktop-interact absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
           <div className="bg-primary text-primary-foreground font-mono font-bold w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner">
             E
           </div>
@@ -336,7 +352,7 @@ export function UI() {
 
       {/* Dismount Prompt */}
       {isRiding && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
+        <div className="daykare-desktop-interact absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
           <div className="bg-primary text-primary-foreground font-mono font-bold w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner">
             E
           </div>
@@ -346,13 +362,13 @@ export function UI() {
 
       {/* Crosshair */}
       {!journalOpen && !activeDialogue && (
-        <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-white/80 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-sm" />
+        <div className="daykare-crosshair absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-white/80 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-sm" />
       )}
 
       {/* Journal Overlay */}
       {journalOpen && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-auto z-50 p-4">
-          <div className="bg-[#fcf8f2] w-full max-w-5xl h-[85vh] rounded-3xl shadow-2xl flex overflow-hidden border-8 border-[#8b5a2b]">
+        <div className="daykare-journal-shell absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-auto z-50 p-4">
+          <div className="daykare-journal-book bg-[#fcf8f2] w-full max-w-5xl h-[85vh] rounded-3xl shadow-2xl flex overflow-hidden border-8 border-[#8b5a2b]">
             {/* Left Page */}
             <div className="flex-1 p-8 border-r border-[#d4c3b3] relative overflow-y-auto">
               <div className="flex justify-between items-center mb-6">
@@ -500,10 +516,16 @@ export function UI() {
         </div>
       )}
 
+      <TouchControls
+        movementEnabled={!journalOpen && !activeDialogue}
+        interactionLabel={journalOpen ? null : interactionLabel}
+        onInteract={() => interactRef.current()}
+      />
+
       {/* Controls Legend */}
       {!journalOpen && (
-        <div className="absolute bottom-6 right-6 bg-black/50 backdrop-blur text-white p-4 rounded-xl text-xs font-mono space-y-2 pointer-events-none">
-          <div className="flex justify-between gap-4"><span>Move</span> <span className="text-gray-300">WASD</span></div>
+        <div className="daykare-desktop-only absolute bottom-6 right-6 bg-black/50 backdrop-blur text-white p-4 rounded-xl text-xs font-mono space-y-2 pointer-events-none">
+          <div className="flex justify-between gap-4"><span>Move</span> <span className="text-gray-300">Arrows / WASD</span></div>
           <div className="flex justify-between gap-4"><span>Jump</span> <span className="text-gray-300">Space</span></div>
           <div className="flex justify-between gap-4"><span>Run</span> <span className="text-gray-300">Shift</span></div>
           <div className="flex justify-between gap-4"><span>Crouch</span> <span className="text-gray-300">C</span></div>

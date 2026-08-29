@@ -4,6 +4,8 @@ import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { Controls } from './Controls';
 import { useGameStore } from './store';
+import { getTouchInput } from './touchInput';
+import { CharacterModel } from './CharacterModel';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -39,19 +41,20 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     if (activeDialogue) return;
 
     const keys = getKeys();
+    const touch = getTouchInput();
+    const crouching = keys.crouch || touch.crouch;
+    const running = (keys.run || touch.run) && !crouching;
     
     // Base speeds
     let speed = 4;
-    if (keys.run) speed = 8;
-    if (keys.crouch) speed = 2;
+    if (running) speed = 8;
+    if (crouching) speed = 2;
     if (isRiding) speed = 10;
     
     const turnSpeed = 10;
     
-    // Crouching visually
-    const targetScaleY = keys.crouch && !isRiding ? 0.6 : 1;
-    localRef.current.scale.y = THREE.MathUtils.lerp(localRef.current.scale.y, targetScaleY, delta * 10);
-    if (keys.crouch !== isCrouching) setIsCrouching(keys.crouch);
+    // The visual rig owns the crouch pose so the player collider remains stable.
+    if (crouching !== isCrouching) setIsCrouching(crouching);
 
     // Camera relative movement
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -67,6 +70,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     if (keys.back) velocity.current.add(forward.clone().multiplyScalar(-speed));
     if (keys.left) velocity.current.add(right.clone().multiplyScalar(-speed));
     if (keys.right) velocity.current.add(right.clone().multiplyScalar(speed));
+    if (Math.abs(touch.x) > 0.05 || Math.abs(touch.y) > 0.05) {
+      velocity.current.add(right.clone().multiplyScalar(touch.x * speed));
+      velocity.current.add(forward.clone().multiplyScalar(-touch.y * speed));
+    }
 
     if (velocity.current.length() > 0) {
       velocity.current.normalize().multiplyScalar(speed);
@@ -111,7 +118,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     if (isGrounded) {
       localRef.current.position.y = 0;
       yVelocity.current = 0;
-      if (keys.jump && !isCrouching && !isRiding) {
+      if (keys.jump && !crouching && !isRiding) {
         yVelocity.current = 6;
       }
     } else {
@@ -130,35 +137,18 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     camera.lookAt(localRef.current.position.clone().add(new THREE.Vector3(0, 1, 0)));
   });
 
-  const bodyColor = isImaginationMode ? "#00ffff" : "#ff7700";
-
   return (
     <group ref={localRef} position={[0, 0, 0]}>
       <group position={[0, isRiding ? 0.3 : 0, 0]}>
-        {/* Body */}
-        <mesh position={[0, 0.5, 0]} castShadow>
-          <boxGeometry args={[0.8, 1, 0.8]} />
-          <meshStandardMaterial color={bodyColor} />
-        </mesh>
-        {/* Head */}
-        <mesh position={[0, 1.3, 0]} castShadow>
-          <boxGeometry args={[0.6, 0.6, 0.6]} />
-          <meshStandardMaterial color="#fcd5ce" />
-        </mesh>
-        {/* Eyes */}
-        <mesh position={[0.15, 1.4, -0.31]}>
-          <boxGeometry args={[0.1, 0.1, 0.05]} />
-          <meshBasicMaterial color="#333" />
-        </mesh>
-        <mesh position={[-0.15, 1.4, -0.31]}>
-          <boxGeometry args={[0.1, 0.1, 0.05]} />
-          <meshBasicMaterial color="#333" />
-        </mesh>
-        {/* Cap */}
-        <mesh position={[0, 1.65, 0]}>
-          <boxGeometry args={[0.62, 0.2, 0.62]} />
-          <meshStandardMaterial color="#e76f51" />
-        </mesh>
+        <CharacterModel
+          bodyColor="#f47b43"
+          accentColor="#ffc857"
+          hairColor="#713f32"
+          hairStyle="cap"
+          mood="excited"
+          isCrouching={isCrouching && !isRiding}
+          imaginationMode={isImaginationMode}
+        />
       </group>
       
       {/* Dropped shadow indicator */}

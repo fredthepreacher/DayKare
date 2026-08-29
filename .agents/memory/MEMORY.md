@@ -1,0 +1,1 @@
+- [WebGL preview validation](webgl-preview-validation.md) — automated screenshots may fail to allocate WebGL even when the DayKare app and workflow are healthy.
