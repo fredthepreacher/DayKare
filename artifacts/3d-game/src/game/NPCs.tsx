@@ -17,6 +17,15 @@ import {
   type SharedActivityParticipant,
 } from './activitySessions';
 import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
+import {
+  getChildIntervention,
+  getTeacherIntervention,
+  interventionIsActive,
+  resetTeacherInterventions,
+  teacherInterventionDestination,
+  updateChildBehavior,
+  type TeacherInterventionState,
+} from './teacherInterventions';
 
 type KidDefinition = {
   name: string;
@@ -48,6 +57,11 @@ function namePhase(name: string) {
 let nextGreetingAt = 0;
 
 export function NPCs({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
+  useEffect(() => {
+    resetTeacherInterventions();
+    return resetTeacherInterventions;
+  }, []);
+
   return (
     <group>
       <AmbientSocialMoments />
@@ -195,27 +209,66 @@ function Teacher({
   const stuckFor = useRef(0);
   const [isSupervising, setIsSupervising] = useState(false);
   const supervisingRef = useRef(false);
+  const [intervention, setIntervention] = useState<TeacherInterventionState>(
+    () => getTeacherIntervention(`hub:${name}`, 0),
+  );
+  const interventionKey = useRef('observing:0');
+  const announcementKey = useRef('');
+  const announcementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFrame((state, delta) => {
     if (!ref.current) return;
+    const game = useGameStore.getState();
+    const liveIntervention = getTeacherIntervention(
+      `hub:${name}`,
+      state.clock.elapsedTime,
+      !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning,
+    );
+    const nextInterventionKey = `${liveIntervention.phase}:${liveIntervention.sequence}:${liveIntervention.targetName ?? ''}`;
+    if (nextInterventionKey !== interventionKey.current) {
+      interventionKey.current = nextInterventionKey;
+      setIntervention(liveIntervention);
+    }
+    if (
+      liveIntervention.phase === 'calling-player'
+      && announcementKey.current !== nextInterventionKey
+      && !game.activeDialogue
+      && !game.journalOpen
+      && !game.zoneTransitioning
+    ) {
+      announcementKey.current = nextInterventionKey;
+      const announcement = liveIntervention.escalated
+        ? `${name} asks you to help reset the play space.`
+        : `${name} is helping a friend choose calmer play.`;
+      game.setAmbientMessage(announcement);
+      if (announcementTimer.current) clearTimeout(announcementTimer.current);
+      announcementTimer.current = setTimeout(() => {
+        const latest = useGameStore.getState();
+        if (!latest.activeDialogue && latest.ambientMessage === announcement) {
+          latest.setAmbientMessage(null);
+        }
+      }, 2800);
+    }
     const key = `${schedule}:${isRainy}`;
     const spots = teacherPatrolSpots(name, schedule, isRainy, defaultPos);
     if (patrol.current.key !== key) {
       patrol.current = { key, index: 0, dwellUntil: 0 };
       stuckFor.current = 0;
     }
-    destination.set(...spots[patrol.current.index % spots.length]);
+    const interventionTarget = teacherInterventionDestination(liveIntervention, ref.current.position);
+    if (interventionTarget) destination.copy(interventionTarget);
+    else destination.set(...spots[patrol.current.index % spots.length]);
     const arrived = ref.current.position.distanceTo(destination) < 0.48;
-    if (arrived && patrol.current.dwellUntil === 0) {
+    if (!interventionTarget && arrived && patrol.current.dwellUntil === 0) {
       patrol.current.dwellUntil = state.clock.elapsedTime + 4.5 + (namePhase(name) % 2.5);
-    } else if (arrived && state.clock.elapsedTime >= patrol.current.dwellUntil) {
+    } else if (!interventionTarget && arrived && state.clock.elapsedTime >= patrol.current.dwellUntil) {
       patrol.current.index = (patrol.current.index + 1) % spots.length;
       patrol.current.dwellUntil = 0;
     }
-    const supervising = arrived && patrol.current.dwellUntil > state.clock.elapsedTime;
+    const supervising = interventionIsActive(liveIntervention)
+      || arrived && patrol.current.dwellUntil > state.clock.elapsedTime;
     if (supervising !== supervisingRef.current) {
       if (supervising) {
-        const game = useGameStore.getState();
         if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning) {
           playGameSound('arrival');
         }
@@ -237,7 +290,11 @@ function Teacher({
     }
     lastPosition.current.copy(ref.current.position);
     mirror.copy(ref.current.position);
-    updateInteractionCandidate(`teacher-${name}`, { position: mirror, valid: true });
+    updateInteractionCandidate(`teacher-${name}`, {
+      position: mirror,
+      priority: liveIntervention.phase === 'calling-player' ? 62 : 48,
+      valid: true,
+    });
 
     if (name === 'Ms. Harper' && playerRef.current) {
       suspicionAccumulator.current += delta;
@@ -263,13 +320,33 @@ function Teacher({
     }
   });
 
+  useEffect(() => () => {
+    if (announcementTimer.current) clearTimeout(announcementTimer.current);
+  }, []);
+
   return (
     <group ref={ref} position={defaultPos}>
       <group scale={1.28}>
-        <CharacterModel bodyColor={color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood="curious" isTeacher isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={namePhase(name)} idleEnergy={0.55} activityMode={isSupervising ? 'gathering' : 'standing'} />
+        <CharacterModel
+          bodyColor={color}
+          accentColor={accent}
+          hairColor={hairColor}
+          hairStyle={hairStyle}
+          skinColor={skinColor}
+          mood="curious"
+          isTeacher
+          isTalking={activeDialogue?.name === name || intervention.phase === 'warning' || intervention.phase === 'calling-player'}
+          imaginationMode={imagination}
+          motionSeed={namePhase(name)}
+          idleEnergy={0.55}
+          idleVariant={interventionIsActive(intervention) ? 'fidget' : name === 'Mr. Davis' ? 'look-around' : 'sway'}
+          activityMode={interventionIsActive(intervention) ? 'intervening' : isSupervising ? 'gathering' : 'standing'}
+        />
       </group>
       {isSupervising && (
-        <TeacherProp name={name} schedule={schedule} />
+        interventionIsActive(intervention)
+          ? <InterventionProp phase={intervention.phase} />
+          : <TeacherProp name={name} schedule={schedule} />
       )}
     </group>
   );
@@ -317,6 +394,8 @@ function Kid({
   const [sessionVisual, setSessionVisual] = useState<SharedActivityParticipant | null>(null);
   const sessionVisualRef = useRef<SharedActivityParticipant | null>(null);
   const settledRef = useRef(false);
+  const [childIntervention, setChildIntervention] = useState<ReturnType<typeof getChildIntervention>>(null);
+  const childInterventionKey = useRef('');
   const greetingClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const phase = useMemo(() => namePhase(name), [name]);
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
@@ -347,6 +426,7 @@ function Kid({
   useFrame((state, delta) => {
     if (!ref.current) return;
     const questRequired = questPriorityForKid(name, quests);
+    const liveChildIntervention = getChildIntervention(name, state.clock.elapsedTime);
     const sharedSession = getSharedActivitySession(
       'hub',
       schedule,
@@ -363,7 +443,7 @@ function Kid({
       sessionVisualRef.current = visibleParticipant;
       setSessionVisual(visibleParticipant);
     }
-    const activityKey = `${schedule}:${isRainy}:${servedCustomer ?? ''}:${activeJuiceClubCustomer ?? ''}:${juiceClubPhase}:${questRequired}:${sharedSession?.id ?? ''}:${sharedSession?.phase ?? ''}:${sharedSession?.startsAt ?? ''}`;
+    const activityKey = `${schedule}:${isRainy}:${servedCustomer ?? ''}:${activeJuiceClubCustomer ?? ''}:${juiceClubPhase}:${questRequired}:${sharedSession?.id ?? ''}:${sharedSession?.phase ?? ''}:${sharedSession?.startsAt ?? ''}:${liveChildIntervention?.phase ?? ''}`;
     if (activityState.current.key !== activityKey) {
       activityState.current.key = activityKey;
       activityState.current.dwellUntil = 0;
@@ -386,6 +466,14 @@ function Kid({
         activityState.current.dwellUntil = 0;
         distanceToActivity = ref.current.position.distanceTo(activityTarget);
       }
+    }
+    if (!questRequired && liveChildIntervention?.destination) {
+      if (liveChildIntervention.destination.distanceToSquared(activityTarget) > 0.01) {
+        activityTarget.copy(liveChildIntervention.destination);
+        activityState.current.arrived = false;
+        activityState.current.dwellUntil = 0;
+      }
+      distanceToActivity = ref.current.position.distanceTo(activityTarget);
     }
     if (distanceToActivity < 0.48 && !activityState.current.arrived) {
       activityState.current.arrived = true;
@@ -439,6 +527,31 @@ function Kid({
     const settled = activityState.current.arrived
       && state.clock.elapsedTime < activityState.current.dwellUntil
       && distanceToActivity < 0.48;
+    const behaviorActivity = visibleParticipant?.activity
+      ?? (settled ? kidActivityMode(schedule, isRainy, phase) : 'walking');
+    const disruptionWindow = (
+      Math.floor(state.clock.elapsedTime / 5)
+      + Math.floor(phase)
+    ) % 4 === 0;
+    updateChildBehavior({
+      name,
+      position: ref.current.position,
+      activity: behaviorActivity,
+      disruptive: settled
+        && !questRequired
+        && !liveChildIntervention
+        && disruptionWindow
+        && (behaviorActivity === 'toy-play' || behaviorActivity === 'playing'),
+      questPriority: questRequired,
+      updatedAt: state.clock.elapsedTime,
+    });
+    const nextChildInterventionKey = liveChildIntervention
+      ? `${liveChildIntervention.phase}:${liveChildIntervention.reaction}:${liveChildIntervention.destination?.toArray().join(',') ?? ''}`
+      : '';
+    if (nextChildInterventionKey !== childInterventionKey.current) {
+      childInterventionKey.current = nextChildInterventionKey;
+      setChildIntervention(liveChildIntervention);
+    }
     if (settled !== settledRef.current) {
       if (settled) {
         const game = useGameStore.getState();
@@ -487,10 +600,43 @@ function Kid({
 
   return (
     <group ref={ref} position={defaultPos}>
-      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={settled && sessionVisual?.reaction === 'cheer' ? 'excited' : mood} isTalking={activeDialogue?.name === name || Boolean(settled && sessionVisual?.activity === 'conversation')} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} activityMode={settled && sessionVisual ? sessionActivityMode(sessionVisual) : settled ? kidActivityMode(schedule, isRainy, phase) : 'standing'} socialReaction={settled ? sessionVisual?.reaction : undefined} />
-      {settled && sessionVisual && <SessionProp participant={sessionVisual} />}
-      {settled && !sessionVisual && !questPriorityForKid(name, quests) && <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />}
-      {settled && !questPriorityForKid(name, quests) && <SocialGameMarker schedule={schedule} phase={phase} cycle={activityState.current.cycle} />}
+      <CharacterModel
+        bodyColor={imagination ? '#ff006e' : color}
+        accentColor={accent}
+        hairColor={hairColor}
+        hairStyle={hairStyle}
+        skinColor={skinColor}
+        mood={childIntervention?.reaction === 'sad'
+          ? 'sad'
+          : settled && sessionVisual?.reaction === 'cheer'
+            ? 'excited'
+            : mood}
+        isTalking={activeDialogue?.name === name || Boolean(settled && sessionVisual?.activity === 'conversation')}
+        imaginationMode={imagination}
+        motionSeed={phase}
+        idleEnergy={0.8 + (phase % 0.5)}
+        idleVariant={(Math.floor(phase) % 4 === 0
+          ? 'look-around'
+          : Math.floor(phase) % 4 === 1
+            ? 'fidget'
+            : Math.floor(phase) % 4 === 2
+              ? 'bounce'
+              : 'sway')}
+        accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'}
+        activityMode={childIntervention
+          ? 'intervening'
+          : settled && sessionVisual
+            ? sessionActivityMode(sessionVisual)
+            : settled
+              ? kidActivityMode(schedule, isRainy, phase)
+              : 'standing'}
+        socialReaction={childIntervention?.reaction === 'sad'
+          ? undefined
+          : childIntervention?.reaction ?? (settled ? sessionVisual?.reaction : undefined)}
+      />
+      {!childIntervention && settled && sessionVisual && <SessionProp participant={sessionVisual} />}
+      {!childIntervention && settled && !sessionVisual && !questPriorityForKid(name, quests) && <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />}
+      {!childIntervention && settled && !questPriorityForKid(name, quests) && <SocialGameMarker schedule={schedule} phase={phase} cycle={activityState.current.cycle} />}
     </group>
   );
 }
@@ -578,12 +724,12 @@ export function kidActivityMode(
   rainy: boolean,
   phase: number,
 ): NonNullable<CharacterModelProps['activityMode']> {
-  if (schedule === 'art-time') return Math.floor(phase) % 3 === 0 ? 'sitting' : 'playing';
+  if (schedule === 'art-time') return 'coloring';
   if (schedule === 'juice-club') return 'gathering';
   if (schedule === 'outdoor-play' && rainy) return Math.floor(phase) % 2 === 0 ? 'sitting' : 'playing';
-  if (schedule === 'outdoor-play') return 'playing';
+  if (schedule === 'outdoor-play') return 'toy-play';
   if (schedule === 'pickup') return 'gathering';
-  return Math.floor(phase) % 2 === 0 ? 'playing' : 'gathering';
+  return Math.floor(phase) % 2 === 0 ? 'toy-play' : 'conversation';
 }
 
 function JuiceClubQueue() {
@@ -635,6 +781,30 @@ function TeacherProp({ name, schedule }: { name: string; schedule: string }) {
   return <mesh position={[0.4, 0.84, -0.25]}><boxGeometry args={[0.22, 0.3, 0.06]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
 }
 
+function InterventionProp({ phase }: { phase: TeacherInterventionState['phase'] }) {
+  const color = phase === 'praise'
+    ? '#70b77e'
+    : phase === 'consequence'
+      ? '#d77b6d'
+      : '#e6ae2f';
+  return (
+    <group position={[0.42, 0.9, -0.28]}>
+      <mesh rotation={[0, 0.18, -0.12]}>
+        <boxGeometry args={[0.26, 0.36, 0.055]} />
+        <meshStandardMaterial color="#fff1cf" roughness={0.78} />
+      </mesh>
+      <mesh position={[0, 0.06, -0.032]}>
+        <boxGeometry args={[0.16, 0.035, 0.018]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+      <mesh position={[0, -0.03, -0.032]}>
+        <boxGeometry args={[0.13, 0.025, 0.018]} />
+        <meshBasicMaterial color="#68a9a7" />
+      </mesh>
+    </group>
+  );
+}
+
 function SocialGameMarker({ schedule, phase, cycle }: { schedule: string; phase: number; cycle: number }) {
   // A few synchronized markers make a temporary game/table cluster legible
   // without adding per-NPC movement or scene-wide simulation.
@@ -650,8 +820,10 @@ function SocialGameMarker({ schedule, phase, cycle }: { schedule: string; phase:
 }
 
 function sessionActivityMode(participant: SharedActivityParticipant): NonNullable<CharacterModelProps['activityMode']> {
-  if (participant.activity === 'drawing' || participant.activity === 'coloring') return 'sitting';
-  if (participant.activity === 'toy-play') return 'playing';
+  if (participant.activity === 'drawing' || participant.activity === 'coloring') return 'coloring';
+  if (participant.activity === 'toy-play' || participant.activity === 'blocks') return 'toy-play';
+  if (participant.activity === 'conversation') return 'conversation';
+  if (participant.activity === 'teacher-help' || participant.activity === 'teacher-praise' || participant.activity === 'teacher-observation') return 'intervening';
   return 'gathering';
 }
 

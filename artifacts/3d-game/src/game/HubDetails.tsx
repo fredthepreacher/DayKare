@@ -30,7 +30,7 @@ export function HubDetails() {
       <SuppliedArtwork fileName="04_classroom_scene.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 4.6 }} size={[2.55, 1.9]} support="frame" />
       <SuppliedArtwork fileName="05_playground_equipment.png" surfaceAnchor={{ solidId: 'east-boundary', face: 'west', height: 1.65, along: -4.2 }} size={[2.55, 1.9]} semanticRole="wayfinding" support="corkboard" />
       <SuppliedArtwork fileName="09_cubby_labels.png" surfaceAnchor={{ solidId: 'cubbies', face: 'north', height: 1.18, along: -5.7 }} size={[2.95, 0.72]} semanticRole="wayfinding" support="rail" />
-      <SuppliedArtwork fileName="10_props_toys.png" position={[-12, 1.01, -12]} size={[2.25, 1.55]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="activity-surface" support="tray" />
+      <SuppliedArtwork fileName="10_props_toys.png" surfaceAnchor={{ solidId: 'art-table', face: 'top', height: 1.03 }} size={[2.25, 1.55]} semanticRole="activity-surface" support="tray" />
       <SuppliedArtwork fileName="14_environment_props.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.65, along: 4.4 }} size={[2.35, 1.75]} support="corkboard" />
       <SuppliedArtwork fileName="19_attendance_chart.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.7, along: -4.5 }} size={[2.3, 1.72]} semanticRole="wayfinding" support="corkboard" />
       <SuppliedArtwork fileName="08_floor_decals.png" position={[3.8, 0.026, 4.9]} size={[2.4, 1.8]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="floor-marker" support="none" />
@@ -42,15 +42,15 @@ export function HubDetails() {
 }
 
 function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
-  const accent = imaginationMode ? '#52e7ff' : '#6e9c9a';
-  const warm = imaginationMode ? '#ff4da6' : '#d98a68';
-  const sunny = imaginationMode ? '#ffd166' : '#d8ae62';
+  const accent = imaginationMode ? '#52e7ff' : '#2a9d8f';
+  const warm = imaginationMode ? '#ff4da6' : '#e76f51';
+  const sunny = imaginationMode ? '#ffd166' : '#f4a261';
   return (
     <group>
       {/* Classroom: low-cost wall dots and a soft story-time mat. */}
       <mesh position={[-3.8, 0.025, 5.7]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[1.15, 20]} />
-        <meshStandardMaterial color="#78b9b2" roughness={0.92} />
+        <meshStandardMaterial color="#a8dadc" roughness={0.92} />
       </mesh>
       {[-4.8, -3.8, -2.8].map((x, index) => (
           <mesh key={x} position={[x, 1.9, 7.64]}>
@@ -62,7 +62,7 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
       {/* Hallway: a runner, name tiles, and cheerful pennants. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-12, 0.018, 0]}>
         <planeGeometry args={[2.35, 10.8]} />
-        <meshStandardMaterial color={imaginationMode ? '#5935a5' : '#d77b6d'} roughness={0.94} />
+        <meshStandardMaterial color={imaginationMode ? '#5935a5' : '#e29578'} roughness={0.94} />
       </mesh>
       {[-5, -3, -1, 1, 3, 5].map((z, index) => (
         <group key={z}>
@@ -80,7 +80,7 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
       {/* Art room: washable rug, paint cups, and pinned paper. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-12, 0.018, -14.65]}>
         <planeGeometry args={[5.2, 1.1]} />
-        <meshStandardMaterial color={imaginationMode ? '#3d5bd6' : '#a8dce4'} roughness={0.92} />
+        <meshStandardMaterial color={imaginationMode ? '#3d5bd6' : '#f1faee'} roughness={0.92} />
       </mesh>
       {[-0.55, 0, 0.55].map((x, index) => (
         <group key={x} position={[-12 + x, 1.12, -12]}>
@@ -90,7 +90,7 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
           </mesh>
           <mesh position={[0, 0.2, 0]} rotation={[0, 0, 0.14 - index * 0.12]}>
             <cylinderGeometry args={[0.014, 0.014, 0.3, 5]} />
-            <meshBasicMaterial color="#7a5134" />
+            <meshBasicMaterial color="#bc6c25" />
           </mesh>
         </group>
       ))}
@@ -122,7 +122,7 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
       ))}
       {[-13.5, -12.4, -11.3].map((z, index) => (
         <group key={z} position={[15.2, 0, z]}>
-          <mesh position={[0, 0.34, 0]}><cylinderGeometry args={[0.025, 0.025, 0.65, 5]} /><meshBasicMaterial color="#4d9a73" /></mesh>
+          <mesh position={[0, 0.34, 0]}><cylinderGeometry args={[0.025, 0.025, 0.65, 5]} /><meshBasicMaterial color="#2a9d8f" /></mesh>
           <mesh position={[0, 0.68, 0]}><sphereGeometry args={[0.16, 8, 6]} /><meshStandardMaterial color={[warm, sunny, accent][index]} /></mesh>
         </group>
       ))}
@@ -131,8 +131,8 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
 }
 
 function WindowRow({ imaginationMode }: { imaginationMode: boolean }) {
-  const glass = imaginationMode ? '#3d5bd6' : '#a8dce4';
-  const frame = imaginationMode ? '#ff4da6' : '#fff8e8';
+  const glass = imaginationMode ? '#3d5bd6' : '#a8dadc';
+  const frame = imaginationMode ? '#ff4da6' : '#ffffff';
 
   return (
     <group position={[0, 2.6, -7.64]}>
@@ -163,13 +163,13 @@ function WindowRow({ imaginationMode }: { imaginationMode: boolean }) {
 function Cubbies({ imaginationMode }: { imaginationMode: boolean }) {
   const colors = imaginationMode
     ? ['#ff4da6', '#52e7ff', '#ffd166', '#9d7cff']
-    : ['#ef9f4d', '#4c82d4', '#e8613c', '#55b89b'];
+    : ['#f4a261', '#457b9d', '#e76f51', '#2a9d8f'];
 
   return (
     <group position={[-5.7, 0, -6.7]}>
       <mesh position={[0, 0.65, 0]} castShadow>
         <boxGeometry args={[3.8, 1.3, 0.62]} />
-        <meshStandardMaterial color="#e4c39a" roughness={0.82} />
+        <meshStandardMaterial color="#e9d8a6" roughness={0.82} />
       </mesh>
       {colors.map((color, index) => (
         <group key={color} position={[-1.25 + index * 0.83, 0.73, -0.34]}>
@@ -192,24 +192,24 @@ function ReadingNook() {
     <group position={[5.6, 0, -6.6]}>
       <mesh position={[0, 0.2, 0]} scale={[1.2, 0.28, 0.85]} castShadow>
         <sphereGeometry args={[0.75, 14, 10]} />
-        <meshStandardMaterial color="#d76f78" roughness={0.85} />
+        <meshStandardMaterial color="#e76f51" roughness={0.85} />
       </mesh>
       <mesh position={[-0.62, 0.18, 0.22]} scale={[0.45, 0.18, 0.4]} castShadow>
         <sphereGeometry args={[0.55, 12, 8]} />
-        <meshStandardMaterial color="#f2b85b" roughness={0.85} />
+        <meshStandardMaterial color="#f4a261" roughness={0.85} />
       </mesh>
       <mesh position={[0.62, 0.18, 0.22]} scale={[0.45, 0.18, 0.4]} castShadow>
         <sphereGeometry args={[0.55, 12, 8]} />
-        <meshStandardMaterial color="#78b9b2" roughness={0.85} />
+        <meshStandardMaterial color="#2a9d8f" roughness={0.85} />
       </mesh>
       <mesh position={[0, 0.78, -0.1]} castShadow>
         <boxGeometry args={[1.5, 0.08, 0.75]} />
-        <meshStandardMaterial color="#8b5a2b" roughness={0.78} />
+        <meshStandardMaterial color="#bc6c25" roughness={0.78} />
       </mesh>
       {[0, 0.22, 0.44].map((x, index) => (
         <mesh key={x} position={[-0.48 + x, 0.9, -0.1]} rotation={[0, 0, index % 2 ? -0.1 : 0.08]} castShadow>
           <boxGeometry args={[0.16, 0.36, 0.42]} />
-          <meshStandardMaterial color={['#e8613c', '#4c82d4', '#e6ae2f'][index]} roughness={0.8} />
+          <meshStandardMaterial color={['#e76f51', '#457b9d', '#e9c46a'][index]} roughness={0.8} />
         </mesh>
       ))}
     </group>
@@ -219,7 +219,7 @@ function ReadingNook() {
 function ArtGallery({ imaginationMode }: { imaginationMode: boolean }) {
   const frames = imaginationMode
     ? ['#ff4da6', '#52e7ff', '#ffd166']
-    : ['#e8613c', '#4c82d4', '#e6ae2f'];
+    : ['#e76f51', '#457b9d', '#e9c46a'];
 
   return (
     <group position={[-7.64, 1.65, 0]} rotation={[0, Math.PI / 2, 0]}>
@@ -227,7 +227,7 @@ function ArtGallery({ imaginationMode }: { imaginationMode: boolean }) {
         <group key={color} position={[-4 + index * 4, 0, 0]}>
           <mesh castShadow>
             <boxGeometry args={[1.15, 1.5, 0.12]} />
-            <meshStandardMaterial color="#e7c79b" roughness={0.75} />
+            <meshStandardMaterial color="#fefae0" roughness={0.75} />
           </mesh>
           <mesh position={[0, 0, 0.075]}>
             <boxGeometry args={[0.82, 1.12, 0.025]} />
@@ -246,27 +246,27 @@ function PlaygroundDetails() {
         {[-1.2, 0, 1.2].map((x, index) => (
           <mesh key={x} position={[x, 0.04, Math.sin(index) * 0.3]} rotation={[0, index * 0.25, 0]} receiveShadow>
             <cylinderGeometry args={[0.48, 0.48, 0.08, 12]} />
-            <meshStandardMaterial color={['#e6ae2f', '#55b89b', '#e8613c'][index]} roughness={0.86} />
+            <meshStandardMaterial color={['#e9c46a', '#2a9d8f', '#e76f51'][index]} roughness={0.86} />
           </mesh>
         ))}
       </group>
       <group position={[14.7, 0, 8.8]}>
         <mesh position={[0, 1.1, 0]} castShadow>
           <cylinderGeometry args={[0.18, 0.28, 2.2, 10]} />
-          <meshStandardMaterial color="#8b5a2b" roughness={0.86} />
+          <meshStandardMaterial color="#bc6c25" roughness={0.86} />
         </mesh>
         <mesh position={[0, 2.35, 0]} scale={[1, 0.8, 1]} castShadow>
           <sphereGeometry args={[0.75, 12, 10]} />
-          <meshStandardMaterial color="#55a66e" roughness={0.9} />
+          <meshStandardMaterial color="#4a7c59" roughness={0.9} />
         </mesh>
       </group>
       <mesh position={[9.4, 0.36, -10.8]} castShadow>
         <boxGeometry args={[1.8, 0.72, 0.42]} />
-        <meshStandardMaterial color="#e4c39a" roughness={0.82} />
+        <meshStandardMaterial color="#e9d8a6" roughness={0.82} />
       </mesh>
       <mesh position={[9.4, 0.83, -10.8]} castShadow>
         <boxGeometry args={[1.35, 0.08, 0.6]} />
-        <meshStandardMaterial color="#4c82d4" roughness={0.72} />
+        <meshStandardMaterial color="#457b9d" roughness={0.72} />
       </mesh>
     </group>
   );
@@ -275,7 +275,7 @@ function PlaygroundDetails() {
 function CeilingMobile({ imaginationMode }: { imaginationMode: boolean }) {
   const ref = useRef<THREE.Group>(null);
   const lastAnimationAt = useRef(0);
-  const colors = imaginationMode ? ['#ff4da6', '#52e7ff', '#ffd166'] : ['#e8613c', '#4c82d4', '#e6ae2f'];
+  const colors = imaginationMode ? ['#ff4da6', '#52e7ff', '#ffd166'] : ['#e76f51', '#457b9d', '#e9c46a'];
 
   useFrame((state) => {
     if (!ref.current || !shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)) return;
@@ -287,7 +287,7 @@ function CeilingMobile({ imaginationMode }: { imaginationMode: boolean }) {
     <group ref={ref} position={[0, 3.25, -1]}>
       <mesh castShadow>
         <cylinderGeometry args={[0.16, 0.16, 0.1, 12]} />
-        <meshStandardMaterial color="#8b5a2b" roughness={0.78} />
+        <meshStandardMaterial color="#bc6c25" roughness={0.78} />
       </mesh>
       {colors.map((color, index) => {
         const angle = (index / colors.length) * Math.PI * 2;
@@ -295,7 +295,7 @@ function CeilingMobile({ imaginationMode }: { imaginationMode: boolean }) {
           <group key={color} position={[Math.cos(angle) * 0.85, -0.28, Math.sin(angle) * 0.85]}>
             <mesh position={[0, 0.14, 0]}>
               <cylinderGeometry args={[0.012, 0.012, 0.28, 6]} />
-              <meshBasicMaterial color="#c8a97b" />
+              <meshBasicMaterial color="#e9d8a6" />
             </mesh>
             <mesh castShadow>
               <sphereGeometry args={[0.19, 10, 8]} />
@@ -318,13 +318,13 @@ function ScheduleBeacon({
   const indicatorRef = useRef<THREE.Group>(null);
   const lastAnimationAt = useRef(0);
   const colors: Record<string, string> = {
-    'morning-play': '#f2b85b',
-    'art-time': '#e8613c',
-    'juice-club': '#55b89b',
-    'outdoor-play': '#4c82d4',
-    pickup: '#d76f78',
+    'morning-play': '#e9c46a',
+    'art-time': '#e76f51',
+    'juice-club': '#2a9d8f',
+    'outdoor-play': '#457b9d',
+    pickup: '#f4a261',
   };
-  const color = imaginationMode ? '#ff4da6' : colors[schedule] ?? '#f2b85b';
+  const color = imaginationMode ? '#ff4da6' : colors[schedule] ?? '#e9c46a';
 
   useFrame((state) => {
     if (
@@ -339,7 +339,7 @@ function ScheduleBeacon({
     <group position={[6.7, 0, -6.8]}>
       <mesh position={[0, 0.82, 0]} castShadow>
         <cylinderGeometry args={[0.035, 0.035, 1.45, 6]} />
-        <meshStandardMaterial color="#8b5a2b" roughness={0.8} />
+        <meshStandardMaterial color="#bc6c25" roughness={0.8} />
       </mesh>
       <group ref={indicatorRef}>
         <mesh position={[0.28, 1.27, 0]} rotation={[0, 0, -0.12]} castShadow>
@@ -360,17 +360,17 @@ function LostAndFoundOrganizer() {
     <group position={[-10.5, 0, 10.2]}>
       <mesh position={[0, 0.55, 0]} castShadow>
         <boxGeometry args={[2.2, 1.1, 0.65]} />
-        <meshStandardMaterial color="#55b89b" roughness={0.75} />
+        <meshStandardMaterial color="#2a9d8f" roughness={0.75} />
       </mesh>
       {[-0.7, 0, 0.7].map((x, index) => (
         <mesh key={x} position={[x, 0.62, -0.36]} castShadow>
           <boxGeometry args={[0.48, 0.58, 0.08]} />
-          <meshStandardMaterial color={['#4c82d4', '#e8613c', '#e6ae2f'][index]} roughness={0.7} />
+          <meshStandardMaterial color={['#457b9d', '#e76f51', '#e9c46a'][index]} roughness={0.7} />
         </mesh>
       ))}
       <mesh position={[0, 1.35, 0]} castShadow>
         <boxGeometry args={[1.8, 0.34, 0.1]} />
-        <meshStandardMaterial color="#fff0b8" roughness={0.7} />
+        <meshStandardMaterial color="#fefae0" roughness={0.7} />
       </mesh>
     </group>
   );

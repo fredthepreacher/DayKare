@@ -63,11 +63,21 @@ import { KID_CAST, facingAngleForDirection, kidActivityMode, kidDestination, res
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
 import { GARDEN_CAST, gardenNpcDestination } from './Garden';
-import { artworkBackingSize } from './Artwork';
+import { artworkBackingSize, validateArtworkSurfaceAnchor, type ArtworkSurfaceAnchor } from './Artwork';
 import { dialogueDismissLabel } from './dialogueActions';
 import { getSharedActivitySession, reportSessionArrival, resetActivitySessions } from './activitySessions';
 import { activitySessionIsInterrupted, sessionParticipant } from './activitySessions';
 import { FramePerformanceTelemetry } from './performanceTelemetry';
+import {
+  acknowledgeTeacherCall,
+  getChildIntervention,
+  getTeacherIntervention,
+  getTeacherInterventionSnapshot,
+  interventionIsActive,
+  resetTeacherInterventions,
+  teacherInterventionDestination,
+  updateChildBehavior,
+} from './teacherInterventions';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -879,7 +889,8 @@ for (const teacher of [
 
 for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
   assert.ok(
-    ['standing', 'sitting', 'playing', 'gathering'].includes(kidActivityMode(scheduleName, false, 4.2)),
+    ['standing', 'sitting', 'playing', 'gathering', 'coloring', 'toy-play', 'conversation', 'intervening']
+      .includes(kidActivityMode(scheduleName, false, 4.2)),
     `kid activity mode is defined for ${scheduleName}`,
   );
 }
@@ -1120,6 +1131,125 @@ assert.ok(portraitProfile.distance > landscapeProfile.distance, 'portrait starts
 assert.ok(portraitProfile.fov > landscapeProfile.fov, 'portrait uses a wider lens instead of manual zoom');
 assert.ok(portraitProfile.lookAhead > landscapeProfile.lookAhead, 'portrait keeps useful movement look-ahead');
 assert.deepEqual(artworkBackingSize([2, 1]), [2.16, 1.16], 'artwork support extends beyond the supplied graphic');
+const anchoredArtwork: Array<{
+  fileName: string;
+  anchor: ArtworkSurfaceAnchor;
+  size: [number, number];
+}> = [
+  { fileName: '02_wall_mural_welcome.png', anchor: { solidId: 'main-south-wall', face: 'north', height: 1.72, along: 0 }, size: [4.25, 3.15] },
+  { fileName: '03_wall_decals_set.png', anchor: { solidId: 'hall-divider-south', face: 'east', height: 1.6, along: 4.5 }, size: [2.15, 1.6] },
+  { fileName: '04_classroom_scene.png', anchor: { solidId: 'main-south-wall', face: 'north', height: 1.72, along: 4.6 }, size: [2.55, 1.9] },
+  { fileName: '05_playground_equipment.png', anchor: { solidId: 'east-boundary', face: 'west', height: 1.65, along: -4.2 }, size: [2.55, 1.9] },
+  { fileName: '06_posters_charts.png', anchor: { solidId: 'north-boundary', face: 'south', height: 1.72, along: -12 }, size: [2.5, 1.88] },
+  { fileName: '07_classroom_signs.png', anchor: { solidId: 'hall-divider-north', face: 'east', height: 1.6, along: -4.5 }, size: [2.15, 1.6] },
+  { fileName: '09_cubby_labels.png', anchor: { solidId: 'cubbies', face: 'north', height: 1.18, along: -5.7 }, size: [2.95, 0.72] },
+  { fileName: '10_props_toys.png', anchor: { solidId: 'art-table', face: 'top', height: 1.03 }, size: [2.25, 1.55] },
+  { fileName: '11_juice_club_branding.png', anchor: { solidId: 'juice-signboard', face: 'south', height: 1.5, along: 3 }, size: [1.7, 1.22] },
+  { fileName: '12_garden_signage.png', anchor: { solidId: 'garden-sign', face: 'south', height: 0.98 }, size: [3.55, 1.3] },
+  { fileName: '14_environment_props.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.65, along: 4.4 }, size: [2.35, 1.75] },
+  { fileName: '17_motivational_banner.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.65, along: 0 }, size: [2.55, 1.9] },
+  { fileName: '18_door_sign.png', anchor: { solidId: 'hall-divider-north', face: 'east', height: 1.7, along: -6.65 }, size: [1.35, 1] },
+  { fileName: '19_attendance_chart.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.7, along: -4.5 }, size: [2.3, 1.72] },
+];
+for (const artwork of anchoredArtwork) {
+  const validation = validateArtworkSurfaceAnchor(artwork.anchor, artwork.size);
+  assert.equal(validation.valid, true, `${artwork.fileName} mount: ${validation.issues.join(', ')}`);
+}
+assert.equal(
+  validateArtworkSurfaceAnchor(
+    { solidId: 'hall-divider-north', face: 'east', height: 4, along: -6.65 },
+    [5, 5],
+  ).valid,
+  false,
+  'oversized artwork is rejected instead of silently floating beyond its support',
+);
+
+resetTeacherInterventions();
+updateChildBehavior({
+  name: 'Quest Friend',
+  position: new THREE.Vector3(1, 0, 1),
+  activity: 'toy-play',
+  disruptive: true,
+  questPriority: true,
+  updatedAt: 5,
+});
+assert.equal(
+  getTeacherIntervention('hub:Ms. Harper', 5).phase,
+  'observing',
+  'teacher ambience never interrupts a quest-priority child',
+);
+resetTeacherInterventions();
+const interventionChildPosition = new THREE.Vector3(1, 0, 1);
+const reportPlayFriend = (updatedAt: number, questPriority = false) => updateChildBehavior({
+  name: 'Play Friend',
+  position: interventionChildPosition,
+  activity: 'toy-play',
+  disruptive: true,
+  questPriority,
+  updatedAt,
+});
+reportPlayFriend(5);
+let teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 5);
+assert.equal(teacherIntervention.phase, 'approaching');
+assert.equal(interventionIsActive(teacherIntervention), true);
+const interventionDestination = teacherInterventionDestination(
+  teacherIntervention,
+  new THREE.Vector3(-2, 0, 2),
+);
+assert.ok(interventionDestination);
+assert.equal(isWalkable(interventionDestination!, 0.34), true, 'teacher intervention destination stays navigable');
+assert.equal(getChildIntervention('Play Friend', 5)?.reaction, 'listen');
+reportPlayFriend(5.1, true);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 5.1);
+assert.equal(teacherIntervention.phase, 'observing', 'an active intervention releases a child who becomes quest-critical');
+assert.equal(getChildIntervention('Play Friend', 5.1), null, 'quest presentation resumes in the same update');
+resetTeacherInterventions();
+reportPlayFriend(5);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 5);
+reportPlayFriend(7.3);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 7.3);
+assert.equal(teacherIntervention.phase, 'warning');
+reportPlayFriend(100);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 100, false);
+assert.equal(teacherIntervention.phase, 'warning', 'dialogue and journal overlays freeze intervention progression');
+assert.equal(
+  getChildIntervention('Play Friend', 100)?.phase,
+  'warning',
+  'the child remains synchronized with a paused teacher intervention',
+);
+resetTeacherInterventions();
+reportPlayFriend(5);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 5);
+reportPlayFriend(7.3);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 7.3);
+reportPlayFriend(9.2);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 9.2);
+assert.equal(teacherIntervention.phase, 'redirecting');
+const redirectingChild = getChildIntervention('Play Friend', 9.2);
+assert.ok(redirectingChild?.destination);
+assert.equal(isWalkable(redirectingChild!.destination!, 0.34), true, 'redirection moves to a collision-safe activity point');
+reportPlayFriend(11.3);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 11.3);
+assert.equal(teacherIntervention.phase, 'separating');
+const separatedChild = getChildIntervention('Play Friend', 11.3);
+assert.ok(separatedChild?.destination);
+assert.notDeepEqual(separatedChild?.destination?.toArray(), redirectingChild?.destination?.toArray());
+reportPlayFriend(13);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 13);
+assert.equal(teacherIntervention.phase, 'calling-player');
+assert.equal(getTeacherInterventionSnapshot('hub:Ms. Harper')?.phase, 'calling-player');
+assert.equal(acknowledgeTeacherCall('hub:Ms. Harper')?.phase, 'consequence', 'talking to the teacher answers the call-over');
+reportPlayFriend(14.9);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 14.9);
+assert.equal(teacherIntervention.phase, 'consequence');
+reportPlayFriend(15.1);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 15.1);
+assert.equal(teacherIntervention.phase, 'praise');
+reportPlayFriend(17.4);
+teacherIntervention = getTeacherIntervention('hub:Ms. Harper', 17.4);
+assert.equal(teacherIntervention.phase, 'observing');
+assert.ok(teacherIntervention.nextEligibleAt > 17.4, 'teacher interventions have a calm cooldown');
+resetTeacherInterventions();
 assert.equal(dialogueDismissLabel(false), 'Continue / Close');
 assert.equal(dialogueDismissLabel(true), 'Cancel / Leave');
 assert.equal(isGameplayBlocked({ journalOpen: true, activeDialogue: null, zoneTransitioning: false }), true);

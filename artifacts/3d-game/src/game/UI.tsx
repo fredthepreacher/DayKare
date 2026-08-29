@@ -18,6 +18,11 @@ import { HUB_ROUTES, isRouteUnlocked, requirementLabel, requirementProgressLabel
 import { getActiveQuest, getCurrentObjective, objectiveIsActive } from './quests';
 import { playGameSound, unlockGameAudio } from './audio';
 import { dialogueDismissLabel } from './dialogueActions';
+import {
+  acknowledgeTeacherCall,
+  getTeacherInterventionSnapshot,
+  interventionIsActive,
+} from './teacherInterventions';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -307,10 +312,32 @@ export function UI() {
   }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep]);
 
   const handleTeacherInteraction = (name: string) => {
+    if (name === 'Mr. Davis' && objectiveIsActive(quests, 'where-binky', 'search-storage')) {
+      setActiveDialogue({ name, text: 'I moved a small pink toy to the Storage Room for safekeeping. Check the grounded boxes along the back wall.' });
+      return;
+    }
+    const intervention = getTeacherInterventionSnapshot(`hub:${name}`);
+    if (intervention?.phase === 'calling-player') {
+      acknowledgeTeacherCall(`hub:${name}`);
+      setActiveDialogue({
+        name,
+        text: intervention.targetName
+          ? `Thanks for coming over. ${intervention.targetName} is taking a calm reset, and then we’ll notice the better choice together.`
+          : 'Thanks for checking in. The play space is calm again.',
+      });
+      return;
+    }
+    if (intervention && interventionIsActive(intervention)) {
+      setActiveDialogue({
+        name,
+        text: intervention.phase === 'praise'
+          ? 'The calmer choice is working. I’m making sure that helpful reset gets noticed.'
+          : 'I’m handling this with a reminder, a little space, and a safer activity choice.',
+      });
+      return;
+    }
     if (name === 'Mr. Davis') {
-      if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
-        setActiveDialogue({ name, text: 'I moved a small pink toy to the Storage Room for safekeeping. Check the grounded boxes along the back wall.' });
-      } else if (schedule === 'outdoor-play') {
+      if (schedule === 'outdoor-play') {
         setActiveDialogue({ name, text: isRainy ? 'Rain plan today: I am checking the reading and building corners.' : 'I am patrolling the playground fence and keeping the gate paths clear.' });
       } else if (schedule === 'juice-club') {
         setActiveDialogue({ name, text: 'I am supervising the Juice Club line. Keep the counter stocked and leave a clear path for customers.' });

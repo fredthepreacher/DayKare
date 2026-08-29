@@ -73,9 +73,22 @@ export function TouchControls({
       );
     };
 
-    updateViewportLayout();
-    const resizeObserver = new ResizeObserver(updateViewportLayout);
-    const mutationObserver = new MutationObserver(updateViewportLayout);
+    let viewportFrame = 0;
+    let viewportTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleViewportLayout = () => {
+      updateViewportLayout();
+      cancelAnimationFrame(viewportFrame);
+      viewportFrame = requestAnimationFrame(updateViewportLayout);
+      if (viewportTimer) clearTimeout(viewportTimer);
+      viewportTimer = setTimeout(updateViewportLayout, 80);
+    };
+
+    scheduleViewportLayout();
+    const resizeObserver = new ResizeObserver(scheduleViewportLayout);
+    const mutationObserver = new MutationObserver(scheduleViewportLayout);
+    resizeObserver.observe(document.documentElement);
+    const appShell = document.querySelector<HTMLElement>('.daykare-app-shell');
+    if (appShell) resizeObserver.observe(appShell);
     for (const selector of ['.daykare-hud-left', '.daykare-hud-right']) {
       const element = document.querySelector<HTMLElement>(selector);
       if (!element) continue;
@@ -84,18 +97,20 @@ export function TouchControls({
     }
 
     const viewport = window.visualViewport;
-    window.addEventListener('resize', updateViewportLayout);
-    window.addEventListener('orientationchange', updateViewportLayout);
-    viewport?.addEventListener('resize', updateViewportLayout);
-    viewport?.addEventListener('scroll', updateViewportLayout);
+    window.addEventListener('resize', scheduleViewportLayout);
+    window.addEventListener('orientationchange', scheduleViewportLayout);
+    viewport?.addEventListener('resize', scheduleViewportLayout);
+    viewport?.addEventListener('scroll', scheduleViewportLayout);
 
     return () => {
       resizeObserver.disconnect();
       mutationObserver.disconnect();
-      window.removeEventListener('resize', updateViewportLayout);
-      window.removeEventListener('orientationchange', updateViewportLayout);
-      viewport?.removeEventListener('resize', updateViewportLayout);
-      viewport?.removeEventListener('scroll', updateViewportLayout);
+      cancelAnimationFrame(viewportFrame);
+      if (viewportTimer) clearTimeout(viewportTimer);
+      window.removeEventListener('resize', scheduleViewportLayout);
+      window.removeEventListener('orientationchange', scheduleViewportLayout);
+      viewport?.removeEventListener('resize', scheduleViewportLayout);
+      viewport?.removeEventListener('scroll', scheduleViewportLayout);
     };
   }, []);
 

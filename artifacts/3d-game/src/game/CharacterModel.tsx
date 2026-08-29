@@ -5,8 +5,9 @@ import * as THREE from 'three';
 type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
 type Accessory = 'none' | 'backpack' | 'badge';
-type ActivityMode = 'standing' | 'sitting' | 'playing' | 'gathering';
+type ActivityMode = 'standing' | 'sitting' | 'playing' | 'gathering' | 'coloring' | 'toy-play' | 'conversation' | 'intervening';
 type SocialReaction = 'smile' | 'wave' | 'cheer' | 'listen';
+type IdleVariant = 'sway' | 'fidget' | 'look-around' | 'bounce';
 
 const SHARED_ACCESSORY_BOX = new THREE.BoxGeometry(0.42, 0.5, 0.16);
 const SHARED_BADGE = new THREE.CircleGeometry(0.09, 10);
@@ -27,6 +28,7 @@ export interface CharacterModelProps {
   accessory?: Accessory;
   activityMode?: ActivityMode;
   socialReaction?: SocialReaction;
+  idleVariant?: IdleVariant;
 }
 
 const moodBrowRotation: Record<Mood, number> = {
@@ -53,6 +55,7 @@ export function CharacterModel({
   accessory = 'none',
   activityMode = 'standing',
   socialReaction,
+  idleVariant = 'sway',
 }: CharacterModelProps) {
   const rig = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -84,15 +87,25 @@ export function CharacterModel({
     phase.current += delta * THREE.MathUtils.lerp(2.2, 8 + runningBlend.current * 5, movementBlend.current);
     const stride = Math.sin(phase.current) * movementBlend.current * THREE.MathUtils.lerp(0.34, 0.55, runningBlend.current);
     const idle = Math.sin(state.clock.elapsedTime * 2.1 + motionSeed) * 0.025 * idleEnergy;
-    const idleGesture = Math.sin(state.clock.elapsedTime * 1.45 + motionSeed) * (1 - movementBlend.current) * idleEnergy;
+    const idleClock = idleVariant === 'fidget' ? 2.2 : idleVariant === 'bounce' ? 2.7 : 1.45;
+    const idleGesture = Math.sin(state.clock.elapsedTime * idleClock + motionSeed)
+      * (1 - movementBlend.current)
+      * idleEnergy;
     const talkGesture = isTalking ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.14 : 0;
+    const activityGesture = activityMode === 'coloring'
+      ? 0.24 + Math.sin(state.clock.elapsedTime * 2.8 + motionSeed) * 0.08
+      : activityMode === 'toy-play'
+        ? -0.16 + Math.sin(state.clock.elapsedTime * 4 + motionSeed) * 0.12
+        : activityMode === 'intervening'
+          ? -0.34
+          : 0;
     const blink = Math.pow(Math.max(0, Math.sin(state.clock.elapsedTime * 0.62 + motionSeed * 0.7)), 30);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
       const wave = socialReaction === 'wave' ? Math.sin(state.clock.elapsedTime * 6 + motionSeed) * 0.5 : 0;
       const cheer = socialReaction === 'cheer' ? -0.7 : 0;
-      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045 + cheer;
-      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045 + wave + cheer;
+      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045 + cheer + activityGesture;
+      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045 + wave + cheer + activityGesture * 0.7;
       leftLeg.current.rotation.x = -stride * 0.7;
       rightLeg.current.rotation.x = stride * 0.7;
       leftArm.current.rotation.z = -0.08 - idleGesture * 0.025 - talkGesture;
@@ -102,6 +115,9 @@ export function CharacterModel({
     if (head.current) {
       head.current.rotation.z = Math.sin(state.clock.elapsedTime * 1.7 + motionSeed) * 0.018 * idleEnergy;
       head.current.rotation.x = isTalking ? -0.08 : socialReaction === 'listen' ? 0.09 : idle;
+      head.current.rotation.y = idleVariant === 'look-around'
+        ? Math.sin(state.clock.elapsedTime * 0.8 + motionSeed) * 0.1
+        : 0;
     }
 
     if (leftEye.current && rightEye.current) {
@@ -118,9 +134,13 @@ export function CharacterModel({
     }
 
     if (rig.current) {
-      const targetY = isCrouching ? 0.72 : activityMode === 'sitting' ? 0.8 : 1;
+      const targetY = isCrouching
+        ? 0.72
+        : activityMode === 'sitting' || activityMode === 'coloring'
+          ? 0.8
+          : 1;
       rig.current.scale.y = THREE.MathUtils.lerp(rig.current.scale.y, targetY, delta * 9);
-      const activityBounce = activityMode === 'playing'
+      const activityBounce = activityMode === 'playing' || activityMode === 'toy-play' || idleVariant === 'bounce'
         ? Math.abs(Math.sin(state.clock.elapsedTime * 2.8 + motionSeed)) * 0.045
         : 0;
       const targetRootY = isCrouching

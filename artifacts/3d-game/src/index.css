@@ -184,8 +184,8 @@
     position: fixed;
     left: var(--daykare-visual-left, 0px);
     top: var(--daykare-visual-top, 0px);
-    width: var(--daykare-visual-width, 100vw);
-    height: var(--daykare-visual-height, 100dvh);
+    width: min(var(--daykare-visual-width, 100vw), 100vw);
+    height: min(var(--daykare-visual-height, 100dvh), 100dvh);
     pointer-events: none;
     z-index: 45;
     overflow: visible;

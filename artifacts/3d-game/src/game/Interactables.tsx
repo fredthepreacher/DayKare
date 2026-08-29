@@ -63,26 +63,28 @@ function JuiceStand({ playerRef }: { playerRef: React.RefObject<THREE.Group | nu
     ref.current.scale.setScalar(scale);
   });
   return (
-    <group ref={ref} position={[3, 0, -3]}>
-      <mesh position={[0, 0.6, 0]} castShadow>
-        <boxGeometry args={[2, 1.2, 1]} />
-        <meshStandardMaterial color="#ffd166" />
-      </mesh>
-      <mesh position={[0, 1.5, 0]} castShadow>
-        <boxGeometry args={[1.95, 1.42, 0.12]} />
-        <meshStandardMaterial color="#8338ec" />
-      </mesh>
-      <SuppliedArtwork fileName="11_juice_club_branding.png" position={[0, 1.5, 0.075]} size={[1.7, 1.22]} backingColor="#8338ec" semanticRole="branding" support="none" />
-      <mesh position={[-0.5, 1.35, 0]} castShadow>
-        <cylinderGeometry args={[0.2, 0.2, 0.5, 16]} />
-        <meshStandardMaterial color="#ff5400" transparent opacity={0.8} />
-      </mesh>
-      <mesh position={[0.5, 1.25, 0]} castShadow>
-        <boxGeometry args={[0.3, 0.3, 0.3]} />
-        <meshStandardMaterial color="#c2b280" />
-      </mesh>
-      <FocusHalo active={active} radius={1.25} color="#ffd166" />
-    </group>
+    <>
+      <group ref={ref} position={[3, 0, -3]}>
+        <mesh position={[0, 0.6, 0]} castShadow>
+          <boxGeometry args={[2, 1.2, 1]} />
+          <meshStandardMaterial color="#ffd166" />
+        </mesh>
+        <mesh position={[0, 1.5, 0]} castShadow>
+          <boxGeometry args={[1.95, 1.42, 0.12]} />
+          <meshStandardMaterial color="#8338ec" />
+        </mesh>
+        <mesh position={[-0.5, 1.35, 0]} castShadow>
+          <cylinderGeometry args={[0.2, 0.2, 0.5, 16]} />
+          <meshStandardMaterial color="#ff5400" transparent opacity={0.8} />
+        </mesh>
+        <mesh position={[0.5, 1.25, 0]} castShadow>
+          <boxGeometry args={[0.3, 0.3, 0.3]} />
+          <meshStandardMaterial color="#c2b280" />
+        </mesh>
+        <FocusHalo active={active} radius={1.25} color="#ffd166" />
+      </group>
+      <SuppliedArtwork fileName="11_juice_club_branding.png" surfaceAnchor={{ solidId: 'juice-signboard', face: 'south', height: 1.5, along: 3 }} size={[1.7, 1.22]} backingColor="#8338ec" semanticRole="branding" support="none" />
+    </>
   );
 }
 

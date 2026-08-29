@@ -1,3 +1,4 @@
 - [WebGL preview validation](webgl-preview-validation.md) — capture browsers can fail WebGL, and SwiftShader frame samples should run before mounting deferred scenes.
 - [Vite smoke-test module identity](vite-smoke-module-identity.md) — restart after HMR edits before browser tests that dynamically import live state modules.
 - [Chromium multi-touch release tests](chromium-multitouch-release-tests.md) — raw CDP touchEnd cannot reliably model lifting only one finger from an active multi-touch sequence.
+- [Mobile viewport resize ordering](mobile-viewport-resize-ordering.md) — emulated resizes can settle visualViewport late; combine delayed recalculation with CSS viewport clamps.

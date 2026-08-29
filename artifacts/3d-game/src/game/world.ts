@@ -60,11 +60,16 @@ export interface WorldSolidTransform {
   size: [number, number, number];
 }
 
-export type WorldSolidFace = 'north' | 'south' | 'west' | 'east';
+export type WorldSolidFace = 'north' | 'south' | 'west' | 'east' | 'top';
 
 export interface WorldSurfaceTransform {
   position: [number, number, number];
   rotation: [number, number, number];
+}
+
+export interface WorldSurfaceValidation {
+  valid: boolean;
+  issues: string[];
 }
 
 const defaultCameraRole = (kind: SolidKind): WorldSolid['cameraRole'] => (
@@ -138,7 +143,13 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2.15),
   box('hall-divider-south', 'wall', -8.3, -7.7, 2.15, 8),
   box('juice-stand', 'counter', 2, 4, -3.6, -2.4, { cameraRole: 'substantial' }),
-  box('art-table', 'table', -13.7, -10.3, -13.7, -10.3, { cameraRole: 'substantial' }),
+  box('juice-signboard', 'furniture', 2, 4, -3.06, -2.94, {
+    collision: false,
+    cameraRole: 'none',
+    minY: 0.78,
+    maxY: 2.22,
+  }),
+  box('art-table', 'table', -13.7, -10.3, -13.7, -10.3, { cameraRole: 'substantial', maxY: 1 }),
   box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8, { cameraRole: 'substantial' }),
   box('cubbies', 'cubby', -7.6, -3.8, -7.1, -6.3, { cameraRole: 'substantial', maxY: 2.2 }),
   box('reading-nook', 'furniture', 4.6, 6.6, -7.4, -5.8, { cameraRole: 'substantial', maxY: 2.1 }),
@@ -203,6 +214,12 @@ export function getWorldSolidSurfaceTransform(
   if (solid.shape === 'circle') throw new Error(`Circular world solid has no flat artwork surface: ${id}`);
   const centerX = (solid.minX + solid.maxX) / 2;
   const centerZ = (solid.minZ + solid.maxZ) / 2;
+  if (face === 'top') {
+    return {
+      position: [along ?? centerX, height, centerZ],
+      rotation: [-Math.PI / 2, 0, 0],
+    };
+  }
   if (face === 'north') {
     return {
       position: [along ?? centerX, height, solid.minZ - offset],
@@ -225,6 +242,55 @@ export function getWorldSolidSurfaceTransform(
     position: [solid.maxX + offset, height, along ?? centerZ],
     rotation: [0, Math.PI / 2, 0],
   };
+}
+
+export function validateWorldSurfaceAnchor(
+  id: string,
+  face: WorldSolidFace,
+  height: number,
+  size: [number, number],
+  along?: number,
+): WorldSurfaceValidation {
+  const solid = WORLD_SOLIDS.find((candidate) => candidate.id === id);
+  if (!solid) return { valid: false, issues: [`Unknown world solid: ${id}`] };
+  if (solid.shape === 'circle') {
+    return { valid: false, issues: [`Circular world solid has no flat artwork surface: ${id}`] };
+  }
+  const issues: string[] = [];
+  const halfWidth = size[0] / 2;
+  const halfHeight = size[1] / 2;
+  const centerX = (solid.minX + solid.maxX) / 2;
+  const centerZ = (solid.minZ + solid.maxZ) / 2;
+  const anchorAlong = along ?? (face === 'west' || face === 'east' ? centerZ : centerX);
+
+  if (face === 'top') {
+    if (anchorAlong - halfWidth < solid.minX - 0.001 || anchorAlong + halfWidth > solid.maxX + 0.001) {
+      issues.push(`top artwork exceeds ${id} x bounds`);
+    }
+    if (centerZ - halfHeight < solid.minZ - 0.001 || centerZ + halfHeight > solid.maxZ + 0.001) {
+      issues.push(`top artwork exceeds ${id} z bounds`);
+    }
+    if (solid.maxY !== undefined && Math.abs(height - solid.maxY) > 0.15) {
+      issues.push(`top artwork does not rest on ${id}`);
+    }
+  } else {
+    const alongMin = face === 'west' || face === 'east' ? solid.minZ : solid.minX;
+    const alongMax = face === 'west' || face === 'east' ? solid.maxZ : solid.maxX;
+    if (anchorAlong - halfWidth < alongMin - 0.001 || anchorAlong + halfWidth > alongMax + 0.001) {
+      issues.push(`${face} artwork exceeds ${id} bounds`);
+    }
+  }
+
+  if (face !== 'top') {
+    const minY = height - halfHeight;
+    const maxY = height + halfHeight;
+    const supportMaxY = solid.kind === 'wall' || solid.kind === 'boundary'
+      ? Math.max(solid.maxY ?? 0, 3.6)
+      : solid.maxY;
+    if (minY < (solid.minY ?? 0) - 0.001) issues.push(`artwork sinks below ${id}`);
+    if (supportMaxY !== undefined && maxY > supportMaxY + 0.001) issues.push(`artwork exceeds ${id} height`);
+  }
+  return { valid: issues.length === 0, issues };
 }
 
 export const WORLD_PORTALS: WorldPortal[] = [

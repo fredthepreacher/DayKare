@@ -472,8 +472,8 @@ function GardenDetails() {
           <boxGeometry args={[3.7, 1.22, 0.04]} />
           <meshStandardMaterial color="#4d9a73" roughness={0.76} />
         </mesh>
-        <SuppliedArtwork fileName="12_garden_signage.png" position={[0, 0.98, 0.14]} size={[3.55, 1.3]} support="none" />
       </group>
+      <SuppliedArtwork fileName="12_garden_signage.png" surfaceAnchor={{ solidId: 'garden-sign', face: 'south', height: 0.98 }} size={[3.55, 1.3]} support="none" />
     </group>
   );
 }

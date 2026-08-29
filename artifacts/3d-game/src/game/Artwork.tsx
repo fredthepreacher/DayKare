@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { MultiplyBlending, Path, Shape, TextureLoader } from 'three';
 import {
   getWorldSolidSurfaceTransform,
+  validateWorldSurfaceAnchor,
   type WorldSolidFace,
 } from './world';
 
@@ -14,10 +15,23 @@ export function artworkBackingSize(size: [number, number]): [number, number] {
   return [size[0] + 0.16, size[1] + 0.16];
 }
 
+export function validateArtworkSurfaceAnchor(
+  anchor: ArtworkSurfaceAnchor,
+  size: [number, number],
+) {
+  return validateWorldSurfaceAnchor(
+    anchor.solidId,
+    anchor.face,
+    anchor.height,
+    artworkBackingSize(size),
+    anchor.along,
+  );
+}
+
 type ArtworkRole = 'wall-display' | 'wayfinding' | 'floor-marker' | 'activity-surface' | 'branding';
 type ArtworkSupport = 'frame' | 'corkboard' | 'rail' | 'signboard' | 'tray' | 'none';
 
-type ArtworkSurfaceAnchor = {
+export type ArtworkSurfaceAnchor = {
   solidId: string;
   face: WorldSolidFace;
   height: number;
@@ -65,6 +79,12 @@ export function SuppliedArtwork({
 }) {
   const texture = useLoader(TextureLoader, assetPath(fileName));
   const backingSize = artworkBackingSize(size);
+  if (surfaceAnchor) {
+    const validation = validateArtworkSurfaceAnchor(surfaceAnchor, size);
+    if (!validation.valid) {
+      throw new Error(`Invalid artwork mount for ${fileName}: ${validation.issues.join(', ')}`);
+    }
+  }
   const anchored = surfaceAnchor
     ? getWorldSolidSurfaceTransform(
       surfaceAnchor.solidId,

@@ -5,13 +5,13 @@ export function Environment() {
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
   
   // Colors adjust based on imagination mode
-  const floorMain = isImaginationMode ? "#2b1055" : "#dfc9a5";
-  const floorArt = isImaginationMode ? "#0f380f" : "#c9dcd4";
-  const floorGrass = isImaginationMode ? "#590d22" : "#a6c27a";
-  const floorStorage = isImaginationMode ? "#1a0b16" : "#bca084";
-  const floorHall = isImaginationMode ? "#0d1b2a" : "#d8b887";
+  const floorMain = isImaginationMode ? "#2b1055" : "#e4d0b6";
+  const floorArt = isImaginationMode ? "#0f380f" : "#d5e2dc";
+  const floorGrass = isImaginationMode ? "#590d22" : "#99c279";
+  const floorStorage = isImaginationMode ? "#1a0b16" : "#c4af98";
+  const floorHall = isImaginationMode ? "#0d1b2a" : "#dbc1a1";
   
-  const wallColor = isImaginationMode ? "#3c096c" : "#f7edda";
+  const wallColor = isImaginationMode ? "#3c096c" : "#faf5ee";
 
   return (
     <group>
@@ -66,14 +66,14 @@ export function Environment() {
         const color = isImaginationMode
           ? wallColor
           : solid.id.includes('divider')
-            ? '#d9b59a'
+            ? '#ead7c3'
             : solid.id.includes('boundary')
-              ? '#f3e4ca'
+              ? '#f4ebd8'
               : wallColor;
         return (
           <group key={solid.id}>
             <Wall position={transform.position} size={transform.size} color={color} />
-            <WallTrim position={[transform.position[0], 0.18, transform.position[2]]} size={transform.size} color={isImaginationMode ? '#6e4aa5' : '#e7c798'} />
+            <WallTrim position={[transform.position[0], 0.18, transform.position[2]]} size={transform.size} color={isImaginationMode ? '#6e4aa5' : '#dcb68a'} />
           </group>
         );
       })}
@@ -82,33 +82,33 @@ export function Environment() {
       {/* Main room rug */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
         <circleGeometry args={[4, 32]} />
-        <meshStandardMaterial color={isImaginationMode ? "#ff006e" : "#ffb703"} />
+        <meshStandardMaterial color={isImaginationMode ? "#ff006e" : "#f4a261"} />
       </mesh>
       
       {/* Playground Slide */}
       <group>
-        <AuthoredSolidBox id="play-slide" height={2} color="#3a86ff" />
+        <AuthoredSolidBox id="play-slide" height={2} color="#457b9d" />
         <mesh position={PLAY_SLIDE_RAMP.position} rotation={PLAY_SLIDE_RAMP.rotation} castShadow>
           <boxGeometry args={PLAY_SLIDE_RAMP.size} />
-          <meshStandardMaterial color="#ff006e" />
+          <meshStandardMaterial color="#e76f51" />
         </mesh>
       </group>
       
       {/* Playground Sandbox */}
-      <AuthoredSolidSurface id="sandbox" color="#fb8500" />
+      <AuthoredSolidSurface id="sandbox" color="#e9c46a" />
       
       {/* Art Room Tables */}
       <group>
-        <AuthoredSolidBox id="art-table" height={1} color="#8ecae6" />
+        <AuthoredSolidBox id="art-table" height={1} color="#a8dadc" />
         {/* Easels */}
-        <AuthoredSolidBox id="art-easel" height={2} color="#219ebc" />
+        <AuthoredSolidBox id="art-easel" height={2} color="#2a9d8f" />
       </group>
       
       {/* Storage Boxes */}
       <group>
-        <AuthoredSolidBox id="storage-box-a" height={1} color="#bb9457" />
-        <AuthoredSolidBox id="storage-box-upper" height={0.8} centerY={1.4} color="#99582a" />
-        <AuthoredSolidBox id="storage-box-b" height={1} color="#bb9457" />
+        <AuthoredSolidBox id="storage-box-a" height={1} color="#e9c46a" />
+        <AuthoredSolidBox id="storage-box-upper" height={0.8} centerY={1.4} color="#d4a373" />
+        <AuthoredSolidBox id="storage-box-b" height={1} color="#f4a261" />
       </group>
     </group>
   );
