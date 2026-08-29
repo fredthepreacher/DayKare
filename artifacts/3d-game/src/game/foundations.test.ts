@@ -33,11 +33,13 @@ import {
   getWorldSolidTransform,
   getWorldSolidSurfaceTransform,
   isCameraPositionClear,
+  isCameraTransitionClear,
   isWalkable,
   resolveCameraPosition,
   resolveMovement,
   trackPlayerPosition,
 } from './world';
+import { CameraRig, advanceCameraPosition, isSweptSphereClear } from './cameraRig';
 import { normalizeSavedItems, normalizeTidyItems, restoreZoneState, serializeGameState } from './store';
 import { HUB_ROUTES, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
@@ -174,8 +176,8 @@ assert.ok(
   'nearby walls use a safe side angle instead of collapsing the camera',
 );
 assert.ok(closeWallCamera.z > -7.5, 'camera remains on the playable side of the wall');
-const lowPropCameraTarget = new THREE.Vector3(3, 1, -1);
-const lowPropDesiredCamera = new THREE.Vector3(3, 1, -5);
+const lowPropCameraTarget = new THREE.Vector3(3, 2, -1);
+const lowPropDesiredCamera = new THREE.Vector3(3, 2, -5);
 assert.deepEqual(
   resolveCameraPosition(lowPropCameraTarget, lowPropDesiredCamera).toArray(),
   lowPropDesiredCamera.toArray(),
@@ -190,6 +192,144 @@ assert.ok(
   'route gate obstruction preserves a nonzero framing distance',
 );
 assert.equal(isCameraPositionClear(routeGateCamera), true, 'camera alternate is outside every structural blocker');
+const cameraRig = new CameraRig();
+let rigCamera = new THREE.Vector3(0, 2.8, 8);
+const rigFrames = [1 / 30, 1 / 60, 1 / 120];
+for (let frame = 0; frame < 120; frame += 1) {
+  // This path follows the north wall, crosses a corner and reverses through a
+  // doorway-like opening. The deterministic rig must not chatter sides.
+  const target = new THREE.Vector3(
+    frame < 45 ? -3 + frame * 0.06 : frame < 80 ? -0.3 : 3.2 - (frame - 80) * 0.085,
+    1,
+    -6.5 + (frame % 7) * 0.015,
+  );
+  const desired = target.clone().add(new THREE.Vector3(0, 3.2, -9.2));
+  const result = cameraRig.resolve(
+    target,
+    desired,
+    rigCamera,
+    0.2,
+    MIN_CAMERA_DISTANCE,
+    WORLD_SOLIDS.filter((solid) => (
+      solid.zone === 'hub' && (solid.cameraRole === 'structural' || solid.cameraRole === 'substantial')
+    )),
+    rigFrames[frame % rigFrames.length],
+  );
+  assert.equal(isCameraPositionClear(result.position), true, 'wall-following emits no clipped camera position');
+  assert.equal(
+    isCameraTransitionClear(target, result.position),
+    true,
+    'every emitted rig position has a continuous clear target sightline',
+  );
+  if (result.transitionClear) {
+    assert.equal(isCameraTransitionClear(rigCamera, result.position), true, 'reported clear transition is swept-safe');
+  }
+  rigCamera.copy(result.position);
+}
+assert.ok(cameraRig.state.switches <= 5, 'side hysteresis bounds wall and corner switching');
+for (const frameRate of [30, 60, 120]) {
+  const blockers = WORLD_SOLIDS.filter((solid) => (
+    solid.zone === 'hub' && (solid.cameraRole === 'structural' || solid.cameraRole === 'substantial')
+  ));
+  const target = new THREE.Vector3(0, 1, -6.2);
+  let position = new THREE.Vector3(0, 3.8, 1.5);
+  const goal = new THREE.Vector3(3.1, 4.2, -7.2);
+  for (let frame = 0; frame < frameRate; frame += 1) {
+    const previous = position.clone();
+    position = advanceCameraPosition(previous, target, goal, 7 / frameRate, 0.2, blockers);
+    assert.equal(isCameraTransitionClear(previous, position), true, `${frameRate}Hz camera step stays physically clear`);
+    assert.equal(isCameraTransitionClear(target, position), true, `${frameRate}Hz camera step keeps a clear sightline`);
+  }
+}
+const recoveryBlockers = [{
+  id: 'recovery-wall',
+  minX: -2,
+  maxX: 2,
+  minZ: -0.2,
+  maxZ: 0.2,
+  minY: 0,
+  maxY: 4,
+  shape: 'box' as const,
+}];
+const recoveryRig = new CameraRig();
+const oldTarget = new THREE.Vector3(0, 1, 2);
+let recoveryCamera = recoveryRig.resolve(
+  oldTarget,
+  new THREE.Vector3(0, 2.5, 5),
+  new THREE.Vector3(0, 2.5, 4),
+  0.2,
+  MIN_CAMERA_DISTANCE,
+  recoveryBlockers,
+).position;
+const crossedTarget = new THREE.Vector3(0, 1, -2);
+const crossedDesired = new THREE.Vector3(0, 2.5, -6);
+let recoveredSightline = false;
+for (let frame = 0; frame < 240; frame += 1) {
+  const result = recoveryRig.resolve(
+    crossedTarget,
+    crossedDesired,
+    recoveryCamera,
+    0.2,
+    MIN_CAMERA_DISTANCE,
+    recoveryBlockers,
+    1 / 60,
+  );
+  const previous = recoveryCamera.clone();
+  recoveryCamera = advanceCameraPosition(
+    previous,
+    crossedTarget,
+    result.position,
+    7 / 60,
+    0.2,
+    recoveryBlockers,
+  );
+  assert.equal(
+    isSweptSphereClear(previous, recoveryCamera, 0.2, recoveryBlockers),
+    true,
+    'occluded recovery never moves the camera body through a wall',
+  );
+  if (isSweptSphereClear(crossedTarget, recoveryCamera, 0.2, recoveryBlockers)) {
+    recoveredSightline = true;
+  }
+}
+assert.equal(recoveredSightline, true, 'an occluded camera eventually recovers a clear sightline');
+const sweepBox = [{
+  id: 'sweep-box',
+  minX: 0,
+  maxX: 1,
+  minZ: -1,
+  maxZ: 1,
+  minY: 0,
+  maxY: 2,
+  shape: 'box' as const,
+}];
+assert.equal(
+  isSweptSphereClear(new THREE.Vector3(-0.21, 1, -2), new THREE.Vector3(-0.21, 1, 2), 0.2, sweepBox),
+  true,
+  'a swept camera volume just outside an expanded box remains clear',
+);
+assert.equal(
+  isSweptSphereClear(new THREE.Vector3(-0.19, 1, -2), new THREE.Vector3(-0.19, 1, 2), 0.2, sweepBox),
+  false,
+  'continuous sweep catches a thin box-edge crossing',
+);
+assert.equal(
+  isSweptSphereClear(new THREE.Vector3(0.5, 1, 0), new THREE.Vector3(0.5, 1, 0), 0.2, sweepBox),
+  false,
+  'zero-length sweeps still reject a camera already inside a blocker',
+);
+const gardenRig = new CameraRig();
+const gardenTarget = new THREE.Vector3(-2.7, 1, 1.5);
+const gardenResult = gardenRig.resolve(
+  gardenTarget,
+  new THREE.Vector3(-2.7, 3.4, 7.5),
+  new THREE.Vector3(-2.7, 3.4, 0.5),
+  0.2,
+  MIN_CAMERA_DISTANCE,
+  WORLD_SOLIDS.filter((solid) => solid.zone === 'garden' && (solid.cameraRole === 'structural' || solid.cameraRole === 'substantial')),
+);
+assert.equal(isCameraPositionClear(gardenResult.position, 0.2, 'garden'), true, 'tall Garden posts are camera blockers');
+assert.equal(isCameraTransitionClear(gardenTarget, gardenResult.position, 0.2, 'garden'), true, 'Garden sightline is continuously clear');
 for (const desiredCamera of [
   new THREE.Vector3(0, 1, -10),
   new THREE.Vector3(10, 1, -8.4),
@@ -564,7 +704,7 @@ const directYaw = getCameraInput().yaw;
 stepCameraInput(1 / 30);
 stepCameraInput(1 / 120);
 assert.equal(getCameraInput().yaw, directYaw, 'camera drag does not accumulate frame-dependent inertia');
-assert.equal(CAMERA_DISTANCE, 9.8, 'desktop and touch use one naturally wider stable camera frame');
+assert.equal(CAMERA_DISTANCE, 12.6, 'desktop uses a substantially wider fixed camera frame');
 const landscapeProfile = getCameraProfile(1280, 720);
 const portraitProfile = getCameraProfile(390, 844);
 assert.ok(portraitProfile.distance > landscapeProfile.distance, 'portrait starts with a wider fixed camera distance');

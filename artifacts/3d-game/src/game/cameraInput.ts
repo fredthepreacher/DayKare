@@ -15,13 +15,13 @@ export interface CameraProfile {
 
 // One stable frame keeps the hub readable on desktop and touch devices.
 // Portrait screens get a wider lens and a little more distance, not a user zoom.
-export const CAMERA_DISTANCE = 9.8;
+export const CAMERA_DISTANCE = 12.6;
 
 export function getCameraProfile(width: number, height: number): CameraProfile {
   const portrait = height > width * 1.08;
   return portrait
-    ? { distance: 11.4, fov: 68, height: 4.45, lookAhead: 0.9 }
-    : { distance: CAMERA_DISTANCE, fov: 60, height: 3.8, lookAhead: 0.58 };
+    ? { distance: 13.6, fov: 70, height: 4.7, lookAhead: 0.9 }
+    : { distance: CAMERA_DISTANCE, fov: 66, height: 4.25, lookAhead: 0.62 };
 }
 
 const cameraInput: CameraInputState = {

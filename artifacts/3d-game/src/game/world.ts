@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isSweptSphereClear, sweptSphereClearance } from './cameraRig';
 
 export type SolidKind =
   | 'boundary'
@@ -120,7 +121,7 @@ export const PLAY_SLIDE_RAMP = {
   size: [1, 3, 0.2] as [number, number, number],
   rotation: [-Math.PI / 4, 0, 0] as [number, number, number],
   solid: box('play-slide-ramp', 'playground', 11.4, 12.6, -4.7, -2.3, {
-    cameraRole: 'none',
+    cameraRole: 'substantial',
     maxY: 1.7,
   }),
 };
@@ -136,25 +137,25 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('playground-divider-south', 'wall', 7.7, 8.3, 2.15, 8),
   box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2.15),
   box('hall-divider-south', 'wall', -8.3, -7.7, 2.15, 8),
-  box('juice-stand', 'counter', 2, 4, -3.6, -2.4),
-  box('art-table', 'table', -13.7, -10.3, -13.7, -10.3),
-  box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8),
-  box('cubbies', 'cubby', -7.6, -3.8, -7.1, -6.3),
-  box('reading-nook', 'furniture', 4.6, 6.6, -7.4, -5.8),
-  box('storage-box-a', 'box', -14.7, -13.3, 9.3, 10.7),
+  box('juice-stand', 'counter', 2, 4, -3.6, -2.4, { cameraRole: 'substantial' }),
+  box('art-table', 'table', -13.7, -10.3, -13.7, -10.3, { cameraRole: 'substantial' }),
+  box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8, { cameraRole: 'substantial' }),
+  box('cubbies', 'cubby', -7.6, -3.8, -7.1, -6.3, { cameraRole: 'substantial', maxY: 2.2 }),
+  box('reading-nook', 'furniture', 4.6, 6.6, -7.4, -5.8, { cameraRole: 'substantial', maxY: 2.1 }),
+  box('storage-box-a', 'box', -14.7, -13.3, 9.3, 10.7, { cameraRole: 'substantial' }),
   box('storage-box-upper', 'box', -14.4, -13.6, 9.6, 10.4, {
     collision: false,
     cameraRole: 'none',
     minY: 1,
     maxY: 1.8,
   }),
-  box('storage-box-b', 'box', -11.8, -10.2, 13.1, 14.9),
+  box('storage-box-b', 'box', -11.8, -10.2, 13.1, 14.9, { cameraRole: 'substantial' }),
   box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8, {
     cameraRole: 'substantial',
     maxY: 2,
   }),
   PLAY_SLIDE_RAMP.solid,
-  box('sandbox', 'playground', 10, 14, 3, 7),
+  box('sandbox', 'playground', 10, 14, 3, 7, { cameraRole: 'substantial' }),
   box('route-garden-district', 'route-gate', 13, 15.4, -14.3, -12.3),
   box('route-storybook-lane', 'route-gate', -15.4, -13, -14.3, -12.3),
   box('route-maker-market', 'route-gate', 13, 15.4, 12.2, 14.3),
@@ -167,18 +168,18 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   gardenBox('garden-greenhouse-east', 'wall', -14.8, -8.8, -5.8, -5.2),
   gardenBox('garden-greenhouse-north', 'wall', -14.8, -14.2, -11.8, -5.2),
   gardenCircle('garden-pond', 'playground', 10, -0.2, 2.72, { maxY: 0.12 }),
-  gardenCircle('garden-gazebo-nw-post', 'furniture', -2.7, 3.4, 0.16, { maxY: 2.5 }),
-  gardenCircle('garden-gazebo-ne-post', 'furniture', 2.7, 3.4, 0.16, { maxY: 2.5 }),
-  gardenCircle('garden-gazebo-sw-post', 'furniture', -2.7, 8.8, 0.16, { maxY: 2.5 }),
-  gardenCircle('garden-gazebo-se-post', 'furniture', 2.7, 8.8, 0.16, { maxY: 2.5 }),
-  gardenBox('garden-bed-west', 'activity-station', -12.8, -8.8, 1.2, 4.4),
-  gardenBox('garden-bed-east', 'activity-station', 8.8, 12.8, 8.2, 11.4),
-  gardenCircle('garden-tree-a', 'furniture', -14.5, -1, 0.3, { maxY: 2.5 }),
-  gardenCircle('garden-tree-b', 'furniture', -7, 11.8, 0.3, { maxY: 2.5 }),
-  gardenCircle('garden-tree-c', 'furniture', 6.4, 11.5, 0.3, { maxY: 2.5 }),
-  gardenCircle('garden-tree-d', 'furniture', 14.2, -8.5, 0.3, { maxY: 2.5 }),
-  gardenCircle('garden-tree-e', 'furniture', 2, -13.8, 0.3, { maxY: 2.5 }),
-  gardenBox('garden-sign', 'furniture', -2.15, 2.15, -15.82, -15.58, { maxY: 1.9 }),
+  gardenCircle('garden-gazebo-nw-post', 'furniture', -2.7, 3.4, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenCircle('garden-gazebo-ne-post', 'furniture', 2.7, 3.4, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenCircle('garden-gazebo-sw-post', 'furniture', -2.7, 8.8, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenCircle('garden-gazebo-se-post', 'furniture', 2.7, 8.8, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenBox('garden-bed-west', 'activity-station', -12.8, -8.8, 1.2, 4.4, { cameraRole: 'substantial' }),
+  gardenBox('garden-bed-east', 'activity-station', 8.8, 12.8, 8.2, 11.4, { cameraRole: 'substantial' }),
+  gardenCircle('garden-tree-a', 'furniture', -14.5, -1, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenCircle('garden-tree-b', 'furniture', -7, 11.8, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenCircle('garden-tree-c', 'furniture', 6.4, 11.5, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenCircle('garden-tree-d', 'furniture', 14.2, -8.5, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenCircle('garden-tree-e', 'furniture', 2, -13.8, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
+  gardenBox('garden-sign', 'furniture', -2.15, 2.15, -15.82, -15.58, { cameraRole: 'substantial', maxY: 1.9 }),
 ];
 
 export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {
@@ -316,6 +317,24 @@ export function isCameraPositionClear(
   ));
 }
 
+export function cameraSweepClearance(
+  from: THREE.Vector3,
+  to: THREE.Vector3,
+  radius = 0.2,
+  zone: GameZone = 'hub',
+) {
+  return sweptSphereClearance(from, to, radius, CAMERA_BLOCKERS.filter((solid) => solid.zone === zone));
+}
+
+export function isCameraTransitionClear(
+  from: THREE.Vector3,
+  to: THREE.Vector3,
+  radius = 0.2,
+  zone: GameZone = 'hub',
+) {
+  return isSweptSphereClear(from, to, radius, CAMERA_BLOCKERS.filter((solid) => solid.zone === zone));
+}
+
 export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_RADIUS, zone: GameZone = 'hub') {
   const contains = (region: WalkableRegion) => (
     position.x >= region.minX + radius
@@ -427,24 +446,21 @@ export function resolveCameraPosition(
   const vertical = desiredOffset.y;
   const blockers = CAMERA_BLOCKERS.filter((solid) => solid.zone === zone);
 
-  const trace = (direction: THREE.Vector3) => {
-    const steps = Math.max(1, Math.ceil(distance / 0.16));
-    for (let index = 1; index <= steps; index += 1) {
-      const sampleDistance = distance * (index / steps);
-      const sample = target.clone().addScaledVector(direction, sampleDistance);
-      if (!isCameraPositionClear(sample, radius, zone)) {
-        return distance * ((index - 1) / steps);
-      }
-    }
-    return distance;
-  };
+  const trace = (direction: THREE.Vector3) => sweptSphereClearance(
+    target,
+    target.clone().addScaledVector(direction, distance),
+    radius,
+    blockers,
+  );
 
   const yawOffsets = [0, Math.PI / 8, -Math.PI / 8, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI];
   const candidates = yawOffsets.map((yaw) => {
     const rotated = horizontal.clone().rotateAround(new THREE.Vector2(), yaw);
     const direction = new THREE.Vector3(rotated.x, vertical, rotated.y).normalize();
     const safeDistance = trace(direction);
-    const retainedDistance = Math.min(distance, safeDistance);
+    const retainedDistance = safeDistance >= distance - 1e-5
+      ? distance
+      : Math.max(0, safeDistance - 0.035);
     const anglePenalty = Math.abs(yaw) / Math.PI;
     const framingScore = retainedDistance / distance;
     return {

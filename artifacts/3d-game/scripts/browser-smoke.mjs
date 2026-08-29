@@ -235,7 +235,8 @@ try {
     const { Group, Vector3 } = await import(${JSON.stringify(new URL('node_modules/.vite/deps/three.js', targetUrl).href)});
     const session = sessions.getSharedActivitySession('hub', 'art-time', 1);
     const interruptedSession = sessions.getSharedActivitySession('hub', 'art-time', 1, true);
-    const camera = world.resolveCameraPosition(new Vector3(0, 1, 0), new Vector3(10, 1, -8.4));
+    const cameraTarget = new Vector3(0, 1, 0);
+    const camera = world.resolveCameraPosition(cameraTarget, new Vector3(10, 1, -8.4));
     const artwork = world.getWorldSolidSurfaceTransform('main-south-wall', 'north', 1.72, 4.6);
     const npc = new Group();
     npc.position.set(6.8, 0, -3.4);
@@ -273,6 +274,7 @@ try {
         world.isWalkable(new Vector3(...participant.slot), 0.34, [], 'hub')),
       interruptedSession: interruptedSession === null,
       cameraClear: world.isCameraPositionClear(camera),
+      cameraSightlineClear: world.isCameraTransitionClear(cameraTarget, camera),
       artworkAnchored: artwork.position[2] === 7.66 && artwork.rotation[1] === Math.PI,
       npcMoved: moved && npc.position.distanceTo(new Vector3(6.8, 0, -3.4)) > 0.01,
       earlyServiceBlocked,
@@ -285,6 +287,7 @@ try {
     sharedSlotsWalkable: true,
     interruptedSession: true,
     cameraClear: true,
+    cameraSightlineClear: true,
     artworkAnchored: true,
     npcMoved: true,
     earlyServiceBlocked: true,

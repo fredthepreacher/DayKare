@@ -8,7 +8,8 @@ import { getTouchInput } from './touchInput';
 import { CharacterModel } from './CharacterModel';
 import { addCameraOrbit, consumeCameraRecenterRequest, getCameraInput, getCameraProfile, recenterCamera, stepCameraInput } from './cameraInput';
 import { isGameplayBlocked } from './gameplayGate';
-import { PLAYER_RADIUS, TRICYCLE_RADIUS, resolveCameraPosition, resolveMovement, trackPlayerPosition } from './world';
+import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, resolveMovement, trackPlayerPosition } from './world';
+import { CameraRig, advanceCameraPosition } from './cameraRig';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -39,7 +40,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const cameraLookTarget = useRef(new THREE.Vector3());
   const cameraLookAhead = useRef(new THREE.Vector3());
   const cameraSafePosition = useRef(new THREE.Vector3());
-  const cameraCurrentSafePosition = useRef(new THREE.Vector3());
+  const resolvedDisplacement = useRef(new THREE.Vector3());
+  const cameraRig = useRef(new CameraRig());
   const cameraBaseHeading = useRef(0);
   const cameraReady = useRef(false);
   const turnVelocity = useRef(0);
@@ -106,6 +108,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       // the new spawn instead of easing the focus across the old zone.
       cameraFocus.current.copy(localRef.current.position);
       cameraReady.current = false;
+      cameraRig.current.reset();
       recenterCamera();
       lastTeleport.current = teleportTrigger;
     }
@@ -187,6 +190,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       0.38,
       zone,
     );
+    resolvedDisplacement.current.copy(resolvedPosition).sub(localRef.current.position);
     localRef.current.position.x = resolvedPosition.x;
     localRef.current.position.z = resolvedPosition.z;
     trackPlayerPosition(localRef.current.position);
@@ -223,19 +227,29 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     }
     if (consumeCameraRecenterRequest()) {
       cameraBaseHeading.current = localRef.current.rotation.y;
+      cameraRig.current.reset(false);
     }
     stepCameraInput(delta);
     const orbit = getCameraInput();
     // Locomotion turns the character, not the camera. Only a deliberate
     // recenter changes the camera's world-facing baseline.
     const heading = cameraBaseHeading.current + orbit.yaw;
-    cameraLookAhead.current.copy(velocity.current).setY(0);
-    if (cameraLookAhead.current.lengthSq() > 0.01) {
-      const speedBlend = THREE.MathUtils.clamp(cameraLookAhead.current.length() / 4, 0, 1);
-      cameraLookAhead.current.normalize().multiplyScalar(cameraProfile.lookAhead * speedBlend);
-    } else {
-      cameraLookAhead.current.set(0, 0, 0);
-    }
+    // Follow the displacement that actually survived collision resolution.
+    // This avoids aiming into a wall from the requested (but blocked) velocity.
+    const actualSpeed = delta > 1e-5
+      ? resolvedDisplacement.current.clone().setY(0).multiplyScalar(1 / delta)
+      : new THREE.Vector3();
+    const resolvedSpeed = actualSpeed.length();
+    const desiredLookAhead = resolvedSpeed > 0.01
+      ? actualSpeed.normalize().multiplyScalar(cameraProfile.lookAhead * THREE.MathUtils.clamp(resolvedSpeed / 4, 0, 1))
+      : new THREE.Vector3();
+    const reversing = cameraLookAhead.current.lengthSq() > 0.002
+      && desiredLookAhead.lengthSq() > 0.002
+      && cameraLookAhead.current.dot(desiredLookAhead) < 0;
+    cameraLookAhead.current.lerp(
+      desiredLookAhead,
+      1 - Math.exp(-(reversing ? 15 : desiredLookAhead.lengthSq() > 0 ? 9 : 5) * delta),
+    );
     const desiredFocus = localRef.current.position.clone().add(cameraLookAhead.current);
     cameraFocus.current.lerp(desiredFocus, 1 - Math.exp(-8 * delta));
     const horizontalDistance = cameraProfile.distance * Math.cos(orbit.pitch);
@@ -246,24 +260,35 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     );
     cameraLookTarget.current.copy(cameraFocus.current);
     cameraLookTarget.current.y += isCrouching ? 0.78 : 1.0;
-    cameraSafePosition.current.copy(
-      resolveCameraPosition(cameraLookTarget.current, idealCameraPosition.current, 0.2, zone),
+    const cameraWasInitialized = cameraRig.current.state.initialized;
+    const previousCameraSide = cameraRig.current.state.sideId;
+    const rigResult = cameraRig.current.resolve(
+      cameraLookTarget.current,
+      idealCameraPosition.current,
+      camera.position,
+      0.2,
+      MIN_CAMERA_DISTANCE,
+      CAMERA_BLOCKERS.filter((solid) => solid.zone === zone),
+      delta,
     );
-    const cameraBlend = 1 - Math.exp(-7 * delta);
+    cameraSafePosition.current.copy(rigResult.position);
     const safeDistance = cameraSafePosition.current.distanceTo(cameraLookTarget.current);
     const currentDistance = camera.position.distanceTo(cameraLookTarget.current);
-    cameraCurrentSafePosition.current.copy(
-      resolveCameraPosition(cameraLookTarget.current, camera.position, 0.2, zone),
-    );
-    const currentPositionIsSafe = cameraCurrentSafePosition.current.distanceToSquared(camera.position) < 0.0025;
-    // Pull in immediately when a new obstruction appears so interpolation
-    // never leaves the camera behind a wall. Ease back out once space clears.
-    if (!currentPositionIsSafe) {
-      camera.position.copy(cameraCurrentSafePosition.current);
-    } else if (safeDistance + 0.05 < currentDistance) {
+    if (!cameraWasInitialized) {
       camera.position.copy(cameraSafePosition.current);
-    } else {
-      camera.position.lerp(cameraSafePosition.current, cameraBlend);
+    } else if (rigResult.transitionClear) {
+      const inward = safeDistance + 0.05 < currentDistance;
+      const sideChanged = previousCameraSide !== null && rigResult.sideId !== previousCameraSide;
+      const maxSpeed = inward ? 18 : sideChanged ? 7 : 5;
+      const zoneBlockers = CAMERA_BLOCKERS.filter((solid) => solid.zone === zone);
+      camera.position.copy(advanceCameraPosition(
+        camera.position,
+        cameraLookTarget.current,
+        cameraSafePosition.current,
+        maxSpeed * delta,
+        0.2,
+        zoneBlockers,
+      ));
     }
     camera.lookAt(cameraLookTarget.current);
   });
