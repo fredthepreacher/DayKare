@@ -22,6 +22,7 @@ import {
 import { TouchControls } from './TouchControls';
 import { HUB_ROUTES, isRouteUnlocked, requirementLabel, requirementProgressLabel } from './progression';
 import { getActiveQuest, getCurrentObjective, objectiveIsActive, QUEST_DEFINITIONS } from './quests';
+import { playGameSound, unlockGameAudio } from './audio';
 
 export function UI() {
   const {
@@ -81,6 +82,22 @@ export function UI() {
   const interactRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
+    const handleAudioUnlock = () => unlockGameAudio();
+    window.addEventListener('pointerdown', handleAudioUnlock, { passive: true });
+    window.addEventListener('touchstart', handleAudioUnlock, { passive: true });
+    window.addEventListener('keydown', handleAudioUnlock);
+    return () => {
+      window.removeEventListener('pointerdown', handleAudioUnlock);
+      window.removeEventListener('touchstart', handleAudioUnlock);
+      window.removeEventListener('keydown', handleAudioUnlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeDialogue) playGameSound('dialogue', 'dialogue');
+  }, [activeDialogue?.name, activeDialogue?.text]);
+
+  useEffect(() => {
     return subscribe(
       (state) => state.journal,
       (pressed) => {
@@ -106,6 +123,10 @@ export function UI() {
   useEffect(() => {
     const runInteraction = () => {
       if (zoneTransitioning) return;
+      unlockGameAudio();
+      if (activeDialogue || isRiding || activeInteractable) {
+        playGameSound('interaction', 'interaction');
+      }
       if (activeDialogue) {
         if (!activeDialogue.options) {
           setActiveDialogue(null);
@@ -144,6 +165,7 @@ export function UI() {
                     if (waitingCustomers.length > 0) {
                       if (juiceStock > 0 && crackerStock > 0) {
                         serveCustomer();
+                         playGameSound('juice-service', 'interaction');
                         setActiveDialogue({ name: 'System', text: 'Served a happy customer! +1 reputation and +1 Star Token.' });
                       } else {
                         setActiveDialogue({ name: 'System', text: 'Out of stock! Buy more in the Journal Business tab.' });

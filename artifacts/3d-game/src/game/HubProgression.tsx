@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { HUB_ROUTES, isRouteUnlocked, type RouteDefinition } from './progression';
 import { useGameStore } from './store';
+import { playGameSound } from './audio';
 
 export function HubProgression({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
@@ -63,11 +64,19 @@ function RainbowTidyUp({ playerRef }: { playerRef: React.RefObject<THREE.Group |
   const active = useGameStore((state) => state.activeInteractable === 'activity-rainbow-tidy-up');
   const quest = useGameStore((state) => state.quests['rainbow-tidy-up']);
   const placed = useGameStore((state) => state.tidyPlacedItems);
+  const placedSignature = placed.join('|');
+  const previousPlacedSignature = useRef(placedSignature);
   const id = 'activity-rainbow-tidy-up';
   const position = useMemo(() => new THREE.Vector3(0, 0, -4), []);
   const canPlace = quest?.status === 'active' && quest.currentObjectiveId?.startsWith('place-') === true;
   const candidate = useMemo(() => ({ id, position, range: 2, priority: 70, valid: canPlace }), [id, position]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  useEffect(() => {
+    if (previousPlacedSignature.current !== placedSignature) {
+      playGameSound('tidy-place', 'interaction');
+      previousPlacedSignature.current = placedSignature;
+    }
+  }, [placedSignature]);
   useFrame((_, delta) => {
     updateInteractionCandidate(id, { position, valid: canPlace });
     if (!ref.current) return;

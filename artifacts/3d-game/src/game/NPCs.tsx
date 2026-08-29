@@ -6,6 +6,7 @@ import { registerInteractionCandidate, updateInteractionCandidate } from './inte
 import { getNavigationTarget, registerNpcPosition } from './navigation';
 import { useGameStore } from './store';
 import { resolveMovement } from './world';
+import { playGameSound } from './audio';
 
 type KidDefinition = {
   name: string;
@@ -177,6 +178,12 @@ function Teacher({
     }
     const supervising = arrived && patrol.current.dwellUntil > state.clock.elapsedTime;
     if (supervising !== supervisingRef.current) {
+      if (supervising) {
+        const game = useGameStore.getState();
+        if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning) {
+          playGameSound('arrival');
+        }
+      }
       supervisingRef.current = supervising;
       setIsSupervising(supervising);
     }
@@ -327,6 +334,17 @@ function Kid({
       && state.clock.elapsedTime < activityState.current.dwellUntil
       && distanceToActivity < 0.48;
     if (settled !== settledRef.current) {
+      if (settled) {
+        const game = useGameStore.getState();
+        if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning) {
+          const activitySound = schedule === 'art-time'
+            ? 'drawing'
+            : schedule === 'morning-play' || schedule === 'outdoor-play'
+              ? 'play'
+              : 'arrival';
+          playGameSound(activitySound);
+        }
+      }
       settledRef.current = settled;
       setSettled(settled);
     }
@@ -338,6 +356,7 @@ function Kid({
     ) {
       const game = useGameStore.getState();
       if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning && !game.activeInteractable) {
+        playGameSound('greeting', 'social');
         game.setAmbientMessage(kidGreeting(name, schedule));
         if (greetingClearTimer) clearTimeout(greetingClearTimer);
         greetingClearTimer = setTimeout(() => useGameStore.getState().setAmbientMessage(null), 3200);
@@ -498,6 +517,7 @@ function AmbientSocialMoments() {
       const scheduleMessages = messages[state.schedule] ?? messages['morning-play'];
       const message = scheduleMessages[messageIndex.current % scheduleMessages.length];
       messageIndex.current += 1;
+      playGameSound('greeting', 'social');
       state.setAmbientMessage(message);
       if (clearTimer) clearTimeout(clearTimer);
       clearTimer = setTimeout(() => useGameStore.getState().setAmbientMessage(null), 3800);
