@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
 import { isGameplayBlocked } from './gameplayGate';
+import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetry';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
 
@@ -68,6 +69,7 @@ function GameScene() {
       {(isRainy || isImaginationMode) && (
         <fog attach="fog" args={[isImaginationMode ? '#2b1055' : '#8899a6', 5, 30]} />
       )}
+      <PerformanceTelemetry />
       
       {zone === 'hub' ? (
         <>
@@ -97,6 +99,7 @@ export function DayKareApp() {
           <GameScene />
         </Canvas>
         <UI />
+        <PerformanceTelemetryPanel />
       </div>
     </KeyboardControls>
   );

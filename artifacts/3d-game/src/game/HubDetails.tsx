@@ -2,6 +2,7 @@ import { useFrame } from '@react-three/fiber';
 import { useRef } from 'react';
 import { useGameStore } from './store';
 import { SuppliedArtwork } from './Artwork';
+import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 
 import * as THREE from 'three';
 
@@ -52,7 +53,7 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
         <meshStandardMaterial color="#78b9b2" roughness={0.92} />
       </mesh>
       {[-4.8, -3.8, -2.8].map((x, index) => (
-        <mesh key={x} position={[x, 1.9, 7.71]}>
+          <mesh key={x} position={[x, 1.9, 7.64]}>
           <circleGeometry args={[0.28 + index * 0.04, 12]} />
           <meshStandardMaterial color={[warm, sunny, accent][index]} roughness={0.8} />
         </mesh>
@@ -65,7 +66,7 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
       </mesh>
       {[-5, -3, -1, 1, 3, 5].map((z, index) => (
         <group key={z}>
-          <mesh position={[-15.69, 1.55, z]} rotation={[0, Math.PI / 2, 0]}>
+          <mesh position={[-15.65, 1.55, z]} rotation={[0, Math.PI / 2, 0]}>
             <boxGeometry args={[0.5, 0.42, 0.025]} />
             <meshStandardMaterial color={[warm, sunny, accent][index % 3]} roughness={0.82} />
           </mesh>
@@ -96,8 +97,8 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
 
       {/* Storage: box labels and grounded foam shapes without extra shadows. */}
       {[
-        [-14, 1.02, 9.48, warm],
-        [-11, 1.02, 13.24, accent],
+        [-14, 1.02, 9.27, warm],
+        [-11, 1.02, 13.07, accent],
         [-14, 1.92, 9.58, sunny],
       ].map(([x, y, z, color], index) => (
         <mesh key={index} position={[x as number, y as number, z as number]}>
@@ -134,7 +135,7 @@ function WindowRow({ imaginationMode }: { imaginationMode: boolean }) {
   const frame = imaginationMode ? '#ff4da6' : '#fff8e8';
 
   return (
-    <group position={[0, 2.6, -7.72]}>
+    <group position={[0, 2.6, -7.64]}>
       {[-4.4, -1.5, 1.5, 4.4].map((x) => (
         <group key={x} position={[x, 0, 0]}>
           <mesh castShadow>
@@ -273,10 +274,11 @@ function PlaygroundDetails() {
 
 function CeilingMobile({ imaginationMode }: { imaginationMode: boolean }) {
   const ref = useRef<THREE.Group>(null);
+  const lastAnimationAt = useRef(0);
   const colors = imaginationMode ? ['#ff4da6', '#52e7ff', '#ffd166'] : ['#e8613c', '#4c82d4', '#e6ae2f'];
 
   useFrame((state) => {
-    if (!ref.current) return;
+    if (!ref.current || !shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)) return;
     ref.current.rotation.y = state.clock.elapsedTime * 0.12;
     ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.7) * 0.04;
   });
@@ -314,6 +316,7 @@ function ScheduleBeacon({
   imaginationMode: boolean;
 }) {
   const indicatorRef = useRef<THREE.Group>(null);
+  const lastAnimationAt = useRef(0);
   const colors: Record<string, string> = {
     'morning-play': '#f2b85b',
     'art-time': '#e8613c',
@@ -324,7 +327,12 @@ function ScheduleBeacon({
   const color = imaginationMode ? '#ff4da6' : colors[schedule] ?? '#f2b85b';
 
   useFrame((state) => {
-    if (indicatorRef.current) indicatorRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.4) * 0.04;
+    if (
+      indicatorRef.current
+      && shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)
+    ) {
+      indicatorRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.4) * 0.04;
+    }
   });
 
   return (

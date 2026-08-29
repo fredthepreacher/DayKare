@@ -12,6 +12,10 @@ export interface InteractionCandidate {
 
 const candidates = new Map<string, InteractionCandidate>();
 let lastResolvedId: string | null = null;
+const forwardScratch = new THREE.Vector3();
+const cameraIntentScratch = new THREE.Vector3();
+const offsetScratch = new THREE.Vector3();
+const directionScratch = new THREE.Vector3();
 
 export function registerInteractionCandidate(candidate: InteractionCandidate) {
   candidates.set(candidate.id, candidate);
@@ -31,21 +35,29 @@ export function resolveInteractionCandidate(
   cameraForward?: THREE.Vector3,
   now = performance.now(),
 ) {
-  const forward = playerForward.clone().setY(0).normalize();
-  const cameraIntent = (cameraForward ?? playerForward).clone().setY(0).normalize();
+  forwardScratch.copy(playerForward).setY(0).normalize();
+  cameraIntentScratch.copy(cameraForward ?? playerForward).setY(0).normalize();
   let best: { candidate: InteractionCandidate; score: number } | null = null;
-  const validCandidates = [...candidates.values()].filter((candidate) => (
-    candidate.valid
-    && playerPosition.distanceTo(candidate.position) <= candidate.range
-  ));
-  const questCandidates = validCandidates.filter((candidate) => candidate.questPriority);
-  const candidatesToScore = questCandidates.length > 0 ? questCandidates : validCandidates;
-  for (const candidate of candidatesToScore) {
-    const offset = candidate.position.clone().sub(playerPosition).setY(0);
-    const distance = offset.length();
-    const direction = distance > 0.001 ? offset.clone().normalize() : forward;
-    const facing = Math.max(-1, Math.min(1, forward.dot(direction)));
-    const cameraFacing = Math.max(-1, Math.min(1, cameraIntent.dot(direction)));
+  let hasQuestCandidate = false;
+  for (const candidate of candidates.values()) {
+    if (candidate.valid && candidate.questPriority && playerPosition.distanceTo(candidate.position) <= candidate.range) {
+      hasQuestCandidate = true;
+      break;
+    }
+  }
+  for (const candidate of candidates.values()) {
+    if (
+      !candidate.valid
+      || (hasQuestCandidate && !candidate.questPriority)
+    ) continue;
+    const distance = playerPosition.distanceTo(candidate.position);
+    if (distance > candidate.range) continue;
+    offsetScratch.copy(candidate.position).sub(playerPosition).setY(0);
+    directionScratch.copy(offsetScratch);
+    if (distance > 0.001) directionScratch.normalize();
+    else directionScratch.copy(forwardScratch);
+    const facing = Math.max(-1, Math.min(1, forwardScratch.dot(directionScratch)));
+    const cameraFacing = Math.max(-1, Math.min(1, cameraIntentScratch.dot(directionScratch)));
     // Priority is a nudge, not a trump card. A nearby, intended target should
     // win over a quest target that happens to be farther away.
     const score =

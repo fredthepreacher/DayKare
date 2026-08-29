@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useImperativeHandle, useState } from 'react';
+import { forwardRef, useEffect, useMemo, useRef, useImperativeHandle, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -41,6 +41,9 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const cameraLookAhead = useRef(new THREE.Vector3());
   const cameraSafePosition = useRef(new THREE.Vector3());
   const resolvedDisplacement = useRef(new THREE.Vector3());
+  const actualVelocity = useRef(new THREE.Vector3());
+  const desiredFocus = useRef(new THREE.Vector3());
+  const desiredLookAhead = useRef(new THREE.Vector3());
   const cameraRig = useRef(new CameraRig());
   const cameraBaseHeading = useRef(0);
   const cameraReady = useRef(false);
@@ -52,6 +55,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const positionSaveAccumulator = useRef(0);
   gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning });
   const cameraProfile = getCameraProfile(size.width, size.height);
+  const zoneCameraBlockers = useMemo(
+    () => CAMERA_BLOCKERS.filter((solid) => solid.zone === zone),
+    [zone],
+  );
   
   const colors = ["#d62828", "#3a86ff", "#ff006e", "#06d6a0"];
   
@@ -236,22 +243,25 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     const heading = cameraBaseHeading.current + orbit.yaw;
     // Follow the displacement that actually survived collision resolution.
     // This avoids aiming into a wall from the requested (but blocked) velocity.
-    const actualSpeed = delta > 1e-5
-      ? resolvedDisplacement.current.clone().setY(0).multiplyScalar(1 / delta)
-      : new THREE.Vector3();
-    const resolvedSpeed = actualSpeed.length();
-    const desiredLookAhead = resolvedSpeed > 0.01
-      ? actualSpeed.normalize().multiplyScalar(cameraProfile.lookAhead * THREE.MathUtils.clamp(resolvedSpeed / 4, 0, 1))
-      : new THREE.Vector3();
+    actualVelocity.current.set(0, 0, 0);
+    if (delta > 1e-5) actualVelocity.current.copy(resolvedDisplacement.current).setY(0).multiplyScalar(1 / delta);
+    const resolvedSpeed = actualVelocity.current.length();
+    desiredLookAhead.current.set(0, 0, 0);
+    if (resolvedSpeed > 0.01) {
+      desiredLookAhead.current
+        .copy(actualVelocity.current)
+        .normalize()
+        .multiplyScalar(cameraProfile.lookAhead * THREE.MathUtils.clamp(resolvedSpeed / 4, 0, 1));
+    }
     const reversing = cameraLookAhead.current.lengthSq() > 0.002
-      && desiredLookAhead.lengthSq() > 0.002
-      && cameraLookAhead.current.dot(desiredLookAhead) < 0;
+      && desiredLookAhead.current.lengthSq() > 0.002
+      && cameraLookAhead.current.dot(desiredLookAhead.current) < 0;
     cameraLookAhead.current.lerp(
-      desiredLookAhead,
-      1 - Math.exp(-(reversing ? 15 : desiredLookAhead.lengthSq() > 0 ? 9 : 5) * delta),
+      desiredLookAhead.current,
+      1 - Math.exp(-(reversing ? 15 : desiredLookAhead.current.lengthSq() > 0 ? 9 : 5) * delta),
     );
-    const desiredFocus = localRef.current.position.clone().add(cameraLookAhead.current);
-    cameraFocus.current.lerp(desiredFocus, 1 - Math.exp(-8 * delta));
+    desiredFocus.current.copy(localRef.current.position).add(cameraLookAhead.current);
+    cameraFocus.current.lerp(desiredFocus.current, 1 - Math.exp(-8 * delta));
     const horizontalDistance = cameraProfile.distance * Math.cos(orbit.pitch);
     idealCameraPosition.current.set(
       cameraFocus.current.x + Math.sin(heading) * horizontalDistance,
@@ -268,7 +278,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       camera.position,
       0.2,
       MIN_CAMERA_DISTANCE,
-      CAMERA_BLOCKERS.filter((solid) => solid.zone === zone),
+      zoneCameraBlockers,
       delta,
     );
     cameraSafePosition.current.copy(rigResult.position);
@@ -280,14 +290,13 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       const inward = safeDistance + 0.05 < currentDistance;
       const sideChanged = previousCameraSide !== null && rigResult.sideId !== previousCameraSide;
       const maxSpeed = inward ? 18 : sideChanged ? 7 : 5;
-      const zoneBlockers = CAMERA_BLOCKERS.filter((solid) => solid.zone === zone);
       camera.position.copy(advanceCameraPosition(
         camera.position,
         cameraLookTarget.current,
         cameraSafePosition.current,
         maxSpeed * delta,
         0.2,
-        zoneBlockers,
+        zoneCameraBlockers,
       ));
     }
     camera.lookAt(cameraLookTarget.current);

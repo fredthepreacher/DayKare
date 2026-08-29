@@ -23,7 +23,15 @@ import {
   getPortalWaypoints,
   registerNpcPosition,
 } from './navigation';
-import { clearTouchMove, getTouchInput, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
+import {
+  TouchPointerOwnership,
+  clearTouchMove,
+  getTouchInput,
+  resetTouchInput,
+  setTouchCrouch,
+  setTouchMove,
+  toggleTouchRun,
+} from './touchInput';
 import {
   GARDEN_SPAWN,
   MIN_CAMERA_DISTANCE,
@@ -59,6 +67,7 @@ import { artworkBackingSize } from './Artwork';
 import { dialogueDismissLabel } from './dialogueActions';
 import { getSharedActivitySession, reportSessionArrival, resetActivitySessions } from './activitySessions';
 import { activitySessionIsInterrupted, sessionParticipant } from './activitySessions';
+import { FramePerformanceTelemetry } from './performanceTelemetry';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -1133,6 +1142,76 @@ assert.equal(isTouchTap(false, 24), false, 'a movement gesture cannot become a t
 assert.equal(isTouchDoubleTap(0, 200), false, 'the zero sentinel cannot count as a completed first tap');
 assert.equal(isTouchDoubleTap(100, 300), true, 'two completed taps inside the window toggle run');
 assert.equal(isTouchDoubleTap(0, 300), false, 'tap state cleared by cancellation cannot toggle run');
+const pointerOwnership = new TouchPointerOwnership();
+assert.equal(pointerOwnership.claimMovement(11), true);
+assert.equal(pointerOwnership.claimLook(21), true);
+assert.equal(pointerOwnership.claimMovement(31), false, 'another pointer cannot steal movement ownership');
+assert.equal(pointerOwnership.releaseLook(21), true);
+assert.equal(pointerOwnership.movementPointer, 11, 'lifting look leaves movement ownership intact');
+assert.equal(pointerOwnership.claimLook(22), true, 'a new look pointer can orbit while movement remains owned');
+assert.equal(pointerOwnership.releaseMovement(11), true);
+assert.equal(pointerOwnership.lookPointer, 22, 'lifting movement leaves look ownership intact');
+assert.equal(pointerOwnership.releaseLook(22), true);
+
+const sustainedFrameProbe = new FramePerformanceTelemetry();
+const telemetryContext = {
+  renderer: 'test renderer',
+  vendor: 'test vendor',
+  api: 'WebGL2',
+  devicePixelRatio: 2,
+  viewportWidth: 390,
+  viewportHeight: 844,
+  renderCalls: 25,
+  triangles: 8000,
+  geometries: 40,
+  textures: 12,
+  sceneChildren: 9,
+  zone: 'hub' as const,
+  npcCount: 12,
+  quality: 'high' as const,
+};
+let telemetryAt = 0;
+for (let frame = 0; frame < 90; frame += 1) {
+  sustainedFrameProbe.recordFrame(60, telemetryAt, telemetryContext);
+  telemetryAt += 50;
+}
+let telemetrySnapshot = sustainedFrameProbe.getSnapshot();
+assert.equal(telemetrySnapshot.degradationDetected, true, 'frame telemetry identifies sustained frame pacing degradation');
+assert.equal(telemetrySnapshot.adaptiveSafeguardActive, true, 'optional animation throttling waits for sustained degradation');
+assert.ok(telemetrySnapshot.p95FrameMs >= 60, 'frame telemetry reports a meaningful p95 rather than only average FPS');
+assert.ok(telemetrySnapshot.droppedFrames > 0, 'frame telemetry reports missed 60Hz frame budgets');
+for (let frame = 0; frame < 470; frame += 1) {
+  sustainedFrameProbe.recordFrame(16, telemetryAt, telemetryContext);
+  telemetryAt += 16;
+}
+telemetrySnapshot = sustainedFrameProbe.getSnapshot();
+assert.equal(telemetrySnapshot.degradationDetected, false, 'a healthy rolling frame window clears degradation');
+assert.equal(telemetrySnapshot.adaptiveSafeguardActive, false, 'optional animation recovers only after a long healthy period');
+
+const fortyFpsProbe = new FramePerformanceTelemetry();
+let fortyFpsAt = 0;
+for (let frame = 0; frame < 180; frame += 1) {
+  fortyFpsProbe.recordFrame(25, fortyFpsAt, telemetryContext);
+  fortyFpsAt += 25;
+}
+assert.equal(fortyFpsProbe.getSnapshot().adaptiveSafeguardActive, true, 'sustained 40 FPS is meaningful mobile degradation');
+assert.ok(fortyFpsProbe.getSnapshot().droppedFrames > 0, 'fractional frame budgets expose 40 FPS frame loss');
+
+const quantizedThirtyFpsProbe = new FramePerformanceTelemetry();
+let thirtyFpsAt = 0;
+for (let frame = 0; frame < 130; frame += 1) {
+  quantizedThirtyFpsProbe.recordFrame(33.333, thirtyFpsAt, telemetryContext);
+  thirtyFpsAt += 33.333;
+}
+assert.equal(quantizedThirtyFpsProbe.getSnapshot().adaptiveSafeguardActive, true, 'quantized 30 FPS samples activate the sustained safeguard');
+
+const shortSpikeProbe = new FramePerformanceTelemetry();
+let shortSpikeAt = 0;
+for (let frame = 0; frame < 80; frame += 1) {
+  shortSpikeProbe.recordFrame(25, shortSpikeAt, telemetryContext);
+  shortSpikeAt += 25;
+}
+assert.equal(shortSpikeProbe.getSnapshot().adaptiveSafeguardActive, false, 'a short frame-rate drop does not reduce optional animation');
 
 clearInteractionCandidates();
 const fartherQuestTarget = {

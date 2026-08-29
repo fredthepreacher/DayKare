@@ -16,6 +16,7 @@ import {
   sessionSlotVector,
   type SharedActivityParticipant,
 } from './activitySessions';
+import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 
 type KidDefinition = {
   name: string;
@@ -716,8 +717,9 @@ function AmbientSocialMoments() {
 
 function ActivityProp({ schedule, rainy, phase }: { schedule: string; rainy: boolean; phase: number }) {
   const prop = useRef<THREE.Group>(null);
+  const lastAnimationAt = useRef(0);
   useFrame((state) => {
-    if (!prop.current) return;
+    if (!prop.current || !shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)) return;
     prop.current.position.y = 0.75 + Math.sin(state.clock.elapsedTime * 2.2 + phase) * 0.035;
     prop.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.8 + phase) * 0.18;
   });

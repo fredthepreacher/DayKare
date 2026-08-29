@@ -143,6 +143,29 @@
   display: none;
 }
 
+.daykare-performance-panel {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 80;
+  display: grid;
+  gap: 2px;
+  max-width: min(440px, calc(100vw - 24px));
+  padding: 9px 11px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 10px;
+  background: rgb(16 20 26 / 82%);
+  color: #f8fafc;
+  font: 600 11px/1.35 var(--app-font-mono);
+  pointer-events: none;
+}
+
+.daykare-performance-panel strong {
+  color: #fbbf24;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 @media (pointer: coarse), (max-width: 767px) {
   body {
     overscroll-behavior: none;

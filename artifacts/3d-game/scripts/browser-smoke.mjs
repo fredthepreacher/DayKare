@@ -748,6 +748,10 @@ try {
     const rect = document.querySelector('.daykare-touch-pad').getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   })()`);
+  const lookPoint = await evaluate(client, `(() => {
+    const rect = document.querySelector('.daykare-touch-look').getBoundingClientRect();
+    return { x: rect.left + rect.width * 0.6, y: rect.top + rect.height * 0.55 };
+  })()`);
   const touchStartPosition = await evaluate(client, 'globalThis.__daykareMovementProbe.player');
   await client.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
@@ -757,18 +761,71 @@ try {
     type: 'touchMove',
     touchPoints: [{ x: padPoint.x + 34, y: padPoint.y - 52, id: 11, radiusX: 8, radiusY: 8 }],
   });
-  await sleep(700);
+  const touchOrbitBefore = await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    return { ...cameraInput.getCameraInput() };
+  })()`);
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [
+      { x: padPoint.x + 34, y: padPoint.y - 52, id: 11, radiusX: 8, radiusY: 8 },
+      { x: lookPoint.x, y: lookPoint.y, id: 21, radiusX: 8, radiusY: 8 },
+    ],
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [
+      { x: padPoint.x + 34, y: padPoint.y - 52, id: 11, radiusX: 8, radiusY: 8 },
+      { x: lookPoint.x + 62, y: lookPoint.y + 24, id: 21, radiusX: 8, radiusY: 8 },
+    ],
+  });
+  await sleep(500);
   const touchDuringMove = await evaluate(client, `(async () => {
     const touch = await import(${touchModulePath});
-    return { ...touch.getTouchInput() };
+    const cameraInput = await import(${cameraInputModulePath});
+    return {
+      movement: { ...touch.getTouchInput() },
+      orbit: { ...cameraInput.getCameraInput() },
+    };
   })()`);
-  assert.ok(Math.hypot(touchDuringMove.x, touchDuringMove.y) > 0.5, 'real touch drag owns and drives the movement pad');
+  assert.ok(Math.hypot(touchDuringMove.movement.x, touchDuringMove.movement.y) > 0.5, 'real touch drag owns and drives the movement pad');
+  assert.ok(
+    Math.abs(touchDuringMove.orbit.yaw - touchOrbitBefore.yaw) > 0.25,
+    'a second real touch pointer orbits while the movement pointer remains owned',
+  );
   assert.ok(
     await evaluate(client, `Math.hypot(
       globalThis.__daykareMovementProbe.player[0] - ${touchStartPosition[0]},
       globalThis.__daykareMovementProbe.player[2] - ${touchStartPosition[2]}
     ) > 0.5`),
     'real touch input moves the live player',
+  );
+  await evaluate(client, 'document.querySelector(".daykare-touch-recenter").click()');
+  const recenteredDuringMove = await evaluate(client, `(async () => {
+    const touch = await import(${touchModulePath});
+    const cameraInput = await import(${cameraInputModulePath});
+    return {
+      movement: { ...touch.getTouchInput() },
+      orbit: { ...cameraInput.getCameraInput() },
+    };
+  })()`);
+  assert.ok(Math.hypot(recenteredDuringMove.movement.x, recenteredDuringMove.movement.y) > 0.5, 'recenter does not steal the movement pointer');
+  assert.equal(recenteredDuringMove.orbit.yaw, 0, 'recenter clears touch orbit while movement continues');
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [
+      { x: padPoint.x + 34, y: padPoint.y - 52, id: 11, radiusX: 8, radiusY: 8 },
+      { x: lookPoint.x + 88, y: lookPoint.y + 18, id: 21, radiusX: 8, radiusY: 8 },
+    ],
+  });
+  assert.ok(
+    await evaluate(client, `(async () => {
+      const touch = await import(${touchModulePath});
+      const cameraInput = await import(${cameraInputModulePath});
+      return Math.hypot(touch.getTouchInput().x, touch.getTouchInput().y) > 0.5
+        && Math.abs(cameraInput.getCameraInput().yaw) > 0.1;
+    })()`),
+    'look resumes after recenter without stealing movement ownership',
   );
   await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
   assert.deepEqual(
@@ -869,25 +926,17 @@ try {
     return true;
   })()`);
   await sleep(1200);
-  const performanceSample = await evaluate(client, `(async () => {
-    const probe = document.createElement('canvas');
-    const gl = probe.getContext('webgl');
-    const rendererInfo = gl?.getExtension('WEBGL_debug_renderer_info');
-    const renderer = rendererInfo ? gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
-    const frames = [];
-    let warmupFrames = 0;
-    await new Promise((resolve) => {
-      const tick = (time) => {
-        if (warmupFrames < 5) warmupFrames += 1;
-        else frames.push(time);
-        if (frames.length >= 60) resolve();
-        else requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-    const elapsed = frames.at(-1) - frames[0];
-    return { fps: 1000 * (frames.length - 1) / Math.max(elapsed, 1), renderer };
-  })()`);
+  await waitFor(
+    client,
+    'globalThis.__daykarePerformanceProbe?.sampleCount >= 20',
+    'in-scene performance telemetry sample',
+  );
+  const performanceSample = await evaluate(client, 'structuredClone(globalThis.__daykarePerformanceProbe)');
+  assert.ok(performanceSample.p95FrameMs >= performanceSample.p50FrameMs, 'performance probe reports ordered frame-time percentiles');
+  assert.ok(Number.isFinite(performanceSample.droppedFrames), 'performance probe reports dropped frame budgets');
+  assert.ok(performanceSample.devicePixelRatio > 0, 'performance probe reports the renderer DPR');
+  assert.ok(performanceSample.renderCalls >= 0 && performanceSample.triangles >= 0, 'performance probe reports render workload');
+  assert.equal(performanceSample.zone, 'hub', 'performance probe includes relevant live scene state');
   const softwareRenderer = /swiftshader|llvmpipe|software/i.test(performanceSample.renderer);
   const minimumFps = softwareRenderer ? 5 : 12;
   assert.ok(
@@ -916,7 +965,7 @@ try {
     0,
     `unexpected browser exceptions: ${exceptions.join('\n')}`,
   );
-  console.log(`DayKare browser checks passed (${performanceSample.fps.toFixed(1)}fps, ${performanceSample.renderer})`);
+  console.log(`DayKare browser checks passed (${performanceSample.fps.toFixed(1)}fps, p95 ${performanceSample.p95FrameMs.toFixed(1)}ms, ${performanceSample.renderer})`);
 } finally {
   client?.close();
   chromium.kill('SIGTERM');

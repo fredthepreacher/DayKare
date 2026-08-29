@@ -5,6 +5,7 @@ import { registerInteractionCandidate, updateInteractionCandidate } from './inte
 import { objectiveIsActive } from './quests';
 import { useGameStore } from './store';
 import { SuppliedArtwork } from './Artwork';
+import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 
 export function Interactables({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
@@ -34,8 +35,10 @@ function useCandidate(
 
 function FocusHalo({ active, radius, color }: { active: boolean; radius: number; color: string }) {
   const ref = useRef<THREE.Mesh>(null);
+  const lastAnimationAt = useRef(0);
   useFrame((state) => {
     if (!ref.current) return;
+    if (!shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)) return;
     const pulse = 1 + Math.sin(state.clock.elapsedTime * 5.5) * 0.08;
     ref.current.visible = active;
     ref.current.scale.setScalar(active ? pulse : 0.01);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { clearTouchMove, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
+import { clearTouchMove, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun, TouchPointerOwnership } from './touchInput';
 import { addCameraOrbit, recenterCamera } from './cameraInput';
 
 const HOLD_DELAY_MS = 520;
@@ -29,10 +29,8 @@ export function TouchControls({
 }: TouchControlsProps) {
   const padRef = useRef<HTMLDivElement>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activePointer = useRef<number | null>(null);
-  const lookPointer = useRef<number | null>(null);
+  const pointerOwnership = useRef(new TouchPointerOwnership());
   const lookPoint = useRef({ x: 0, y: 0 });
-  const lookPointers = useRef(new Map<number, { x: number; y: number }>());
   const startPoint = useRef({ x: 0, y: 0 });
   const maxTravel = useRef(0);
   const lastTapAt = useRef(0);
@@ -47,9 +45,7 @@ export function TouchControls({
         clearTimeout(holdTimer.current);
         holdTimer.current = null;
       }
-      activePointer.current = null;
-      lookPointer.current = null;
-      lookPointers.current.clear();
+      pointerOwnership.current.reset();
       resetTouchInput();
       holdTriggered.current = false;
       lastTapAt.current = 0;
@@ -63,7 +59,7 @@ export function TouchControls({
     return () => {
       if (holdTimer.current) clearTimeout(holdTimer.current);
       resetTouchInput();
-      lookPointers.current.clear();
+      pointerOwnership.current.reset();
     };
   }, []);
 
@@ -73,9 +69,7 @@ export function TouchControls({
         clearTimeout(holdTimer.current);
         holdTimer.current = null;
       }
-      activePointer.current = null;
-      lookPointer.current = null;
-      lookPointers.current.clear();
+      pointerOwnership.current.reset();
       holdTriggered.current = false;
       lastTapAt.current = 0;
       resetTouchInput();
@@ -107,10 +101,9 @@ export function TouchControls({
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!movementEnabled || activePointer.current !== null) return;
+    if (!movementEnabled || !pointerOwnership.current.claimMovement(event.pointerId)) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    activePointer.current = event.pointerId;
     startPoint.current = { x: event.clientX, y: event.clientY };
     maxTravel.current = 0;
     holdTriggered.current = false;
@@ -130,7 +123,7 @@ export function TouchControls({
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerId !== activePointer.current) return;
+    if (event.pointerId !== pointerOwnership.current.movementPointer) return;
     event.preventDefault();
     const travel = Math.hypot(
       event.clientX - startPoint.current.x,
@@ -145,13 +138,13 @@ export function TouchControls({
   };
 
   const finishPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerId !== activePointer.current) return;
+    if (event.pointerId !== pointerOwnership.current.movementPointer) return;
     event.preventDefault();
     if (holdTimer.current) {
       clearTimeout(holdTimer.current);
       holdTimer.current = null;
     }
-    activePointer.current = null;
+    pointerOwnership.current.releaseMovement(event.pointerId);
     const wasHold = holdTriggered.current;
     clearTouchMove();
     setKnob({ x: 0, y: 0 });
@@ -171,12 +164,12 @@ export function TouchControls({
   };
 
   const cancelPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerId !== activePointer.current) return;
+    if (event.pointerId !== pointerOwnership.current.movementPointer) return;
     if (holdTimer.current) {
       clearTimeout(holdTimer.current);
       holdTimer.current = null;
     }
-    activePointer.current = null;
+    pointerOwnership.current.releaseMovement(event.pointerId);
     holdTriggered.current = false;
     lastTapAt.current = 0;
     resetTouchInput();
@@ -186,41 +179,21 @@ export function TouchControls({
   };
 
   const startLook = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!movementEnabled) return;
+    if (!movementEnabled || !pointerOwnership.current.claimLook(event.pointerId)) return;
     event.preventDefault();
-    lookPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (lookPointers.current.size === 1) {
-      lookPointer.current = event.pointerId;
-      lookPoint.current = { x: event.clientX, y: event.clientY };
-    } else if (lookPointers.current.size === 2) {
-      lookPointer.current = null;
-    }
+    lookPoint.current = { x: event.clientX, y: event.clientY };
   };
 
   const moveLook = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!lookPointers.current.has(event.pointerId)) return;
+    if (pointerOwnership.current.lookPointer !== event.pointerId) return;
     event.preventDefault();
-    lookPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-
-    if (lookPointers.current.size >= 2) return;
-
-    if (lookPointer.current === event.pointerId) {
-      addCameraOrbit(event.clientX - lookPoint.current.x, event.clientY - lookPoint.current.y);
-      lookPoint.current = { x: event.clientX, y: event.clientY };
-    }
+    addCameraOrbit(event.clientX - lookPoint.current.x, event.clientY - lookPoint.current.y);
+    lookPoint.current = { x: event.clientX, y: event.clientY };
   };
 
   const finishLook = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!lookPointers.current.has(event.pointerId)) return;
-    lookPointers.current.delete(event.pointerId);
-    if (lookPointers.current.size === 1) {
-      const [remainingId, remainingPoint] = [...lookPointers.current.entries()][0];
-      lookPointer.current = remainingId;
-      lookPoint.current = remainingPoint;
-    } else {
-      lookPointer.current = null;
-    }
+    pointerOwnership.current.releaseLook(event.pointerId);
   };
 
   return (
