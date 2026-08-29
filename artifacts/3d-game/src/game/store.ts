@@ -28,6 +28,7 @@ import { resetTouchInput } from './touchInput';
 
 export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
+export type JuiceClubCustomerPhase = 'idle' | 'entry' | 'queue' | 'ordering' | 'service' | 'drink' | 'reaction' | 'departure';
 
 export interface FriendState {
   mood: 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
@@ -77,6 +78,8 @@ export interface GameState {
   juiceUpgrades: string[];
   waitingCustomers: string[];
   juiceClubServedCustomer: string | null;
+  juiceClubCustomerPhase: JuiceClubCustomerPhase;
+  juiceClubActiveCustomer: string | null;
   
   // Interaction & UI
   activeInteractable: string | null;
@@ -120,6 +123,9 @@ export interface GameState {
   removeWaitingCustomer: (id: string) => void;
   serveCustomer: () => void;
   clearJuiceClubServedCustomer: () => void;
+  advanceJuiceClubCustomer: () => void;
+  reportJuiceClubArrival: (customer: string, phase: JuiceClubCustomerPhase) => void;
+  resetJuiceClubCustomer: () => void;
   
   setActiveInteractable: (id: string | null) => void;
   setActiveDialogue: (dialogue: GameState['activeDialogue']) => void;
@@ -197,6 +203,8 @@ const initialState = {
   juiceUpgrades: [],
   waitingCustomers: [],
   juiceClubServedCustomer: null,
+  juiceClubCustomerPhase: 'idle' as JuiceClubCustomerPhase,
+  juiceClubActiveCustomer: null,
   
   activeInteractable: null,
   activeDialogue: null,
@@ -218,6 +226,22 @@ const BINKY_STATUSES = new Set<BinkyStatus>([
   'not-started', 'talked-to-owner', 'found-clue', 'traded-info', 'found', 'returned-good', 'returned-bad',
 ]);
 const TIDY_ITEMS = new Set(['blue-block', 'red-block', 'yellow-block']);
+
+function nextJuiceClubCustomerState(waitingCustomers: string[]) {
+  const customer = waitingCustomers[0] ?? null;
+  return customer
+    ? { juiceClubActiveCustomer: customer, juiceClubCustomerPhase: 'entry' as JuiceClubCustomerPhase }
+    : { juiceClubActiveCustomer: null, juiceClubCustomerPhase: 'idle' as JuiceClubCustomerPhase };
+}
+
+function resetJuiceClubCustomerState(state: Pick<GameState, 'waitingCustomers'>) {
+  return {
+    waitingCustomers: [],
+    juiceClubServedCustomer: null,
+    juiceClubActiveCustomer: null,
+    juiceClubCustomerPhase: 'idle' as JuiceClubCustomerPhase,
+  };
+}
 
 function safeStringArray(value: unknown) {
   return Array.isArray(value)
@@ -333,12 +357,16 @@ export const useGameStore = create<GameState>()(
       ...initialState,
       
       setQuality: (quality) => set({ quality }),
-      setTimeOfDay: (time) => set({ timeOfDay: time, schedule: getScheduleForTime(time) }),
+      setTimeOfDay: (time) => set((state) => {
+        const schedule = getScheduleForTime(time);
+        return { timeOfDay: time, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
+      }),
       
       advanceSchedule: () => set((state) => {
         let nextTime = state.timeOfDay + 1.5;
         if (nextTime > 17.0) nextTime = 9.0;
-        return { timeOfDay: nextTime, schedule: getScheduleForTime(nextTime) };
+        const schedule = getScheduleForTime(nextTime);
+        return { timeOfDay: nextTime, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
       }),
       
       toggleImagination: () => set((state) => ({ isImaginationMode: !state.isImaginationMode })),
@@ -559,18 +587,30 @@ export const useGameStore = create<GameState>()(
 
       addWaitingCustomer: (id) => set((state) => {
         if (!state.waitingCustomers.includes(id)) {
-          return { waitingCustomers: [...state.waitingCustomers, id] };
+          const waitingCustomers = [...state.waitingCustomers, id];
+          return state.juiceClubCustomerPhase === 'idle'
+            ? { waitingCustomers, juiceClubActiveCustomer: id, juiceClubCustomerPhase: 'entry' }
+            : { waitingCustomers };
         }
         return state;
       }),
 
-      removeWaitingCustomer: (id) => set((state) => ({
-        waitingCustomers: state.waitingCustomers.filter(c => c !== id)
-      })),
+      removeWaitingCustomer: (id) => set((state) => {
+        const waitingCustomers = state.waitingCustomers.filter((customer) => customer !== id);
+        return state.juiceClubActiveCustomer === id
+          ? { waitingCustomers, ...nextJuiceClubCustomerState(waitingCustomers) }
+          : { waitingCustomers };
+      }),
       
       serveCustomer: () => set((state) => {
         // Need 1 juice and 1 cracker minimum, and a waiting customer
-        if (state.juiceStock > 0 && state.crackerStock > 0 && state.waitingCustomers.length > 0) {
+        if (
+          state.juiceStock > 0
+          && state.crackerStock > 0
+          && state.waitingCustomers.length > 0
+          && state.juiceClubActiveCustomer === state.waitingCustomers[0]
+          && state.juiceClubCustomerPhase === 'ordering'
+        ) {
           const premiumMultiplier = state.juiceUpgrades.includes('premium-cups') ? 2 : 1;
           const cashEarned = 2 * premiumMultiplier;
           const servedId = state.waitingCustomers[0];
@@ -595,6 +635,8 @@ export const useGameStore = create<GameState>()(
             juiceClubCustomersServed: state.juiceClubCustomersServed + 1,
             waitingCustomers: state.waitingCustomers.slice(1),
             juiceClubServedCustomer: servedId,
+            juiceClubActiveCustomer: servedId,
+            juiceClubCustomerPhase: 'service',
             progression,
             friends: {
               ...state.friends,
@@ -608,7 +650,25 @@ export const useGameStore = create<GameState>()(
         }
         return state;
       }),
-      clearJuiceClubServedCustomer: () => set({ juiceClubServedCustomer: null }),
+      clearJuiceClubServedCustomer: () => set((state) => ({
+        juiceClubServedCustomer: null,
+        juiceClubCustomerPhase: state.juiceClubActiveCustomer ? 'departure' : state.juiceClubCustomerPhase,
+      })),
+      advanceJuiceClubCustomer: () => set((state) => {
+        const phase = state.juiceClubCustomerPhase;
+        if (phase === 'drink') return { juiceClubCustomerPhase: 'reaction' };
+        if (phase === 'reaction') return { juiceClubServedCustomer: null, juiceClubCustomerPhase: 'departure' };
+        return state;
+      }),
+      reportJuiceClubArrival: (customer, phase) => set((state) => {
+        if (state.juiceClubActiveCustomer !== customer || state.juiceClubCustomerPhase !== phase) return state;
+        if (phase === 'entry') return { juiceClubCustomerPhase: 'queue' };
+        if (phase === 'queue') return { juiceClubCustomerPhase: 'ordering' };
+        if (phase === 'service') return { juiceClubCustomerPhase: 'drink' };
+        if (phase === 'departure') return nextJuiceClubCustomerState(state.waitingCustomers);
+        return state;
+      }),
+      resetJuiceClubCustomer: () => set((state) => resetJuiceClubCustomerState(state)),
       
       setActiveInteractable: (id) => set((state) => ({
         activeInteractable: state.activeDialogue || state.journalOpen || state.zoneTransitioning ? null : id,
@@ -724,6 +784,7 @@ export const useGameStore = create<GameState>()(
             activeInteractable: null,
             activeDialogue: null,
             ambientMessage: null,
+            ...resetJuiceClubCustomerState(state),
           };
         });
         return changed;
@@ -741,6 +802,7 @@ export const useGameStore = create<GameState>()(
             activeInteractable: null,
             activeDialogue: null,
             ambientMessage: null,
+            ...resetJuiceClubCustomerState(state),
           };
         });
         return changed;

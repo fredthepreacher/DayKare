@@ -69,7 +69,7 @@ function JuiceStand({ playerRef }: { playerRef: React.RefObject<THREE.Group | nu
         <boxGeometry args={[1.95, 1.42, 0.12]} />
         <meshStandardMaterial color="#8338ec" />
       </mesh>
-      <SuppliedArtwork fileName="11_juice_club_branding.png" position={[0, 1.5, 0.075]} size={[1.7, 1.22]} backingColor="#8338ec" />
+      <SuppliedArtwork fileName="11_juice_club_branding.png" position={[0, 1.5, 0.075]} size={[1.7, 1.22]} backingColor="#8338ec" semanticRole="branding" />
       <mesh position={[-0.5, 1.35, 0]} castShadow>
         <cylinderGeometry args={[0.2, 0.2, 0.5, 16]} />
         <meshStandardMaterial color="#ff5400" transparent opacity={0.8} />

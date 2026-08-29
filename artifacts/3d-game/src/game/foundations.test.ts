@@ -31,6 +31,8 @@ import {
   PLAY_SLIDE_RAMP,
   WORLD_SOLIDS,
   getWorldSolidTransform,
+  getWorldSolidSurfaceTransform,
+  isCameraPositionClear,
   isWalkable,
   resolveCameraPosition,
   resolveMovement,
@@ -39,12 +41,14 @@ import {
 import { normalizeSavedItems, normalizeTidyItems, restoreZoneState, serializeGameState } from './store';
 import { HUB_ROUTES, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
-import { facingAngleForDirection, kidActivityMode, kidDestination, teacherPatrolSpots } from './NPCs';
+import { facingAngleForDirection, kidActivityMode, kidDestination, resolveNpcMovement, stepNpc, teacherPatrolSpots } from './NPCs';
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
 import { GARDEN_CAST, gardenNpcDestination } from './Garden';
 import { artworkBackingSize } from './Artwork';
 import { dialogueDismissLabel } from './dialogueActions';
+import { getSharedActivitySession, reportSessionArrival, resetActivitySessions } from './activitySessions';
+import { activitySessionIsInterrupted, sessionParticipant } from './activitySessions';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -185,6 +189,15 @@ assert.ok(
   routeGateCamera.distanceTo(new THREE.Vector3(12, 1, -13)) >= MIN_CAMERA_DISTANCE,
   'route gate obstruction preserves a nonzero framing distance',
 );
+assert.equal(isCameraPositionClear(routeGateCamera), true, 'camera alternate is outside every structural blocker');
+for (const desiredCamera of [
+  new THREE.Vector3(0, 1, -10),
+  new THREE.Vector3(10, 1, -8.4),
+  new THREE.Vector3(-16.1, 1, 0),
+]) {
+  const safeCamera = resolveCameraPosition(new THREE.Vector3(0, 1, 0), desiredCamera);
+  assert.equal(isCameraPositionClear(safeCamera), true, `resolved camera ${safeCamera.toArray().join(',')} never clips a wall`);
+}
 
 const route = getPortalWaypoints(new THREE.Vector3(0, 0, 0), new THREE.Vector3(12, 0, 5));
 assert.equal(route[0].x, 7.1);
@@ -214,6 +227,16 @@ assert.ok(PLAY_SLIDE_RAMP.solid.maxZ >= PLAY_SLIDE_RAMP.position[2] + 1);
 const upperStorageBox = getWorldSolidTransform('storage-box-upper', 0.8, 1.4);
 assert.deepEqual(upperStorageBox.position, [-14, 1.4, 10]);
 assert.deepEqual(upperStorageBox.size, [0.8000000000000007, 0.8, 0.8000000000000007]);
+assert.deepEqual(
+  getWorldSolidSurfaceTransform('main-south-wall', 'north', 1.72, 4.6),
+  { position: [4.6, 1.72, 7.66], rotation: [0, Math.PI, 0] },
+  'wall art placement derives from the authored wall face',
+);
+assert.deepEqual(
+  getWorldSolidSurfaceTransform('west-boundary', 'east', 1.65, 4.4),
+  { position: [-15.66, 1.65, 4.4], rotation: [0, Math.PI / 2, 0] },
+  'side-wall anchors derive both position and facing',
+);
 assert.equal(
   WORLD_SOLIDS.find((solid) => solid.id === 'storage-box-upper')?.collision,
   false,
@@ -292,14 +315,29 @@ useGameStore.getState().resetGame();
 useGameStore.setState({
   schedule: 'juice-club',
   waitingCustomers: ['Max', 'Noah'],
+  juiceClubActiveCustomer: 'Max',
+  juiceClubCustomerPhase: 'ordering',
   juiceStock: 2,
   crackerStock: 2,
 });
 useGameStore.getState().serveCustomer();
 assert.deepEqual(useGameStore.getState().waitingCustomers, ['Noah'], 'Juice Club service promotes the next queued customer');
 assert.equal(useGameStore.getState().juiceClubServedCustomer, 'Max', 'served customer enters the visible drink-and-exit phase');
-useGameStore.getState().clearJuiceClubServedCustomer();
+assert.equal(useGameStore.getState().juiceClubCustomerPhase, 'service');
+useGameStore.getState().reportJuiceClubArrival('Max', 'service');
+assert.equal(useGameStore.getState().juiceClubCustomerPhase, 'drink');
+useGameStore.getState().advanceJuiceClubCustomer();
+assert.equal(useGameStore.getState().juiceClubCustomerPhase, 'reaction');
+useGameStore.getState().advanceJuiceClubCustomer();
+assert.equal(useGameStore.getState().juiceClubCustomerPhase, 'departure');
 assert.equal(useGameStore.getState().juiceClubServedCustomer, null);
+useGameStore.getState().reportJuiceClubArrival('Max', 'departure');
+assert.equal(useGameStore.getState().juiceClubActiveCustomer, 'Noah');
+assert.equal(useGameStore.getState().juiceClubCustomerPhase, 'entry', 'next queued child begins a fresh lifecycle');
+useGameStore.getState().reportJuiceClubArrival('Noah', 'entry');
+assert.equal(useGameStore.getState().juiceClubCustomerPhase, 'queue');
+useGameStore.getState().reportJuiceClubArrival('Noah', 'queue');
+assert.equal(useGameStore.getState().juiceClubCustomerPhase, 'ordering');
 useGameStore.getState().resetGame();
 assert.equal(useGameStore.getState().enterGarden(), false, 'Garden remains blocked below ten reputation');
 useGameStore.setState((state) => ({
@@ -411,6 +449,21 @@ const artPairA = kidDestination('Leo', 'art-time', false, [0, 0, 0], 0, 0, []);
 const artPairB = kidDestination('Mia', 'art-time', false, [0, 0, 0], 1, 0, []);
 assert.deepEqual(artPairA.toArray(), artPairB.toArray(), 'paired children share a coordinated art-session anchor');
 
+resetActivitySessions();
+const gatheringSession = getSharedActivitySession('hub', 'morning-play', 0);
+assert.equal(gatheringSession?.phase, 'gathering', 'a shared activity waits at an arrival barrier');
+assert.ok(gatheringSession);
+reportSessionArrival('hub', 'morning-play', gatheringSession.id, 'Leo', 1);
+assert.equal(getSharedActivitySession('hub', 'morning-play', 1)?.phase, 'gathering', 'one participant cannot start the pair activity');
+const activeSession = reportSessionArrival('hub', 'morning-play', gatheringSession.id, 'Mia', 2);
+assert.equal(activeSession?.phase, 'active');
+assert.equal(activeSession?.startsAt, 2);
+assert.equal(activeSession?.endsAt, 14);
+assert.equal(getSharedActivitySession('hub', 'morning-play', 13)?.id, gatheringSession.id, 'the assignment stays stable for its shared active duration');
+const nextGatheringSession = getSharedActivitySession('hub', 'morning-play', 14);
+assert.equal(nextGatheringSession?.phase, 'gathering');
+assert.notEqual(nextGatheringSession?.id, gatheringSession.id, 'only a completed active phase rotates the assignment');
+
 for (const definition of GARDEN_CAST) {
   for (let cycle = 0; cycle < definition.route.length; cycle += 1) {
     const stop = gardenNpcDestination(definition.name, cycle);
@@ -430,6 +483,79 @@ assert.equal(
   Math.atan2(-wallSlideDisplacement.x, -wallSlideDisplacement.z),
   'NPC facing derives from resolved displacement rather than the blocked request',
 );
+const gardenNpcStart = new THREE.Vector3(6.8, 0, -3.4);
+const gardenNpcDesired = new THREE.Vector3(8.4, 0, -1.8);
+const gardenNpcMovement = resolveNpcMovement(gardenNpcStart, gardenNpcDesired, 'garden');
+assert.ok(gardenNpcMovement.displacement.lengthSq() > 0, 'NPC collision integration retains valid sliding movement');
+const gardenNpcGroup = new THREE.Group();
+gardenNpcGroup.position.copy(gardenNpcStart);
+const npcMoved = stepNpc('facing-integration', gardenNpcGroup, gardenNpcDesired, null, 1, 4, 'garden');
+assert.equal(npcMoved, true);
+const actualNpcDisplacement = gardenNpcGroup.position.clone().sub(gardenNpcStart);
+assert.ok(
+  Math.abs(
+    THREE.MathUtils.euclideanModulo(
+      gardenNpcGroup.rotation.y - facingAngleForDirection(actualNpcDisplacement) + Math.PI,
+      Math.PI * 2,
+    ) - Math.PI,
+  ) < 0.01,
+  'stepNpc rotates the rendered group from the displacement that survived pond collision',
+);
+clearNpcNavigation('facing-integration');
+
+resetActivitySessions();
+const sharedArt = getSharedActivitySession('hub', 'art-time', 1);
+assert.ok(sharedArt);
+assert.equal(sharedArt.participants.length, 2);
+assert.deepEqual(sharedArt.participants[0].focus, sharedArt.participants[1].slot, 'session partners face each other');
+assert.deepEqual(sharedArt.participants[1].focus, sharedArt.participants[0].slot);
+assert.equal(sessionParticipant(sharedArt, sharedArt.participants[0].name)?.activity, sharedArt.participants[0].activity);
+reportSessionArrival('hub', 'art-time', sharedArt.id, sharedArt.participants[0].name, 2);
+const waitingForPartner = getSharedActivitySession('hub', 'art-time', 7);
+assert.equal(waitingForPartner?.id, sharedArt.id, 'an early arrival keeps the same gathering assignment');
+assert.equal(waitingForPartner?.phase, 'gathering');
+assert.equal(waitingForPartner?.endsAt, null, 'gathering has no local dwell deadline that can expire');
+reportSessionArrival('hub', 'art-time', sharedArt.id, sharedArt.participants[1].name, 8);
+const staggeredActiveSession = getSharedActivitySession('hub', 'art-time', 8);
+assert.equal(staggeredActiveSession?.phase, 'active');
+assert.equal(staggeredActiveSession?.startsAt, 8, 'the final staggered arrival opens one shared start');
+assert.ok(staggeredActiveSession?.endsAt && staggeredActiveSession.endsAt > 8);
+resetActivitySessions();
+const synchronizedArt = getSharedActivitySession('hub', 'art-time', 1);
+assert.ok(synchronizedArt);
+reportSessionArrival('hub', 'art-time', synchronizedArt.id, synchronizedArt.participants[0].name, 1);
+reportSessionArrival('hub', 'art-time', synchronizedArt.id, synchronizedArt.participants[1].name, 1);
+assert.equal(getSharedActivitySession('hub', 'art-time', 12)?.id, synchronizedArt.id, 'shared participants remain assigned through one synchronized active phase');
+assert.notEqual(getSharedActivitySession('hub', 'art-time', 13)?.id, synchronizedArt.id, 'the next assignment starts only after the active phase ends');
+assert.equal(getSharedActivitySession('hub', 'art-time', 1, true), null, 'priority interruption cancels ambient sessions');
+assert.equal(activitySessionIsInterrupted({
+  activeDialogue: { text: 'quest' },
+  journalOpen: false,
+  zoneTransitioning: false,
+}), true);
+assert.equal(activitySessionIsInterrupted({
+  activeDialogue: null,
+  journalOpen: false,
+  zoneTransitioning: false,
+}), false);
+for (const [sessionZone, scheduleName] of [
+  ['hub', 'morning-play'],
+  ['hub', 'art-time'],
+  ['hub', 'outdoor-play'],
+  ['garden', 'garden-routine'],
+] as const) {
+  for (const elapsed of [1, 13, 25]) {
+    const session = getSharedActivitySession(sessionZone, scheduleName, elapsed);
+    assert.ok(session);
+    for (const participant of session.participants) {
+      assert.equal(
+        isWalkable(new THREE.Vector3(...participant.slot), 0.34, [], sessionZone),
+        true,
+        `${session.id} slot for ${participant.name} must be reachable`,
+      );
+    }
+  }
+}
 
 recenterCamera();
 assert.equal(consumeCameraRecenterRequest(), true);

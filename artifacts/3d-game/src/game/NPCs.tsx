@@ -3,11 +3,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { CharacterModel, type CharacterModelProps } from './CharacterModel';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
-import { getNavigationTarget, registerNpcPosition } from './navigation';
-import { useGameStore } from './store';
+import { clearNpcNavigation, getNavigationTarget, registerNpcPosition } from './navigation';
+import { useGameStore, type JuiceClubCustomerPhase } from './store';
 import { resolveMovement } from './world';
 import { playGameSound } from './audio';
 import { objectiveIsActive } from './quests';
+import {
+  activitySessionIsInterrupted,
+  getSharedActivitySession,
+  reportSessionArrival,
+  sessionParticipant,
+  sessionSlotVector,
+  type SharedActivityParticipant,
+} from './activitySessions';
 
 type KidDefinition = {
   name: string;
@@ -128,14 +136,25 @@ export function stepNpc(
   if (direction.lengthSq() < 0.002) return false;
   direction.normalize();
   const desired = ref.position.clone().addScaledVector(direction, Math.min(speed * delta, ref.position.distanceTo(navTarget)));
-  const before = ref.position.clone();
-  const resolved = resolveMovement(ref.position, desired, 0.34, 0.24, zone);
-  ref.position.copy(resolved);
+  const movement = resolveNpcMovement(ref.position, desired, zone);
+  ref.position.copy(movement.position);
   // Face the displacement that actually survived collision resolution. Turning
   // toward the requested waypoint here causes visible moonwalking at walls.
-  const displacement = resolved.clone().sub(before).setY(0);
-  if (displacement.lengthSq() > 0.000001) smoothTurn(ref, resolved, delta);
-  return displacement.lengthSq() > 0.000001;
+  if (movement.displacement.lengthSq() > 0.000001) {
+    const facingPoint = ref.position.clone().add(movement.displacement);
+    smoothTurn(ref, facingPoint, delta);
+  }
+  return movement.displacement.lengthSq() > 0.000001;
+}
+
+/** Pure collision result used by NPC locomotion and focused movement tests. */
+export function resolveNpcMovement(
+  current: THREE.Vector3,
+  desired: THREE.Vector3,
+  zone: 'hub' | 'garden' = 'hub',
+) {
+  const position = resolveMovement(current, desired, 0.34, 0.24, zone);
+  return { position, displacement: position.clone().sub(current).setY(0) };
 }
 
 function Teacher({
@@ -287,8 +306,15 @@ function Kid({
   const mood = useGameStore((state) => state.friends[name]?.mood ?? 'happy');
   const waitingCustomers = useGameStore((state) => state.waitingCustomers);
   const servedCustomer = useGameStore((state) => state.juiceClubServedCustomer);
+  const juiceClubPhase = useGameStore((state) => state.juiceClubCustomerPhase);
+  const activeJuiceClubCustomer = useGameStore((state) => state.juiceClubActiveCustomer);
+  const reportJuiceClubArrival = useGameStore((state) => state.reportJuiceClubArrival);
   const quests = useGameStore((state) => state.quests);
+  const journalOpen = useGameStore((state) => state.journalOpen);
+  const zoneTransitioning = useGameStore((state) => state.zoneTransitioning);
   const [settled, setSettled] = useState(false);
+  const [sessionVisual, setSessionVisual] = useState<SharedActivityParticipant | null>(null);
+  const sessionVisualRef = useRef<SharedActivityParticipant | null>(null);
   const settledRef = useRef(false);
   const greetingClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const phase = useMemo(() => namePhase(name), [name]);
@@ -300,6 +326,7 @@ function Kid({
     arrived: false,
     cycle: 0,
     stuckFor: 0,
+    replanAttempts: 0,
     lastPosition: new THREE.Vector3(...defaultPos),
   });
   const candidate = useMemo(() => ({
@@ -319,22 +346,39 @@ function Kid({
   useFrame((state, delta) => {
     if (!ref.current) return;
     const questRequired = questPriorityForKid(name, quests);
-    const activityKey = `${schedule}:${isRainy}:${servedCustomer ?? ''}:${questRequired}`;
+    const sharedSession = getSharedActivitySession(
+      'hub',
+      schedule,
+      state.clock.elapsedTime,
+      activitySessionIsInterrupted({ activeDialogue, journalOpen, zoneTransitioning, questPriority: questRequired }),
+    );
+    const participant = sessionParticipant(sharedSession, name);
+    const visibleParticipant = sharedSession?.phase === 'active' ? participant : null;
+    if (
+      visibleParticipant?.activity !== sessionVisualRef.current?.activity
+      || visibleParticipant?.reaction !== sessionVisualRef.current?.reaction
+      || (!visibleParticipant && sessionVisualRef.current)
+    ) {
+      sessionVisualRef.current = visibleParticipant;
+      setSessionVisual(visibleParticipant);
+    }
+    const activityKey = `${schedule}:${isRainy}:${servedCustomer ?? ''}:${activeJuiceClubCustomer ?? ''}:${juiceClubPhase}:${questRequired}:${sharedSession?.id ?? ''}:${sharedSession?.phase ?? ''}:${sharedSession?.startsAt ?? ''}`;
     if (activityState.current.key !== activityKey) {
       activityState.current.key = activityKey;
       activityState.current.dwellUntil = 0;
       activityState.current.arrived = false;
       activityState.current.cycle = 0;
       activityState.current.stuckFor = 0;
+      activityState.current.replanAttempts = 0;
       activityTarget.copy(
         questRequired
           ? new THREE.Vector3(...defaultPos)
-          : kidDestination(name, schedule, isRainy, defaultPos, phase, 0, waitingCustomers, servedCustomer),
+          : participant ? sessionSlotVector(participant) : kidDestination(name, schedule, isRainy, defaultPos, phase, 0, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer),
       );
     }
     let distanceToActivity = ref.current.position.distanceTo(activityTarget);
     if (schedule === 'juice-club' && !questRequired) {
-      const queueTarget = kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer);
+      const queueTarget = kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer);
       if (queueTarget.distanceToSquared(activityTarget) > 0.01) {
         activityTarget.copy(queueTarget);
         activityState.current.arrived = false;
@@ -346,7 +390,9 @@ function Kid({
       activityState.current.arrived = true;
       activityState.current.dwellUntil = questRequired
         ? Number.POSITIVE_INFINITY
-        : state.clock.elapsedTime + 3.5 + (phase % 3);
+        : sharedSession
+          ? sharedSession.endsAt ?? Number.POSITIVE_INFINITY
+          : state.clock.elapsedTime + 3.5 + (phase % 3);
     }
     if (active && playerRef.current) {
       smoothTurn(ref.current, playerRef.current.position, delta);
@@ -358,15 +404,36 @@ function Kid({
         ? activityState.current.stuckFor + delta
         : 0;
       if (activityState.current.stuckFor > 2.8) {
-        activityState.current.cycle += 1;
+        clearNpcNavigation(`kid-${name}`);
+        activityState.current.replanAttempts += 1;
         activityState.current.stuckFor = 0;
-        activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer));
+        if (participant) {
+          activityTarget.copy(sessionSlotVector(participant));
+        } else if (activityState.current.replanAttempts >= 2) {
+          activityState.current.cycle += 1;
+          activityState.current.replanAttempts = 0;
+          activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer));
+        }
       }
-    } else if (state.clock.elapsedTime >= activityState.current.dwellUntil) {
+    } else if (!participant && state.clock.elapsedTime >= activityState.current.dwellUntil) {
       activityState.current.cycle += 1;
       activityState.current.arrived = false;
       activityState.current.dwellUntil = 0;
-        activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer));
+        activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer));
+    }
+    if (participant && distanceToActivity < 0.48 && !active) {
+      smoothTurn(ref.current, new THREE.Vector3(...participant.focus), delta);
+      if (sharedSession?.phase === 'gathering') {
+        reportSessionArrival('hub', schedule, sharedSession.id, name, state.clock.elapsedTime);
+      }
+    }
+    if (
+      schedule === 'juice-club'
+      && activeJuiceClubCustomer === name
+      && distanceToActivity < 0.48
+      && (juiceClubPhase === 'entry' || juiceClubPhase === 'queue' || juiceClubPhase === 'service' || juiceClubPhase === 'departure')
+    ) {
+      reportJuiceClubArrival(name, juiceClubPhase);
     }
     const settled = activityState.current.arrived
       && state.clock.elapsedTime < activityState.current.dwellUntil
@@ -419,8 +486,9 @@ function Kid({
 
   return (
     <group ref={ref} position={defaultPos}>
-      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} activityMode={settled ? kidActivityMode(schedule, isRainy, phase) : 'standing'} />
-      {settled && !questPriorityForKid(name, quests) && <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />}
+      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={settled && sessionVisual?.reaction === 'cheer' ? 'excited' : mood} isTalking={activeDialogue?.name === name || Boolean(settled && sessionVisual?.activity === 'conversation')} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} activityMode={settled && sessionVisual ? sessionActivityMode(sessionVisual) : settled ? kidActivityMode(schedule, isRainy, phase) : 'standing'} socialReaction={settled ? sessionVisual?.reaction : undefined} />
+      {settled && sessionVisual && <SessionProp participant={sessionVisual} />}
+      {settled && !sessionVisual && !questPriorityForKid(name, quests) && <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />}
       {settled && !questPriorityForKid(name, quests) && <SocialGameMarker schedule={schedule} phase={phase} cycle={activityState.current.cycle} />}
     </group>
   );
@@ -435,7 +503,22 @@ export function kidDestination(
   cycle: number,
   waitingCustomers: string[],
   servedCustomer: string | null = null,
+  customerPhase?: JuiceClubCustomerPhase,
+  activeCustomer?: string | null,
 ) {
+  if (schedule === 'juice-club' && activeCustomer === name && customerPhase) {
+    const lifecycleTargets: Partial<Record<JuiceClubCustomerPhase, [number, number, number]>> = {
+      entry: [-1.35, 0, -1.92],
+      queue: [0.7, 0, -1.92],
+      ordering: [2.05, 0, -1.92],
+      service: [2.45, 0, -1.65],
+      drink: [3.05, 0, -1.65],
+      reaction: [3.05, 0, -1.65],
+      departure: [3.45, 0, -1.65],
+    };
+    const target = lifecycleTargets[customerPhase];
+    if (target) return new THREE.Vector3(...target);
+  }
   if (schedule === 'juice-club' && servedCustomer === name) {
     // The served child visibly leaves the counter before rejoining the room.
     return new THREE.Vector3(3.45, 0, -1.65);
@@ -556,6 +639,31 @@ function SocialGameMarker({ schedule, phase, cycle }: { schedule: string; phase:
       <mesh rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.12, 10]} /><meshBasicMaterial color={color} transparent opacity={0.8} /></mesh>
       {schedule === 'outdoor-play' && <mesh position={[0, 0.16, 0]}><sphereGeometry args={[0.1, 8, 6]} /><meshStandardMaterial color="#e8613c" /></mesh>}
       {schedule === 'morning-play' && <mesh position={[0, 0.1, 0]} rotation={[0.2, 0.3, 0]}><boxGeometry args={[0.18, 0.18, 0.18]} /><meshStandardMaterial color="#4c82d4" /></mesh>}
+    </group>
+  );
+}
+
+function sessionActivityMode(participant: SharedActivityParticipant): NonNullable<CharacterModelProps['activityMode']> {
+  if (participant.activity === 'drawing' || participant.activity === 'coloring') return 'sitting';
+  if (participant.activity === 'toy-play') return 'playing';
+  return 'gathering';
+}
+
+function SessionProp({ participant }: { participant: SharedActivityParticipant }) {
+  const color = participant.activity === 'drawing' || participant.activity === 'coloring'
+    ? '#e76f8c'
+    : participant.activity === 'teacher-help' || participant.activity === 'teacher-praise' || participant.activity === 'teacher-observation'
+      ? '#68a9a7'
+      : '#71d4b4';
+  return (
+    <group position={[0.4, 0.78, -0.3]}>
+      {participant.activity === 'drawing' || participant.activity === 'coloring' ? (
+        <mesh rotation={[0, 0.2, -0.25]}><boxGeometry args={[0.25, 0.32, 0.035]} /><meshStandardMaterial color="#fff1cf" /></mesh>
+      ) : participant.activity === 'toy-play' || participant.activity === 'blocks' ? (
+        <mesh position={[0, -0.5, 0]}><sphereGeometry args={[0.13, 10, 8]} /><meshStandardMaterial color="#e8613c" /></mesh>
+      ) : (
+        <mesh><boxGeometry args={[0.2, 0.27, 0.06]} /><meshStandardMaterial color={color} /></mesh>
+      )}
     </group>
   );
 }

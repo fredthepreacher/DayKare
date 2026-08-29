@@ -45,6 +45,8 @@ export function UI() {
     crackerStock,
     waitingCustomers,
     juiceClubServedCustomer,
+    juiceClubCustomerPhase,
+    juiceClubActiveCustomer,
     juiceUpgrades,
     toggleJournal,
     toggleImagination,
@@ -59,7 +61,8 @@ export function UI() {
     buyStock,
     buyUpgrade,
     serveCustomer,
-    clearJuiceClubServedCustomer,
+    advanceJuiceClubCustomer,
+    resetJuiceClubCustomer,
     addWaitingCustomer,
     setIsRiding,
     isRiding,
@@ -112,12 +115,16 @@ export function UI() {
 
   // Juice Club Customers Simulation
   useEffect(() => {
-    if (schedule !== 'juice-club' || zone !== 'hub') return;
+    if (schedule !== 'juice-club' || zone !== 'hub') {
+      resetJuiceClubCustomer();
+      return;
+    }
     const potentialCustomers = ['Max', 'Noah', 'Zoe'];
     const inviteNext = () => {
       const name = potentialCustomers[queueCursor.current % potentialCustomers.length];
       queueCursor.current += 1;
-      useGameStore.getState().addWaitingCustomer(name);
+      const game = useGameStore.getState();
+      if (!game.waitingCustomers.includes(name) && !game.juiceClubServedCustomer) game.addWaitingCustomer(name);
     };
     const first = window.setTimeout(inviteNext, 1400);
     const interval = window.setInterval(inviteNext, 8000);
@@ -125,13 +132,19 @@ export function UI() {
       window.clearTimeout(first);
       window.clearInterval(interval);
     };
-  }, [schedule, zone]);
+  }, [schedule, zone, resetJuiceClubCustomer]);
 
   useEffect(() => {
-    if (!juiceClubServedCustomer) return;
-    const timer = window.setTimeout(clearJuiceClubServedCustomer, 3200);
+    if (schedule !== 'juice-club' || zone !== 'hub' || juiceClubCustomerPhase === 'idle') return;
+    const delays: Partial<Record<string, number>> = {
+      drink: 1500,
+      reaction: 1200,
+    };
+    const delay = delays[juiceClubCustomerPhase];
+    if (!delay) return;
+    const timer = window.setTimeout(advanceJuiceClubCustomer, delay);
     return () => window.clearTimeout(timer);
-  }, [juiceClubServedCustomer, clearJuiceClubServedCustomer]);
+  }, [schedule, zone, juiceClubCustomerPhase, juiceClubServedCustomer, advanceJuiceClubCustomer]);
 
   useEffect(() => {
     const runInteraction = () => {
@@ -177,9 +190,13 @@ export function UI() {
                   action: () => {
                     if (waitingCustomers.length > 0) {
                       if (juiceStock > 0 && crackerStock > 0) {
-                        serveCustomer();
-                         playGameSound('juice-service', 'interaction');
-                        setActiveDialogue({ name: 'System', text: 'Served a happy customer! +1 reputation and +1 Star Token.' });
+                        if (juiceClubCustomerPhase === 'ordering') {
+                          serveCustomer();
+                          playGameSound('juice-service', 'interaction');
+                          setActiveDialogue({ name: 'System', text: 'Served a happy customer! +1 reputation and +1 Star Token.' });
+                        } else {
+                          setActiveDialogue({ name: 'System', text: `${juiceClubActiveCustomer ?? waitingCustomers[0]} is still walking up to order.` });
+                        }
                       } else {
                         setActiveDialogue({ name: 'System', text: 'Out of stock! Buy more in the Journal Business tab.' });
                       }
@@ -291,7 +308,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression, quests, zoneTransitioning, gardenActivityStep]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Mr. Davis') {
@@ -555,7 +572,9 @@ export function UI() {
               <span>{juiceClubCash}.00</span>
             </div>
             {waitingCustomers.length > 0 && (
-              <div className="text-xs text-orange-600 animate-pulse mt-1">Customer waiting!</div>
+              <div className="text-xs text-orange-600 animate-pulse mt-1">
+                {juiceClubCustomerPhase === 'ordering' ? `${juiceClubActiveCustomer} is ordering!` : `Customer ${juiceClubCustomerPhase}`}
+              </div>
             )}
           </div>
         )}

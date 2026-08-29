@@ -6,6 +6,7 @@ type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
 type Accessory = 'none' | 'backpack' | 'badge';
 type ActivityMode = 'standing' | 'sitting' | 'playing' | 'gathering';
+type SocialReaction = 'smile' | 'wave' | 'cheer' | 'listen';
 
 const SHARED_ACCESSORY_BOX = new THREE.BoxGeometry(0.42, 0.5, 0.16);
 const SHARED_BADGE = new THREE.CircleGeometry(0.09, 10);
@@ -25,6 +26,7 @@ export interface CharacterModelProps {
   idleEnergy?: number;
   accessory?: Accessory;
   activityMode?: ActivityMode;
+  socialReaction?: SocialReaction;
 }
 
 const moodBrowRotation: Record<Mood, number> = {
@@ -50,6 +52,7 @@ export function CharacterModel({
   idleEnergy = 1,
   accessory = 'none',
   activityMode = 'standing',
+  socialReaction,
 }: CharacterModelProps) {
   const rig = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -86,8 +89,10 @@ export function CharacterModel({
     const blink = Math.pow(Math.max(0, Math.sin(state.clock.elapsedTime * 0.62 + motionSeed * 0.7)), 30);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
-      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045;
-      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045;
+      const wave = socialReaction === 'wave' ? Math.sin(state.clock.elapsedTime * 6 + motionSeed) * 0.5 : 0;
+      const cheer = socialReaction === 'cheer' ? -0.7 : 0;
+      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045 + cheer;
+      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045 + wave + cheer;
       leftLeg.current.rotation.x = -stride * 0.7;
       rightLeg.current.rotation.x = stride * 0.7;
       leftArm.current.rotation.z = -0.08 - idleGesture * 0.025 - talkGesture;
@@ -96,7 +101,7 @@ export function CharacterModel({
 
     if (head.current) {
       head.current.rotation.z = Math.sin(state.clock.elapsedTime * 1.7 + motionSeed) * 0.018 * idleEnergy;
-      head.current.rotation.x = isTalking ? -0.08 : idle;
+      head.current.rotation.x = isTalking ? -0.08 : socialReaction === 'listen' ? 0.09 : idle;
     }
 
     if (leftEye.current && rightEye.current) {

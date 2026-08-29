@@ -59,6 +59,13 @@ export interface WorldSolidTransform {
   size: [number, number, number];
 }
 
+export type WorldSolidFace = 'north' | 'south' | 'west' | 'east';
+
+export interface WorldSurfaceTransform {
+  position: [number, number, number];
+  rotation: [number, number, number];
+}
+
 const defaultCameraRole = (kind: SolidKind): WorldSolid['cameraRole'] => (
   kind === 'wall' || kind === 'boundary' || kind === 'route-gate' ? 'structural' : 'none'
 );
@@ -183,6 +190,42 @@ export function getWorldSolidTransform(id: string, height: number, centerY = hei
   };
 }
 
+export function getWorldSolidSurfaceTransform(
+  id: string,
+  face: WorldSolidFace,
+  height: number,
+  along?: number,
+  offset = 0.04,
+): WorldSurfaceTransform {
+  const solid = WORLD_SOLIDS.find((candidate) => candidate.id === id);
+  if (!solid) throw new Error(`Unknown world solid: ${id}`);
+  if (solid.shape === 'circle') throw new Error(`Circular world solid has no flat artwork surface: ${id}`);
+  const centerX = (solid.minX + solid.maxX) / 2;
+  const centerZ = (solid.minZ + solid.maxZ) / 2;
+  if (face === 'north') {
+    return {
+      position: [along ?? centerX, height, solid.minZ - offset],
+      rotation: [0, Math.PI, 0],
+    };
+  }
+  if (face === 'south') {
+    return {
+      position: [along ?? centerX, height, solid.maxZ + offset],
+      rotation: [0, 0, 0],
+    };
+  }
+  if (face === 'west') {
+    return {
+      position: [solid.minX - offset, height, along ?? centerZ],
+      rotation: [0, -Math.PI / 2, 0],
+    };
+  }
+  return {
+    position: [solid.maxX + offset, height, along ?? centerZ],
+    rotation: [0, Math.PI / 2, 0],
+  };
+}
+
 export const WORLD_PORTALS: WorldPortal[] = [
   { id: 'main-hall-west', axis: 'x', position: [-8, 0, 0], width: 4.3, connects: ['classroom', 'hallway'] },
   { id: 'main-play-east', axis: 'x', position: [8, 0, 0], width: 4.3, connects: ['classroom', 'playground'] },
@@ -261,6 +304,16 @@ function blocksCameraAt(point: THREE.Vector3, radius: number, solid: WorldSolid)
   return point.y + radius >= minY
     && point.y - radius <= maxY
     && overlapsCircle(point, radius, solid);
+}
+
+export function isCameraPositionClear(
+  point: THREE.Vector3,
+  radius = 0.2,
+  zone: GameZone = 'hub',
+) {
+  return !CAMERA_BLOCKERS.some((solid) => (
+    solid.zone === zone && blocksCameraAt(point, radius, solid)
+  ));
 }
 
 export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_RADIUS, zone: GameZone = 'hub') {
@@ -379,7 +432,7 @@ export function resolveCameraPosition(
     for (let index = 1; index <= steps; index += 1) {
       const sampleDistance = distance * (index / steps);
       const sample = target.clone().addScaledVector(direction, sampleDistance);
-      if (blockers.some((solid) => blocksCameraAt(sample, radius, solid))) {
+      if (!isCameraPositionClear(sample, radius, zone)) {
         return distance * ((index - 1) / steps);
       }
     }
@@ -387,28 +440,39 @@ export function resolveCameraPosition(
   };
 
   const yawOffsets = [0, Math.PI / 8, -Math.PI / 8, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI];
-  let bestDirection = desiredOffset.clone().normalize();
-  let bestSafeDistance = trace(bestDirection);
-  if (bestSafeDistance >= MIN_CAMERA_DISTANCE) {
-    return target.clone().addScaledVector(bestDirection, Math.min(distance, bestSafeDistance));
-  }
-  for (const yaw of yawOffsets.slice(1)) {
+  const candidates = yawOffsets.map((yaw) => {
     const rotated = horizontal.clone().rotateAround(new THREE.Vector2(), yaw);
-    const candidateDirection = new THREE.Vector3(rotated.x, vertical, rotated.y).normalize();
-    const candidateSafeDistance = trace(candidateDirection);
-    if (candidateSafeDistance > bestSafeDistance) {
-      bestSafeDistance = candidateSafeDistance;
-      bestDirection = candidateDirection;
-    }
-    if (candidateSafeDistance >= MIN_CAMERA_DISTANCE) {
-      return target.clone().addScaledVector(candidateDirection, Math.min(distance, candidateSafeDistance));
-    }
+    const direction = new THREE.Vector3(rotated.x, vertical, rotated.y).normalize();
+    const safeDistance = trace(direction);
+    const retainedDistance = Math.min(distance, safeDistance);
+    const anglePenalty = Math.abs(yaw) / Math.PI;
+    const framingScore = retainedDistance / distance;
+    return {
+      direction,
+      safeDistance,
+      retainedDistance,
+      score: framingScore * 4 - anglePenalty * 0.72,
+    };
+  });
+  const validCandidates = candidates
+    .filter((candidate) => candidate.safeDistance >= MIN_CAMERA_DISTANCE)
+    .sort((a, b) => b.score - a.score);
+  if (validCandidates.length > 0) {
+    const best = validCandidates[0];
+    return target.clone().addScaledVector(best.direction, best.retainedDistance);
   }
 
-  const safeDistance = bestSafeDistance >= MIN_CAMERA_DISTANCE
-    ? bestSafeDistance
-    : Math.max(bestSafeDistance, EMERGENCY_CAMERA_DISTANCE);
-  return target.clone().addScaledVector(bestDirection, Math.min(distance, safeDistance));
+  const bestConstrained = candidates.sort((a, b) => (
+    b.safeDistance - a.safeDistance || b.score - a.score
+  ))[0];
+  // In a fully constrained pocket, never invent clearance that the trace did
+  // not prove. Remaining close to the target is preferable to crossing a wall.
+  const constrainedDistance = Math.max(0, Math.min(
+    bestConstrained.safeDistance - radius * 0.5,
+    EMERGENCY_CAMERA_DISTANCE,
+    distance,
+  ));
+  return target.clone().addScaledVector(bestConstrained.direction, constrainedDistance);
 }
 
 export function findApproachPoint(
