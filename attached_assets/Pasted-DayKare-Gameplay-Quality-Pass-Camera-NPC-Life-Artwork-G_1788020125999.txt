@@ -1,0 +1,19 @@
+DayKare Gameplay Quality Pass — Camera, NPC Life, Artwork, Garden, Navigation
+
+Continue improving the existing DayKare game without rewriting stable systems. Preserve Binky, Rainbow Tidy-Up, Garden unlock/return, saves, current collision foundations, current art style, and the no-manual-zoom rule.
+
+Fix NPC moonwalking by making character facing follow actual resolved movement. Make walking, turning, stopping, and teacher-facing behavior natural. Replace decorative NPC activity states with visible daycare activity sessions: coloring/drawing at tables, coloring books/artwork, toy play, face-to-face conversations, synchronized small groups, orderly lines/queues, teacher-child supervision/help/praise, Juice Club entry/service/drink/exit behavior, and natural arrival/settling/departure transitions. Quest interactions must always take priority over ambient/social behavior.
+
+Add a lightweight Garden population with children and teachers using Garden-aware navigation and activities such as watering flowers, examining plants, pond watching, gazebo conversations, toy play, teacher observation, and short social walks.
+
+Improve portrait/mobile camera framing so regular gameplay is naturally farther out and shows substantially more of the surrounding world. Keep orbit and recenter, but do not restore manual zoom controls. Add portrait-aware framing/FOV/look-ahead and prevent obstruction recovery from collapsing excessively close to the player.
+
+Fix floating or unsupported artwork. Anchor wall, floor, and sign artwork to actual geometry/backings, relocate the unsupported door sign, resize Juice Club branding correctly, ground Garden flower stems, and integrate the remaining useful supplied DayKare assets including classroom scene, playground equipment, cubby labels, toy props, quest icons, environmental props, wayfinding markers, material textures, and attendance chart where they improve the environment.
+
+Finish navigation and lifecycle cleanup: validate NPC destinations, support Garden-aware pathing, add teacher stuck recovery, clear stale paths/registrations safely, align visible structures with collision/camera ownership, and keep doorway traversal smooth.
+
+Improve mobile dialogue usability with clear safe-area-aware Continue/Close and Cancel/Leave controls where appropriate.
+
+After implementation, run regression/build validation for NPC facing, synchronized activities, queue advancement, Garden routing, portrait camera framing, artwork anchoring, mobile dialogue dismissal, collision/navigation, save/quest continuity, and component remount cleanup.
+
+Do not prioritize or start the WebGL fallback task as part of this pass.
