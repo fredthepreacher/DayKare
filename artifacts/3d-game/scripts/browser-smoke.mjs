@@ -141,12 +141,17 @@ try {
   client = new CdpClient(page.webSocketDebuggerUrl);
   await client.connect();
   const exceptions = [];
+  const networkResources = [];
   client.on('Runtime.exceptionThrown', ({ exceptionDetails }) => {
     exceptions.push(exceptionDetails.exception?.description ?? exceptionDetails.text);
+  });
+  client.on('Network.responseReceived', ({ response }) => {
+    networkResources.push(response.url);
   });
   await Promise.all([
     client.send('Runtime.enable'),
     client.send('Page.enable'),
+    client.send('Network.enable'),
     client.send('Emulation.setDeviceMetricsOverride', {
       width: 390,
       height: 844,
@@ -157,6 +162,16 @@ try {
   await client.send('Page.navigate', { url: targetUrl });
   await waitFor(client, 'document.readyState === "complete"', 'page load');
   await waitFor(client, 'Boolean(document.querySelector("canvas"))', '3D canvas mount');
+  assert.equal(
+    networkResources.some((url) => url.includes('Journal.tsx') || url.includes('/Journal-')),
+    false,
+    'Journal chunk is deferred until the Journal opens',
+  );
+  assert.equal(
+    networkResources.some((url) => url.includes('Garden.tsx') || url.includes('/Garden-')),
+    false,
+    'Garden chunk is deferred until the Garden opens',
+  );
   if (process.env.DAYKARE_CAPTURE_DIR) {
     await mkdir(process.env.DAYKARE_CAPTURE_DIR, { recursive: true });
     await client.send('Emulation.setDeviceMetricsOverride', {
@@ -227,6 +242,15 @@ try {
     14.25,
     'local save rehydrates after a real page reload',
   );
+
+  const waitForResource = async (fragment, message, timeoutMs = 8000) => {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (networkResources.some((url) => url.includes(fragment))) return;
+      await sleep(100);
+    }
+    throw new Error(`Timed out: ${message}`);
+  };
 
   const gameplayRegression = await evaluate(client, `(async () => {
     const sessions = await import(${JSON.stringify(new URL('src/game/activitySessions.ts', targetUrl).href)});
@@ -337,6 +361,23 @@ try {
     performanceSample.fps >= minimumFps,
     `mobile frame sample is below the ${minimumFps}fps ${softwareRenderer ? 'software' : 'hardware'} budget: ${performanceSample.fps.toFixed(1)}fps`,
   );
+
+  await evaluate(client, 'globalThis.__daykareStore.getState().toggleJournal()');
+  await waitFor(client, 'Boolean(document.querySelector(".daykare-journal-shell"))', 'lazy Journal overlay');
+  await waitForResource(
+    'Journal.tsx',
+    'Journal module loads when the Journal opens',
+  );
+  await evaluate(client, 'globalThis.__daykareStore.getState().toggleJournal()');
+  await waitFor(client, 'globalThis.__daykareStore.getState().journalOpen === false', 'Journal closes');
+
+  await evaluate(client, 'globalThis.__daykareStore.setState({ zone: "garden" })');
+  await waitForResource(
+    'Garden.tsx',
+    'Garden module loads when the Garden opens',
+  );
+  await evaluate(client, 'globalThis.__daykareStore.setState({ zone: "hub" })');
+
   assert.equal(
     exceptions.filter((message) => !message.includes('WebGL')).length,
     0,

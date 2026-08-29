@@ -1,19 +1,20 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky, KeyboardControls } from '@react-three/drei';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { Player } from './Player';
 import { Environment } from './Environment';
 import { NPCs } from './NPCs';
 import { Interactables } from './Interactables';
 import { HubDetails } from './HubDetails';
 import { HubProgression } from './HubProgression';
-import { Garden } from './Garden';
 import { keyMap } from './Controls';
 import { UI } from './UI';
-import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
 import { isGameplayBlocked } from './gameplayGate';
+
+const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
 
 function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   const forward = useRef(new THREE.Vector3());
@@ -77,7 +78,9 @@ function GameScene() {
           <NPCs playerRef={playerRef} />
         </>
       ) : (
-        <Garden />
+        <Suspense fallback={null}>
+          <Garden />
+        </Suspense>
       )}
       <Player ref={playerRef} />
       <InteractionFocusSystem playerRef={playerRef} />

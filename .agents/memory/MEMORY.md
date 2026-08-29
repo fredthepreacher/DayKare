@@ -1,2 +1,2 @@
-- [WebGL preview validation](webgl-preview-validation.md) — automated screenshots may fail to allocate WebGL even when the DayKare app and workflow are healthy.
+- [WebGL preview validation](webgl-preview-validation.md) — capture browsers can fail WebGL, and SwiftShader frame samples should run before mounting deferred scenes.
 - [Vite smoke-test module identity](vite-smoke-module-identity.md) — restart after HMR edits before browser tests that dynamically import live state modules.
