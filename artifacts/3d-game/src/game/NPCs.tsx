@@ -27,7 +27,7 @@ type KidDefinition = {
   defaultPos: [number, number, number];
 };
 
-const KID_CAST: KidDefinition[] = [
+export const KID_CAST: KidDefinition[] = [
   { name: 'Leo', color: '#e65a4f', accent: '#ffd166', hairColor: '#5b352c', hairStyle: 'sprout', skinColor: '#efb58f', defaultPos: [2, 0, 3] },
   { name: 'Mia', color: '#54b9bd', accent: '#f1d985', hairColor: '#3f2927', hairStyle: 'ponytail', skinColor: '#c98562', defaultPos: [-3, 0, 4] },
   { name: 'Sam', color: '#2a9d8f', accent: '#ecb56b', hairColor: '#2f231f', hairStyle: 'curls', skinColor: '#8f5139', defaultPos: [11, 0, -10] },
@@ -530,7 +530,8 @@ export function kidDestination(
   // On every third stop, pairs briefly share a recognizable game/table area.
   // Their individual dwell clocks naturally split the cluster back apart.
   if (cycle % 3 === 0) {
-    const pair = Math.floor(KID_CAST.findIndex((kid) => kid.name === name) / 2);
+    const castIndex = KID_CAST.findIndex((kid) => kid.name === name);
+    const pair = Math.floor(castIndex / 2);
     const groupSpots: Partial<Record<string, [number, number, number][]>> = {
       'morning-play': [[-2.7, 0, 1.4], [0.5, 0, 3.1], [2.8, 0, 0.5], [-0.2, 0, -1.8], [3.1, 0, 2.6]],
       'art-time': [[-14.1, 0, -11.5], [-12.6, 0, -9.5], [-9.7, 0, -10.6], [-9.7, 0, -13.5], [-12.2, 0, -14.6]],
@@ -539,7 +540,11 @@ export function kidDestination(
         : [[10.3, 0, -10.7], [13.6, 0, -8.2], [10.6, 0, -1.6], [14.1, 0, 1.1], [13.6, 0, 8.4]],
     };
     const spots = groupSpots[schedule];
-    if (spots) return new THREE.Vector3(...spots[pair % spots.length]);
+    if (spots) {
+      const spot = spots[pair % spots.length];
+      const pairOffset = castIndex % 2 === 0 ? -0.38 : 0.38;
+      return new THREE.Vector3(spot[0], spot[1], spot[2] + pairOffset);
+    }
   }
   return scheduleDestination(schedule, rainy, defaultPos, phase, cycle);
 }

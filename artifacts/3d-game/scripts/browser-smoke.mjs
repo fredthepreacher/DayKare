@@ -101,6 +101,26 @@ async function waitFor(client, expression, message, timeoutMs = 8000) {
   throw new Error(`Timed out: ${message}`);
 }
 
+async function dispatchKey(client, type, code, key) {
+  await client.send('Input.dispatchKeyEvent', {
+    type,
+    code,
+    key,
+    windowsVirtualKeyCode: key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0,
+    nativeVirtualKeyCode: key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0,
+  });
+}
+
+async function setViewport(client, width, height, mobile) {
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width,
+    height,
+    deviceScaleFactor: mobile ? 2 : 1,
+    mobile,
+  });
+  await sleep(180);
+}
+
 const domain = process.env.REPLIT_DEV_DOMAIN;
 const targetUrl = process.env.DAYKARE_TEST_URL
   ?? (domain ? `https://${domain}/` : null);
@@ -491,6 +511,333 @@ try {
     lifecycleCompleted: true,
   }, 'browser gameplay regressions pass against live Vite modules');
 
+  const worldModulePath = JSON.stringify(new URL('src/game/world.ts', targetUrl).href);
+  const touchModulePath = JSON.stringify(new URL('src/game/touchInput.ts', targetUrl).href);
+  const cameraInputModulePath = JSON.stringify(new URL('src/game/cameraInput.ts', targetUrl).href);
+  await setViewport(client, 960, 640, false);
+  await evaluate(client, `(() => {
+    globalThis.__daykareMovementProbeEnabled = true;
+    const store = globalThis.__daykareStore;
+    const state = store.getState();
+    store.setState({
+      activeDialogue: null,
+      journalOpen: false,
+      zone: 'hub',
+      pendingZone: null,
+      zoneTransitioning: false,
+      isRiding: false,
+      playerPosition: [6.55, 0, 0.75],
+      teleportTrigger: state.teleportTrigger + 1,
+    });
+    return true;
+  })()`);
+  await waitFor(
+    client,
+    'Math.abs(globalThis.__daykareMovementProbe?.player?.[0] - 6.55) < 0.2',
+    'player teleport before live input',
+  );
+  await evaluate(client, `(() => {
+    globalThis.__daykareMovementSamples = [];
+    globalThis.__daykareMovementSampling = true;
+    const sample = () => {
+      if (!globalThis.__daykareMovementSampling) return;
+      const probe = globalThis.__daykareMovementProbe;
+      if (probe && globalThis.__daykareMovementSamples.at(-1)?.updatedAt !== probe.updatedAt) {
+        globalThis.__daykareMovementSamples.push(structuredClone(probe));
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+    return true;
+  })()`);
+
+  await dispatchKey(client, 'rawKeyDown', 'ShiftLeft', 'Shift');
+  await dispatchKey(client, 'rawKeyDown', 'KeyD', 'd');
+  await dispatchKey(client, 'rawKeyDown', 'KeyW', 'w');
+  await sleep(650);
+  await dispatchKey(client, 'keyUp', 'KeyW', 'w');
+  await dispatchKey(client, 'keyUp', 'KeyD', 'd');
+  await dispatchKey(client, 'keyUp', 'ShiftLeft', 'Shift');
+  const crossedPortalX = await evaluate(client, 'globalThis.__daykareMovementProbe.player[0]');
+  assert.ok(crossedPortalX > 8.15, `real diagonal keyboard run crosses the east portal: ${crossedPortalX}`);
+
+  await dispatchKey(client, 'rawKeyDown', 'ShiftLeft', 'Shift');
+  await dispatchKey(client, 'rawKeyDown', 'KeyA', 'a');
+  await dispatchKey(client, 'rawKeyDown', 'KeyS', 's');
+  await sleep(650);
+  await dispatchKey(client, 'keyUp', 'KeyS', 's');
+  await dispatchKey(client, 'keyUp', 'KeyA', 'a');
+  await dispatchKey(client, 'keyUp', 'ShiftLeft', 'Shift');
+  const reversedPortalX = await evaluate(client, 'globalThis.__daykareMovementProbe.player[0]');
+  assert.ok(reversedPortalX < crossedPortalX - 1, 'rapid diagonal reversal moves back through the opening');
+
+  const canvasPoint = await evaluate(client, `(() => {
+    const rect = document.querySelector('canvas').getBoundingClientRect();
+    return { x: rect.left + rect.width * 0.55, y: rect.top + rect.height * 0.45 };
+  })()`);
+  const orbitBefore = await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    return { ...cameraInput.getCameraInput() };
+  })()`);
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed',
+    x: canvasPoint.x,
+    y: canvasPoint.y,
+    button: 'left',
+    buttons: 1,
+    clickCount: 1,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: canvasPoint.x + 96,
+    y: canvasPoint.y + 28,
+    button: 'none',
+    buttons: 1,
+  });
+  await client.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased',
+    x: canvasPoint.x + 96,
+    y: canvasPoint.y + 28,
+    button: 'left',
+    buttons: 0,
+    clickCount: 1,
+  });
+  const orbitAfter = await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    return { ...cameraInput.getCameraInput() };
+  })()`);
+  assert.ok(Math.abs(orbitAfter.yaw - orbitBefore.yaw) > 0.4, 'real mouse drag orbits the camera');
+  await dispatchKey(client, 'rawKeyDown', 'KeyR', 'r');
+  await dispatchKey(client, 'keyUp', 'KeyR', 'r');
+  await sleep(360);
+  assert.equal(
+    await evaluate(client, `(async () => {
+      const cameraInput = await import(${cameraInputModulePath});
+      const input = cameraInput.getCameraInput();
+      return Math.abs(input.yaw) < 1e-6 && Math.abs(input.pitch - 0.22) < 1e-6;
+    })()`),
+    true,
+    'keyboard recenter clears live orbit state',
+  );
+  await evaluate(client, 'globalThis.__daykareMovementSampling = false');
+  const liveMovement = await evaluate(client, `(async () => {
+    const world = await import(${worldModulePath});
+    const { Vector3 } = await import(${JSON.stringify(new URL('node_modules/.vite/deps/three.js', targetUrl).href)});
+    const samples = globalThis.__daykareMovementSamples;
+    let maxPlayerStep = 0;
+    let maxCameraStep = 0;
+    let maxPlayerSpeed = 0;
+    let maxCameraSpeed = 0;
+    let maxOccludedFrames = 0;
+    let occludedFrames = 0;
+    let sideSwitches = 0;
+    for (let index = 0; index < samples.length; index += 1) {
+      const sample = samples[index];
+      const player = new Vector3(...sample.player);
+      const camera = new Vector3(...sample.camera);
+      const target = new Vector3(...sample.cameraTarget);
+      if (!world.isWalkable(player, world.PLAYER_RADIUS, [], sample.zone)) {
+        return { valid: false, reason: 'player left walkable space', sample };
+      }
+      if (!world.isCameraPositionClear(camera, 0.2, sample.zone)) {
+        return { valid: false, reason: 'camera body intersected a blocker', sample };
+      }
+      const sightlineClear = world.isCameraTransitionClear(target, camera, 0.2, sample.zone);
+      occludedFrames = sightlineClear ? 0 : occludedFrames + 1;
+      maxOccludedFrames = Math.max(maxOccludedFrames, occludedFrames);
+      if (index > 0) {
+        const previous = samples[index - 1];
+        const elapsedSeconds = Math.max((sample.updatedAt - previous.updatedAt) / 1000, 0.001);
+        const playerStep = player.distanceTo(new Vector3(...previous.player));
+        const cameraStep = camera.distanceTo(new Vector3(...previous.camera));
+        maxPlayerStep = Math.max(maxPlayerStep, playerStep);
+        maxCameraStep = Math.max(maxCameraStep, cameraStep);
+        maxPlayerSpeed = Math.max(maxPlayerSpeed, playerStep / elapsedSeconds);
+        maxCameraSpeed = Math.max(maxCameraSpeed, cameraStep / elapsedSeconds);
+        if (sample.cameraSide !== previous.cameraSide) sideSwitches += 1;
+      }
+    }
+    return {
+      valid: true,
+      count: samples.length,
+      elapsedMs: samples.at(-1).updatedAt - samples[0].updatedAt,
+      maxPlayerStep,
+      maxCameraStep,
+      maxPlayerSpeed,
+      maxCameraSpeed,
+      maxOccludedFrames,
+      sideSwitches,
+    };
+  })()`);
+  assert.equal(liveMovement.valid, true, liveMovement.reason ?? 'live movement remains valid');
+  assert.ok(liveMovement.count >= 6, `live movement captures repeated frame samples: ${liveMovement.count}`);
+  assert.ok(liveMovement.elapsedMs >= 1500, `live movement sampling is sustained over time: ${liveMovement.elapsedMs}ms`);
+  assert.ok(liveMovement.maxPlayerSpeed < 10, `live player movement has no one-frame jump: ${liveMovement.maxPlayerSpeed}`);
+  assert.ok(liveMovement.maxCameraSpeed < 22, `live camera movement has no one-frame jump: ${liveMovement.maxCameraSpeed}`);
+  assert.ok(liveMovement.maxOccludedFrames < 90, 'live camera recovers from obstruction within a bounded interval');
+  assert.ok(liveMovement.sideSwitches < 18, 'live camera side switching remains bounded');
+
+  for (const viewport of [
+    { width: 390, height: 844, label: 'portrait' },
+    { width: 320, height: 568, label: 'compact portrait' },
+    { width: 844, height: 390, label: 'landscape' },
+  ]) {
+    await setViewport(client, viewport.width, viewport.height, true);
+    const controlLayout = await evaluate(client, `(() => {
+      const visual = window.visualViewport ?? {
+        offsetLeft: 0,
+        offsetTop: 0,
+        width: window.innerWidth,
+        height: window.innerHeight,
+      };
+      const selectors = [
+        '.daykare-touch-pad',
+        '.daykare-touch-movement',
+        '.daykare-touch-look',
+        '.daykare-touch-recenter',
+      ];
+      return {
+        metrics: {
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+          clientWidth: document.documentElement.clientWidth,
+          clientHeight: document.documentElement.clientHeight,
+          shell: (() => {
+            const rect = document.querySelector('.daykare-app-shell')?.getBoundingClientRect();
+            return rect ? { top: rect.top, bottom: rect.bottom, height: rect.height } : null;
+          })(),
+          overlay: (() => {
+            const rect = document.querySelector('.daykare-touch-ui')?.getBoundingClientRect();
+            return rect ? { top: rect.top, bottom: rect.bottom, height: rect.height } : null;
+          })(),
+        },
+        visual: {
+          left: visual.offsetLeft,
+          top: visual.offsetTop,
+          right: visual.offsetLeft + visual.width,
+          bottom: visual.offsetTop + visual.height,
+        },
+        controls: selectors.map((selector) => {
+          const element = document.querySelector(selector);
+          if (!element) return { selector, missing: true };
+          const rect = element.getBoundingClientRect();
+          return {
+            selector,
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+          };
+        }),
+      };
+    })()`);
+    for (const control of controlLayout.controls) {
+      assert.equal(control.missing, undefined, `${viewport.label} renders ${control.selector}`);
+      assert.ok(control.left >= controlLayout.visual.left - 1, `${viewport.label} keeps ${control.selector} inside the left edge`);
+      assert.ok(control.top >= controlLayout.visual.top - 1, `${viewport.label} keeps ${control.selector} inside the top edge`);
+      assert.ok(control.right <= controlLayout.visual.right + 1, `${viewport.label} keeps ${control.selector} inside the right edge`);
+      assert.ok(
+        control.bottom <= controlLayout.visual.bottom + 1,
+        `${viewport.label} keeps ${control.selector} inside the bottom edge: ${JSON.stringify({ control, layout: controlLayout })}`,
+      );
+    }
+  }
+
+  await setViewport(client, 390, 844, true);
+  const padPoint = await evaluate(client, `(() => {
+    const rect = document.querySelector('.daykare-touch-pad').getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  const touchStartPosition = await evaluate(client, 'globalThis.__daykareMovementProbe.player');
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: padPoint.x, y: padPoint.y, id: 11, radiusX: 8, radiusY: 8 }],
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: padPoint.x + 34, y: padPoint.y - 52, id: 11, radiusX: 8, radiusY: 8 }],
+  });
+  await sleep(700);
+  const touchDuringMove = await evaluate(client, `(async () => {
+    const touch = await import(${touchModulePath});
+    return { ...touch.getTouchInput() };
+  })()`);
+  assert.ok(Math.hypot(touchDuringMove.x, touchDuringMove.y) > 0.5, 'real touch drag owns and drives the movement pad');
+  assert.ok(
+    await evaluate(client, `Math.hypot(
+      globalThis.__daykareMovementProbe.player[0] - ${touchStartPosition[0]},
+      globalThis.__daykareMovementProbe.player[2] - ${touchStartPosition[2]}
+    ) > 0.5`),
+    'real touch input moves the live player',
+  );
+  await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  assert.deepEqual(
+    await evaluate(client, `(async () => {
+      const touch = await import(${touchModulePath});
+      return { ...touch.getTouchInput() };
+    })()`),
+    { x: 0, y: 0, run: false, crouch: false },
+    'touch cancellation releases pointer ownership and resets every movement mode',
+  );
+
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: padPoint.x, y: padPoint.y, id: 12, radiusX: 8, radiusY: 8 }],
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: padPoint.x - 45, y: padPoint.y, id: 12, radiusX: 8, radiusY: 8 }],
+  });
+  await evaluate(client, 'window.dispatchEvent(new Event("blur"))');
+  assert.deepEqual(
+    await evaluate(client, `(async () => {
+      const touch = await import(${touchModulePath});
+      return { input: { ...touch.getTouchInput() }, knob: document.querySelector('.daykare-touch-knob')?.style.transform };
+    })()`),
+    { input: { x: 0, y: 0, run: false, crouch: false }, knob: 'translate(0px, 0px)' },
+    'window blur releases touch state and recenters the movement knob',
+  );
+  await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: padPoint.x, y: padPoint.y, id: 13, radiusX: 8, radiusY: 8 }],
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: padPoint.x, y: padPoint.y - 48, id: 13, radiusX: 8, radiusY: 8 }],
+  });
+  await evaluate(client, `globalThis.__daykareStore.getState().setActiveDialogue({
+    name: 'Movement cancellation',
+    text: 'Stop touch movement.',
+  })`);
+  await waitFor(client, '!document.querySelector(".daykare-touch-pad")', 'touch controls hide during dialogue');
+  assert.deepEqual(
+    await evaluate(client, `(async () => {
+      const touch = await import(${touchModulePath});
+      return { ...touch.getTouchInput() };
+    })()`),
+    { x: 0, y: 0, run: false, crouch: false },
+    'dialogue cancellation resets touch input',
+  );
+  await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+  await evaluate(client, 'globalThis.__daykareStore.getState().setActiveDialogue(null)');
+  await waitFor(client, 'Boolean(document.querySelector(".daykare-touch-pad"))', 'touch controls remount after dialogue');
+  assert.deepEqual(
+    await evaluate(client, `(async () => {
+      const touch = await import(${touchModulePath});
+      return { input: { ...touch.getTouchInput() }, knob: document.querySelector('.daykare-touch-knob')?.style.transform };
+    })()`),
+    { input: { x: 0, y: 0, run: false, crouch: false }, knob: 'translate(0px, 0px)' },
+    'remounted touch controls start centered and inactive',
+  );
+  await evaluate(client, `(() => {
+    globalThis.__daykareMovementProbeEnabled = false;
+    delete globalThis.__daykareMovementProbe;
+    delete globalThis.__daykareMovementSamples;
+    return true;
+  })()`);
+
   assert.deepEqual(
     await evaluate(client, `(async () => {
       const navigation = await import(${JSON.stringify(new URL('src/game/navigation.ts', targetUrl).href)});
@@ -508,17 +855,32 @@ try {
     'repeated browser remount cleanup leaves no navigation registrations',
   );
 
-  await evaluate(client, 'globalThis.__daykareStore.getState().setQuality("low")');
+  await client.send('Page.reload', { ignoreCache: false });
+  await waitFor(client, 'document.readyState === "complete"', 'clean performance reload');
+  await waitFor(client, 'Boolean(document.querySelector("canvas"))', 'canvas remount before performance sample');
+  await evaluate(client, `(async () => {
+    const { useGameStore } = await import(${modulePath});
+    globalThis.__daykareStore = useGameStore;
+    const started = performance.now();
+    while (!useGameStore.persist.hasHydrated() && performance.now() - started < 5000) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    useGameStore.getState().setQuality('low');
+    return true;
+  })()`);
+  await sleep(1200);
   const performanceSample = await evaluate(client, `(async () => {
     const probe = document.createElement('canvas');
     const gl = probe.getContext('webgl');
     const rendererInfo = gl?.getExtension('WEBGL_debug_renderer_info');
     const renderer = rendererInfo ? gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL) : 'unknown';
     const frames = [];
+    let warmupFrames = 0;
     await new Promise((resolve) => {
       const tick = (time) => {
-        frames.push(time);
-        if (frames.length >= 45) resolve();
+        if (warmupFrames < 5) warmupFrames += 1;
+        else frames.push(time);
+        if (frames.length >= 60) resolve();
         else requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);

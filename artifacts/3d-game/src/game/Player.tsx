@@ -291,6 +291,29 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       ));
     }
     camera.lookAt(cameraLookTarget.current);
+    if (import.meta.env.DEV) {
+      const debugGlobal = globalThis as typeof globalThis & {
+        __daykareMovementProbeEnabled?: boolean;
+        __daykareMovementProbe?: {
+          player: [number, number, number];
+          camera: [number, number, number];
+          cameraTarget: [number, number, number];
+          cameraSide: string | null;
+          zone: 'hub' | 'garden';
+          updatedAt: number;
+        };
+      };
+      if (debugGlobal.__daykareMovementProbeEnabled) {
+        debugGlobal.__daykareMovementProbe = {
+          player: localRef.current.position.toArray(),
+          camera: camera.position.toArray(),
+          cameraTarget: cameraLookTarget.current.toArray(),
+          cameraSide: cameraRig.current.state.sideId,
+          zone,
+          updatedAt: performance.now(),
+        };
+      }
+    }
   });
 
   return (

@@ -149,6 +149,13 @@
     touch-action: none;
   }
 
+  .daykare-app-shell {
+    position: fixed;
+    inset: 0;
+    height: auto;
+    min-height: 0;
+  }
+
   .daykare-touch-ui {
     display: block;
     position: absolute;

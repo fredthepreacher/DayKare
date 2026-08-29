@@ -67,6 +67,26 @@ export function TouchControls({
     };
   }, []);
 
+  useEffect(() => {
+    const resetAfterBlur = () => {
+      if (holdTimer.current) {
+        clearTimeout(holdTimer.current);
+        holdTimer.current = null;
+      }
+      activePointer.current = null;
+      lookPointer.current = null;
+      lookPointers.current.clear();
+      holdTriggered.current = false;
+      lastTapAt.current = 0;
+      resetTouchInput();
+      setKnob({ x: 0, y: 0 });
+      setRunEnabled(false);
+      setCrouchEnabled(false);
+    };
+    window.addEventListener('blur', resetAfterBlur);
+    return () => window.removeEventListener('blur', resetAfterBlur);
+  }, []);
+
   const updateMovement = (clientX: number, clientY: number) => {
     const pad = padRef.current;
     if (!pad) return;

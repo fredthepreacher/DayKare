@@ -29,6 +29,8 @@ import {
   MIN_CAMERA_DISTANCE,
   PLAYER_RADIUS,
   PLAY_SLIDE_RAMP,
+  TRICYCLE_RADIUS,
+  WORLD_PORTALS,
   WORLD_SOLIDS,
   getWorldSolidTransform,
   getWorldSolidSurfaceTransform,
@@ -49,7 +51,7 @@ import {
 } from './store';
 import { HUB_ROUTES, MAX_TOKENS, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
-import { facingAngleForDirection, kidActivityMode, kidDestination, resolveNpcMovement, stepNpc, teacherPatrolSpots } from './NPCs';
+import { KID_CAST, facingAngleForDirection, kidActivityMode, kidDestination, resolveNpcMovement, stepNpc, teacherPatrolSpots } from './NPCs';
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
 import { GARDEN_CAST, gardenNpcDestination } from './Garden';
@@ -174,6 +176,42 @@ const solidWallResult = resolveMovement(
   PLAYER_RADIUS,
 );
 assert.ok(solidWallResult.x < 7.4, 'sub-stepping cannot tunnel through a visible divider panel');
+
+for (const portal of WORLD_PORTALS) {
+  const axisIndex = portal.axis === 'x' ? 0 : 2;
+  const alongIndex = portal.axis === 'x' ? 2 : 0;
+  for (const direction of [-1, 1]) {
+    for (const radius of [PLAYER_RADIUS, TRICYCLE_RADIUS]) {
+      const speed = radius === TRICYCLE_RADIUS ? 10 : 8;
+      const start = new THREE.Vector3(...portal.position);
+      const target = new THREE.Vector3(...portal.position);
+      start.setComponent(axisIndex, portal.position[axisIndex] - direction * 1.2);
+      target.setComponent(axisIndex, portal.position[axisIndex] + direction * 0.9);
+      start.setComponent(alongIndex, portal.position[alongIndex] + 0.7);
+      target.setComponent(alongIndex, portal.position[alongIndex] + 0.7 + direction * 0.25);
+      let position = start.clone();
+      let crossed = false;
+      let stalledFrames = 0;
+      for (let frame = 0; frame < 180 && position.distanceTo(target) > 0.04; frame += 1) {
+        const towardTarget = target.clone().sub(position).setY(0);
+        const remaining = towardTarget.length();
+        const desired = position.clone().add(
+          towardTarget.normalize().multiplyScalar(Math.min(speed / 60, remaining)),
+        );
+        const next = resolveMovement(position, desired, radius, 0.2, 'hub');
+        const moved = next.distanceTo(position);
+        stalledFrames = moved < 1e-6 ? stalledFrames + 1 : 0;
+        assert.ok(moved <= speed / 60 + 1e-5, `${portal.id} never exceeds its requested running step`);
+        assert.equal(isWalkable(next, radius, [], 'hub'), true, `${portal.id} keeps radius ${radius} walkable`);
+        if ((next.getComponent(axisIndex) - portal.position[axisIndex]) * direction > 0) crossed = true;
+        position = next;
+      }
+      assert.equal(crossed, true, `${portal.id} crosses in direction ${direction} at radius ${radius}`);
+      assert.ok(position.distanceTo(target) < 0.06, `${portal.id} diagonal run completes at radius ${radius}`);
+      assert.ok(stalledFrames < 3, `${portal.id} diagonal run does not settle into a doorway stall`);
+    }
+  }
+}
 
 const closeWallTarget = new THREE.Vector3(0, 1, -6.5);
 const closeWallCamera = resolveCameraPosition(closeWallTarget, new THREE.Vector3(0, 1, -9));
@@ -336,6 +374,59 @@ const gardenResult = gardenRig.resolve(
 );
 assert.equal(isCameraPositionClear(gardenResult.position, 0.2, 'garden'), true, 'tall Garden posts are camera blockers');
 assert.equal(isCameraTransitionClear(gardenTarget, gardenResult.position, 0.2, 'garden'), true, 'Garden sightline is continuously clear');
+for (const [zone, blockers, path] of [
+  [
+    'hub',
+    WORLD_SOLIDS.filter((solid) => solid.zone === 'hub' && (solid.cameraRole === 'structural' || solid.cameraRole === 'substantial')),
+    [
+      new THREE.Vector3(-5.8, 1, -6.45),
+      new THREE.Vector3(5.8, 1, -6.45),
+      new THREE.Vector3(5.8, 1, 6.45),
+      new THREE.Vector3(-5.8, 1, 6.45),
+    ],
+  ],
+  [
+    'garden',
+    WORLD_SOLIDS.filter((solid) => solid.zone === 'garden' && (solid.cameraRole === 'structural' || solid.cameraRole === 'substantial')),
+    [
+      new THREE.Vector3(-4.2, 1, 4.8),
+      new THREE.Vector3(4.2, 1, 4.8),
+      new THREE.Vector3(5.8, 1, -3.4),
+      new THREE.Vector3(-4.8, 1, -3.4),
+    ],
+  ],
+] as const) {
+  for (const frameRate of [30, 60, 120]) {
+    const rig = new CameraRig();
+    let segment = 0;
+    let target = path[0].clone();
+    let desired = target.clone().add(new THREE.Vector3(0, 3.4, 8.6));
+    let camera = rig.resolve(target, desired, desired, 0.2, MIN_CAMERA_DISTANCE, blockers, 1 / frameRate).position;
+    let maxOccludedFrames = 0;
+    let occludedFrames = 0;
+    for (let frame = 0; frame < frameRate * 16; frame += 1) {
+      if (frame > 0 && frame % (frameRate * 2) === 0) segment = (segment + 1) % path.length;
+      const nextSegment = (segment + 1) % path.length;
+      const localTime = (frame % (frameRate * 2)) / (frameRate * 2);
+      const direction = Math.floor(frame / (frameRate * 8)) % 2 === 0 ? 1 : -1;
+      const from = direction > 0 ? path[segment] : path[nextSegment];
+      const to = direction > 0 ? path[nextSegment] : path[segment];
+      target = from.clone().lerp(to, localTime);
+      desired = target.clone().add(new THREE.Vector3(0, 3.4, 8.6));
+      if (frame > 0 && frame % (frameRate * 4) === 0) rig.reset(false);
+      const result = rig.resolve(target, desired, camera, 0.2, MIN_CAMERA_DISTANCE, blockers, 1 / frameRate);
+      const previous = camera.clone();
+      camera = advanceCameraPosition(previous, target, result.position, 7 / frameRate, 0.2, blockers);
+      assert.ok(previous.distanceTo(camera) <= 7 / frameRate + 1e-5, `${zone} ${frameRate}Hz camera has no one-frame jump`);
+      assert.equal(isSweptSphereClear(previous, camera, 0.2, blockers), true, `${zone} ${frameRate}Hz camera body remains swept-safe`);
+      const clearSightline = isSweptSphereClear(target, camera, 0.2, blockers);
+      occludedFrames = clearSightline ? 0 : occludedFrames + 1;
+      maxOccludedFrames = Math.max(maxOccludedFrames, occludedFrames);
+    }
+    assert.ok(maxOccludedFrames <= frameRate * 2, `${zone} ${frameRate}Hz camera recovers its sightline within two seconds`);
+    assert.ok(rig.state.switches <= 24, `${zone} ${frameRate}Hz side switching stays bounded through corners and reversals`);
+  }
+}
 for (const desiredCamera of [
   new THREE.Vector3(0, 1, -10),
   new THREE.Vector3(10, 1, -8.4),
@@ -800,7 +891,103 @@ const servedExitDestination = kidDestination('Max', 'juice-club', false, [0, 0, 
 assert.ok(servedExitDestination.x > promotedQueueDestination.x, 'served customer leaves through the counter-side exit');
 const artPairA = kidDestination('Leo', 'art-time', false, [0, 0, 0], 0, 0, []);
 const artPairB = kidDestination('Mia', 'art-time', false, [0, 0, 0], 1, 0, []);
-assert.deepEqual(artPairA.toArray(), artPairB.toArray(), 'paired children share a coordinated art-session anchor');
+assert.ok(Math.abs(artPairA.distanceTo(artPairB) - 0.76) < 1e-6, 'paired children keep personal space within one art-session area');
+assert.deepEqual(
+  artPairA.clone().add(artPairB).multiplyScalar(0.5).toArray(),
+  [-14.1, 0, -11.5],
+  'pair offsets preserve the authored social anchor',
+);
+
+const crowdTeachers = [
+  { name: 'Ms. Harper', defaultPos: [-2, 0, -2] as [number, number, number] },
+  { name: 'Mr. Davis', defaultPos: [10, 0, 0] as [number, number, number] },
+];
+function runCrowdScenario(scheduleName: string) {
+  clearNpcNavigation();
+  const actors = [
+    ...KID_CAST.map((kid, index) => ({
+      id: `crowd-${scheduleName}-${kid.name}`,
+      start: new THREE.Vector3(...kid.defaultPos),
+      target: kidDestination(kid.name, scheduleName, false, kid.defaultPos, index * 0.37, 0, []),
+    })),
+    ...crowdTeachers.map((teacher) => ({
+      id: `crowd-${scheduleName}-${teacher.name}`,
+      start: new THREE.Vector3(...teacher.defaultPos),
+      target: new THREE.Vector3(...teacherPatrolSpots(
+        teacher.name,
+        scheduleName,
+        false,
+        teacher.defaultPos,
+      )[0]),
+    })),
+  ].map((actor) => {
+    const ref = new THREE.Group();
+    ref.position.copy(actor.start);
+    const mirror = actor.start.clone();
+    return {
+      ...actor,
+      ref,
+      mirror,
+      unregister: registerNpcPosition(actor.id, mirror),
+      lastPosition: actor.start.clone(),
+      stalledFrames: 0,
+      maxStalledFrames: 0,
+      reverseFrames: 0,
+      maxReverseFrames: 0,
+    };
+  });
+  const overlappingFrames = new Map<string, number>();
+  let maxOverlapFrames = 0;
+  for (let frame = 0; frame < 2400; frame += 1) {
+    for (const actor of actors) {
+      const remaining = actor.ref.position.distanceTo(actor.target);
+      if (remaining > 0.48) stepNpc(actor.id, actor.ref, actor.target, null, 1 / 30, 1.25, 'hub');
+      actor.mirror.copy(actor.ref.position);
+      const displacement = actor.ref.position.clone().sub(actor.lastPosition).setY(0);
+      if (displacement.lengthSq() < 1e-8 && remaining > 0.55) {
+        actor.stalledFrames += 1;
+        actor.maxStalledFrames = Math.max(actor.maxStalledFrames, actor.stalledFrames);
+      } else {
+        actor.stalledFrames = 0;
+      }
+      if (displacement.lengthSq() > 1e-7) {
+        const facing = new THREE.Vector3(-Math.sin(actor.ref.rotation.y), 0, -Math.cos(actor.ref.rotation.y));
+        actor.reverseFrames = facing.dot(displacement.clone().normalize()) < -0.1
+          ? actor.reverseFrames + 1
+          : 0;
+        actor.maxReverseFrames = Math.max(actor.maxReverseFrames, actor.reverseFrames);
+      }
+      actor.lastPosition.copy(actor.ref.position);
+    }
+    for (let first = 0; first < actors.length; first += 1) {
+      for (let second = first + 1; second < actors.length; second += 1) {
+        const key = `${first}:${second}`;
+        const overlapping = actors[first].ref.position.distanceTo(actors[second].ref.position) < 0.12;
+        const frames = overlapping ? (overlappingFrames.get(key) ?? 0) + 1 : 0;
+        overlappingFrames.set(key, frames);
+        maxOverlapFrames = Math.max(maxOverlapFrames, frames);
+      }
+    }
+  }
+  const result = actors.map((actor) => ({
+    position: actor.ref.position.toArray().map((value) => Number(value.toFixed(4))),
+    remaining: actor.ref.position.distanceTo(actor.target),
+    maxStalledFrames: actor.maxStalledFrames,
+    maxReverseFrames: actor.maxReverseFrames,
+  }));
+  actors.forEach((actor) => actor.unregister());
+  assert.deepEqual(getNpcNavigationSnapshot(), { positionCount: 0, pathCount: 0 }, `${scheduleName} crowd cleanup is finite`);
+  assert.ok(result.every((actor) => actor.remaining <= 0.49), `${scheduleName} full cast reaches its authored destinations`);
+  assert.ok(result.every((actor) => actor.maxStalledFrames < 84), `${scheduleName} full cast avoids a long stall`);
+  assert.ok(result.every((actor) => actor.maxReverseFrames < 24), `${scheduleName} full cast avoids persistent moonwalking`);
+  assert.ok(maxOverlapFrames < 60, `${scheduleName} full cast avoids persistent exact overlap`);
+  return result.map((actor) => actor.position);
+}
+
+const deterministicArtCrowd = runCrowdScenario('art-time');
+runCrowdScenario('juice-club');
+runCrowdScenario('outdoor-play');
+assert.deepEqual(runCrowdScenario('art-time'), deterministicArtCrowd, 'repeated crowded navigation is deterministic');
 
 resetActivitySessions();
 const gatheringSession = getSharedActivitySession('hub', 'morning-play', 0);
