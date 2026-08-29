@@ -5,6 +5,7 @@ import * as THREE from 'three';
 type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
 type Accessory = 'none' | 'backpack' | 'badge';
+type ActivityMode = 'standing' | 'sitting' | 'playing' | 'gathering';
 
 const SHARED_ACCESSORY_BOX = new THREE.BoxGeometry(0.42, 0.5, 0.16);
 const SHARED_BADGE = new THREE.CircleGeometry(0.09, 10);
@@ -23,6 +24,7 @@ export interface CharacterModelProps {
   motionSeed?: number;
   idleEnergy?: number;
   accessory?: Accessory;
+  activityMode?: ActivityMode;
 }
 
 const moodBrowRotation: Record<Mood, number> = {
@@ -47,6 +49,7 @@ export function CharacterModel({
   motionSeed = 0,
   idleEnergy = 1,
   accessory = 'none',
+  activityMode = 'standing',
 }: CharacterModelProps) {
   const rig = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -110,10 +113,20 @@ export function CharacterModel({
     }
 
     if (rig.current) {
-      const targetY = isCrouching ? 0.72 : 1;
+      const targetY = isCrouching ? 0.72 : activityMode === 'sitting' ? 0.8 : 1;
       rig.current.scale.y = THREE.MathUtils.lerp(rig.current.scale.y, targetY, delta * 9);
-      const targetRootY = isCrouching ? 0.14 : 0.2 + idle;
+      const activityBounce = activityMode === 'playing'
+        ? Math.abs(Math.sin(state.clock.elapsedTime * 2.8 + motionSeed)) * 0.045
+        : 0;
+      const targetRootY = isCrouching
+        ? 0.14
+        : activityMode === 'sitting'
+          ? -0.02
+          : 0.2 + idle + activityBounce;
       rig.current.position.y = THREE.MathUtils.lerp(rig.current.position.y, targetRootY, 1 - Math.exp(-12 * delta));
+      rig.current.rotation.z = activityMode === 'gathering'
+        ? Math.sin(state.clock.elapsedTime * 1.2 + motionSeed) * 0.025
+        : 0;
     }
   });
 

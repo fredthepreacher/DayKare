@@ -2,6 +2,7 @@ import { useFrame } from '@react-three/fiber';
 import { useRef } from 'react';
 import * as THREE from 'three';
 import { useGameStore } from './store';
+import { SuppliedArtwork } from './Artwork';
 
 export function HubDetails() {
   const isImaginationMode = useGameStore((s) => s.isImaginationMode);
@@ -18,6 +19,13 @@ export function HubDetails() {
       <PlaygroundDetails />
       <CeilingMobile imaginationMode={isImaginationMode} />
       <ScheduleBeacon schedule={schedule} imaginationMode={isImaginationMode} />
+      <SuppliedArtwork fileName="02_wall_mural_welcome.png" position={[0, 1.72, 7.66]} size={[4.25, 3.15]} rotation={[0, Math.PI, 0]} />
+      <SuppliedArtwork fileName="03_wall_decals_set.png" position={[-7.66, 1.6, 4.5]} size={[2.15, 1.6]} rotation={[0, Math.PI / 2, 0]} />
+      <SuppliedArtwork fileName="06_posters_charts.png" position={[-12, 1.72, -15.66]} size={[2.5, 1.88]} />
+      <SuppliedArtwork fileName="07_classroom_signs.png" position={[-7.66, 1.6, -4.5]} size={[2.15, 1.6]} rotation={[0, Math.PI / 2, 0]} />
+      <SuppliedArtwork fileName="08_floor_decals.png" position={[3.8, 0.035, 4.9]} size={[2.4, 1.8]} rotation={[-Math.PI / 2, 0, 0]} />
+      <SuppliedArtwork fileName="17_motivational_banner.png" position={[-15.66, 1.65, 0]} size={[2.55, 1.9]} rotation={[0, Math.PI / 2, 0]} />
+      <SuppliedArtwork fileName="18_door_sign.png" position={[-7.66, 1.7, 0]} size={[1.75, 1.3]} rotation={[0, Math.PI / 2, 0]} />
       {storageOrganizer && <LostAndFoundOrganizer />}
     </group>
   );

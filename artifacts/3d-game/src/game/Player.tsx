@@ -6,7 +6,8 @@ import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
 import { CharacterModel } from './CharacterModel';
-import { addCameraOrbit, adjustCameraZoom, consumeCameraRecenterRequest, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
+import { addCameraOrbit, CAMERA_DISTANCE, consumeCameraRecenterRequest, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
+import { isGameplayBlocked } from './gameplayGate';
 import { PLAYER_RADIUS, TRICYCLE_RADIUS, resolveCameraPosition, resolveMovement, trackPlayerPosition } from './world';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
@@ -20,6 +21,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const tricycleColorIndex = useGameStore((s) => s.tricycleColorIndex);
   const teleportTrigger = useGameStore((s) => s.teleportTrigger);
   const activeDialogue = useGameStore((s) => s.activeDialogue);
+  const journalOpen = useGameStore((s) => s.journalOpen);
   const zone = useGameStore((s) => s.zone);
   const playerPosition = useGameStore((s) => s.playerPosition);
   const zoneTransitioning = useGameStore((s) => s.zoneTransitioning);
@@ -41,41 +43,39 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const cameraReady = useRef(false);
   const turnVelocity = useRef(0);
   const mouseDragging = useRef(false);
+  const gameplayBlocked = useRef(false);
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
   const positionSaveAccumulator = useRef(0);
+  gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning });
   
   const colors = ["#d62828", "#3a86ff", "#ff006e", "#06d6a0"];
   
   useEffect(() => {
     const canvas = gl.domElement;
     const onPointerDown = (event: PointerEvent) => {
-      if (event.pointerType === 'mouse' && event.button === 0) mouseDragging.current = true;
+      if (!gameplayBlocked.current && event.pointerType === 'mouse' && event.button === 0) mouseDragging.current = true;
     };
     const onPointerUp = () => {
       mouseDragging.current = false;
     };
     const onPointerMove = (event: PointerEvent) => {
-      if (mouseDragging.current && event.pointerType === 'mouse') addCameraOrbit(event.movementX, event.movementY);
-    };
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      adjustCameraZoom(Math.sign(event.deltaY) * Math.min(1.1, Math.abs(event.deltaY) * 0.012));
+      if (!gameplayBlocked.current && mouseDragging.current && event.pointerType === 'mouse') {
+        addCameraOrbit(event.movementX, event.movementY);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code === 'KeyR') recenterCamera();
+      if (!gameplayBlocked.current && event.code === 'KeyR') recenterCamera();
     };
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('keydown', onKeyDown);
-    canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('keydown', onKeyDown);
-      canvas.removeEventListener('wheel', onWheel);
     };
   }, [gl]);
 
@@ -121,7 +121,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
 
     desiredVelocity.current.set(0, 0, 0);
 
-    if (!activeDialogue && !zoneTransitioning) {
+    const blocked = gameplayBlocked.current;
+    if (!blocked) {
       if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
       if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
       if (keys.left) desiredVelocity.current.addScaledVector(right.current, -speed);
@@ -183,7 +184,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     if (isGrounded) {
       localRef.current.position.y = 0;
       yVelocity.current = 0;
-      if (keys.jump && !crouching && !isRiding) {
+      if (!blocked && keys.jump && !crouching && !isRiding) {
         yVelocity.current = 6;
       }
     } else {
@@ -204,10 +205,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     // Locomotion turns the character, not the camera. Only a deliberate
     // recenter changes the camera's world-facing baseline.
     const heading = cameraBaseHeading.current + orbit.yaw;
-    const horizontalDistance = orbit.zoom * Math.cos(orbit.pitch);
+    const horizontalDistance = CAMERA_DISTANCE * Math.cos(orbit.pitch);
     idealCameraPosition.current.set(
       localRef.current.position.x + Math.sin(heading) * horizontalDistance,
-      localRef.current.position.y + 3.8 + Math.sin(orbit.pitch) * orbit.zoom * 0.54,
+      localRef.current.position.y + 3.8 + Math.sin(orbit.pitch) * CAMERA_DISTANCE * 0.54,
       localRef.current.position.z + Math.cos(heading) * horizontalDistance,
     );
     cameraFocus.current.lerp(localRef.current.position, 1 - Math.exp(-10 * delta));

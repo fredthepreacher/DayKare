@@ -69,6 +69,12 @@ export function UI() {
     pendingZone,
     enterGarden,
     returnToHub,
+    gardenActivityStep,
+    startGardenActivity,
+    advanceGardenActivity,
+    resetGardenActivity,
+    completeActivity,
+    ambientMessage,
   } = useGameStore();
 
   const [subscribe] = useKeyboardControls<Controls>();
@@ -78,10 +84,10 @@ export function UI() {
     return subscribe(
       (state) => state.journal,
       (pressed) => {
-        if (pressed && !activeDialogue) toggleJournal();
+        if (pressed && !activeDialogue && !zoneTransitioning) toggleJournal();
       }
     );
-  }, [subscribe, toggleJournal, activeDialogue]);
+  }, [subscribe, toggleJournal, activeDialogue, zoneTransitioning]);
 
   // Juice Club Customers Simulation
   useEffect(() => {
@@ -179,6 +185,34 @@ export function UI() {
           }
         } else if (activeInteractable === 'garden-return') {
           returnToHub();
+        } else if (activeInteractable === 'garden-activity-host') {
+          if (gardenActivityStep === 0) {
+            startGardenActivity();
+            setActiveDialogue({
+              name: 'Gardener Nia',
+              text: 'Let’s wake up this planting bed. First, loosen the soil around the three seedlings.',
+            });
+          } else if (gardenActivityStep < 3) {
+            const nextStep = advanceGardenActivity();
+            if (nextStep >= 3) {
+              completeActivity('garden-planting', 2, 1);
+              setActiveDialogue({
+                name: 'Gardener Nia',
+                text: 'All three seedlings are watered and standing tall! +1 reputation and +2 Star Tokens. This bed can be planted again.',
+              });
+            } else {
+              setActiveDialogue({
+                name: 'Gardener Nia',
+                text: 'Great soil work. Now carry the little watering can along the row.',
+              });
+            }
+          } else {
+            resetGardenActivity();
+            setActiveDialogue({
+              name: 'Gardener Nia',
+              text: 'The bed is ready for another planting round whenever you are.',
+            });
+          }
         } else if (activeInteractable.startsWith('route-')) {
           const routeId = activeInteractable.replace('route-', '');
           const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
@@ -213,7 +247,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression, quests, zoneTransitioning]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression, quests, zoneTransitioning, gardenActivityStep]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Mr. Davis') {
@@ -322,6 +356,11 @@ export function UI() {
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Place Toy';
     if (activeInteractable === 'garden-return') return 'Return to DayKare';
+    if (activeInteractable === 'garden-activity-host') {
+      if (gardenActivityStep === 0) return 'Start Planting';
+      if (gardenActivityStep < 3) return `Tend Seedlings · ${gardenActivityStep}/3`;
+      return 'Plant Another Bed';
+    }
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Check Route';
@@ -339,6 +378,7 @@ export function UI() {
     if (!activeInteractable) return null;
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
+    if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Future access point';
@@ -355,6 +395,7 @@ export function UI() {
   const interactionDetail = getInteractionDetail();
   const activeQuest = getActiveQuest(quests);
   const activeObjective = getCurrentObjective(quests);
+  const gameplayBlocked = journalOpen || Boolean(activeDialogue) || zoneTransitioning;
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">
@@ -369,17 +410,24 @@ export function UI() {
             <div className="text-2xl font-bold tracking-tight">{formatTime(timeOfDay)}</div>
             <div className="text-sm font-medium text-muted-foreground">{getScheduleLabel(schedule)} {isRainy && "(Indoor)"}</div>
           </div>
+          <img
+            src={`${import.meta.env.BASE_URL}daykare-assets/01_playtime_app_icon.png`}
+            alt=""
+            className="hidden sm:block w-12 h-9 rounded-lg object-cover border border-primary/20"
+          />
         </div>
 
         <div className="flex gap-2">
           <button 
             onClick={advanceSchedule}
+            disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-card border-2 border-transparent hover:border-primary/20 transition-all pointer-events-auto"
           >
             +1.5h
           </button>
           <button 
             onClick={toggleRain}
+            disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur p-2 rounded-lg shadow hover:bg-card border-2 border-transparent hover:border-blue-400/30 transition-all pointer-events-auto text-blue-500"
             title="Toggle Rain"
           >
@@ -387,6 +435,7 @@ export function UI() {
           </button>
           <button 
             onClick={toggleImagination}
+            disabled={gameplayBlocked}
             className={`backdrop-blur p-2 rounded-lg shadow transition-all pointer-events-auto border-2 ${
               isImaginationMode 
                 ? 'bg-accent text-white border-accent' 
@@ -398,6 +447,7 @@ export function UI() {
           </button>
           <button 
             onClick={() => useGameStore.setState(s => ({ quality: s.quality === 'high' ? 'low' : 'high' }))}
+            disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-card border-2 border-transparent hover:border-gray-400/30 transition-all pointer-events-auto text-gray-700"
             title="Quality Toggle"
           >
@@ -425,6 +475,7 @@ export function UI() {
       <div className="daykare-hud-right absolute top-6 right-6 flex flex-col items-end gap-3 pointer-events-auto">
         <button 
           onClick={toggleJournal}
+          disabled={Boolean(activeDialogue) || zoneTransitioning}
           className="bg-card/90 backdrop-blur border-2 border-primary/20 p-3 rounded-xl shadow-lg flex items-center gap-3 hover:scale-105 transition-transform"
         >
           <span className="font-bold hidden sm:block">Journal (J)</span>
@@ -457,6 +508,12 @@ export function UI() {
           </div>
         )}
       </div>
+
+      {ambientMessage && !activeDialogue && !journalOpen && !zoneTransitioning && (
+        <div className="absolute top-28 left-1/2 -translate-x-1/2 max-w-md rounded-full bg-[#fff8e8]/94 border-2 border-[#e6ae2f]/45 px-5 py-3 text-sm font-bold text-[#5c3a21] shadow-xl" role="status" aria-live="polite">
+          {ambientMessage}
+        </div>
+      )}
 
       {/* Dialogue Overlay */}
       {activeDialogue && (
@@ -599,6 +656,11 @@ export function UI() {
                     <Sparkles className="w-4 h-4 text-amber-500" />
                     Repeat activities, help friends, and run the Juice Club to prepare new routes.
                   </div>
+                  <img
+                    src={`${import.meta.env.BASE_URL}daykare-assets/20_reward_stickers.png`}
+                    alt="DayKare reward sticker collection"
+                    className="mt-3 w-full max-h-28 object-cover rounded-lg border border-amber-200"
+                  />
                   <div className="mt-3 p-3 rounded-lg bg-white/70 border border-amber-200">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -780,7 +842,7 @@ export function UI() {
           <div className="flex justify-between gap-4"><span>Move</span> <span className="text-gray-300">Arrows / WASD</span></div>
           <div className="flex justify-between gap-4"><span>Jump</span> <span className="text-gray-300">Space</span></div>
           <div className="flex justify-between gap-4"><span>Run</span> <span className="text-gray-300">Shift</span></div>
-          <div className="flex justify-between gap-4"><span>Camera</span> <span className="text-gray-300">Drag orbit · Wheel zoom · R centers</span></div>
+          <div className="flex justify-between gap-4"><span>Camera</span> <span className="text-gray-300">Drag orbit · R centers</span></div>
           <div className="flex justify-between gap-4"><span>Crouch</span> <span className="text-gray-300">C</span></div>
           <div className="flex justify-between gap-4"><span>Interact</span> <span className="text-gray-300">E</span></div>
           <div className="flex justify-between gap-4"><span>Journal</span> <span className="text-gray-300">J/Tab</span></div>

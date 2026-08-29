@@ -256,14 +256,17 @@ export function resolveMovement(
   const stepZ = (desired.z - current.z) / steps;
 
   for (let step = 0; step < steps; step += 1) {
+    const before = next.clone();
     next.x += stepX;
     for (const solid of WORLD_SOLIDS) {
       if (solid.zone === zone) pushOut(next, radius, solid, 'x');
     }
+    if (!isWithinWalkableBounds(next, radius, zone)) next.x = before.x;
     next.z += stepZ;
     for (const solid of WORLD_SOLIDS) {
       if (solid.zone === zone) pushOut(next, radius, solid, 'z');
     }
+    if (!isWithinWalkableBounds(next, radius, zone)) next.z = before.z;
   }
   return next;
 }

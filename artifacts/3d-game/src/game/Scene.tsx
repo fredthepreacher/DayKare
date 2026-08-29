@@ -13,6 +13,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
+import { isGameplayBlocked } from './gameplayGate';
 
 function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   const forward = useRef(new THREE.Vector3());
@@ -22,8 +23,16 @@ function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THRE
     if (!playerRef.current) return;
     forward.current.set(0, 0, -1).applyQuaternion(playerRef.current.quaternion);
     camera.getWorldDirection(cameraForward.current);
-    const candidate = resolveInteractionCandidate(playerRef.current.position, forward.current, cameraForward.current);
     const store = useGameStore.getState();
+    if (isGameplayBlocked({
+      journalOpen: store.journalOpen,
+      activeDialogue: store.activeDialogue,
+      zoneTransitioning: store.zoneTransitioning,
+    })) {
+      if (store.activeInteractable !== null) store.setActiveInteractable(null);
+      return;
+    }
+    const candidate = resolveInteractionCandidate(playerRef.current.position, forward.current, cameraForward.current);
     if (store.activeInteractable !== (candidate?.id ?? null)) {
       store.setActiveInteractable(candidate?.id ?? null);
     }

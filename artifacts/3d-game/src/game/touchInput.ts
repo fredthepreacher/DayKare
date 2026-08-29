@@ -26,6 +26,12 @@ export function clearTouchMove() {
   touchInput.y = 0;
 }
 
+export function resetTouchInput() {
+  clearTouchMove();
+  touchInput.run = false;
+  touchInput.crouch = false;
+}
+
 export function toggleTouchRun() {
   touchInput.run = !touchInput.run;
   return touchInput.run;

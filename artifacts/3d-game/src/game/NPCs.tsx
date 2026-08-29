@@ -37,6 +37,8 @@ function namePhase(name: string) {
 export function NPCs({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
     <group>
+      <AmbientSocialMoments />
+      <JuiceClubQueue />
       <Teacher name="Ms. Harper" color="#457b9d" accent="#e4bd6a" hairColor="#46352f" hairStyle="bob" skinColor="#c98562" defaultPos={[-2, 0, -2]} playerRef={playerRef} />
       <Teacher name="Mr. Davis" color="#355272" accent="#68a9a7" hairColor="#6a4a3c" hairStyle="curls" skinColor="#e6ad88" defaultPos={[10, 0, 0]} playerRef={playerRef} />
       {KID_CAST.map((kid) => <Kid key={kid.name} {...kid} playerRef={playerRef} />)}
@@ -49,8 +51,9 @@ function scheduleDestination(
   isRainy: boolean,
   defaultPos: [number, number, number],
   phase: number,
+  cycle = 0,
 ) {
-  const slot = Math.abs(Math.floor(phase * 10)) % 6;
+  const slot = (Math.abs(Math.floor(phase * 10)) + cycle) % 6;
   const activitySpots: Record<string, [number, number, number][]> = {
     'morning-play': [
       [-3.4, 0, -0.8], [-2.2, 0, 2.4], [0, 0, 3.4],
@@ -241,7 +244,14 @@ function Kid({
   const phase = useMemo(() => namePhase(name), [name]);
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const activityTarget = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
-  const activityState = useRef({ key: '', dwellUntil: 0, arrived: false });
+  const activityState = useRef({
+    key: '',
+    dwellUntil: 0,
+    arrived: false,
+    cycle: 0,
+    stuckFor: 0,
+    lastPosition: new THREE.Vector3(...defaultPos),
+  });
   const candidate = useMemo(() => ({
     id: `kid-${name}`,
     position: mirror,
@@ -259,7 +269,9 @@ function Kid({
       activityState.current.key = activityKey;
       activityState.current.dwellUntil = 0;
       activityState.current.arrived = false;
-      activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase));
+      activityState.current.cycle = 0;
+      activityState.current.stuckFor = 0;
+      activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase, 0));
     }
     const distanceToActivity = ref.current.position.distanceTo(activityTarget);
     if (distanceToActivity < 0.48 && !activityState.current.arrived) {
@@ -271,20 +283,108 @@ function Kid({
     } else if (distanceToActivity >= 0.48) {
       activityState.current.arrived = false;
       stepNpc(`kid-${name}`, ref.current, activityTarget, playerRef.current, delta, 1.15);
+      const moved = ref.current.position.distanceTo(activityState.current.lastPosition);
+      activityState.current.stuckFor = moved < 0.002
+        ? activityState.current.stuckFor + delta
+        : 0;
+      if (activityState.current.stuckFor > 2.8) {
+        activityState.current.cycle += 1;
+        activityState.current.stuckFor = 0;
+        activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase, activityState.current.cycle));
+      }
     } else if (state.clock.elapsedTime >= activityState.current.dwellUntil) {
-      const faceTarget = activityTarget.clone().multiplyScalar(0.82);
-      smoothTurn(ref.current, faceTarget, delta);
+      activityState.current.cycle += 1;
+      activityState.current.arrived = false;
+      activityState.current.dwellUntil = 0;
+      activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase, activityState.current.cycle));
     }
+    activityState.current.lastPosition.copy(ref.current.position);
     mirror.copy(ref.current.position);
     updateInteractionCandidate(`kid-${name}`, { position: mirror, valid: true });
   });
 
   return (
     <group ref={ref} position={defaultPos}>
-      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} />
+      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} activityMode={kidActivityMode(schedule, isRainy, phase)} />
       <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />
     </group>
   );
+}
+
+export function kidActivityMode(
+  schedule: string,
+  rainy: boolean,
+  phase: number,
+): NonNullable<CharacterModelProps['activityMode']> {
+  if (schedule === 'art-time') return Math.floor(phase) % 3 === 0 ? 'sitting' : 'playing';
+  if (schedule === 'juice-club') return 'gathering';
+  if (schedule === 'outdoor-play' && rainy) return Math.floor(phase) % 2 === 0 ? 'sitting' : 'playing';
+  if (schedule === 'outdoor-play') return 'playing';
+  if (schedule === 'pickup') return 'gathering';
+  return Math.floor(phase) % 2 === 0 ? 'playing' : 'gathering';
+}
+
+function JuiceClubQueue() {
+  const schedule = useGameStore((state) => state.schedule);
+  const waitingCustomers = useGameStore((state) => state.waitingCustomers);
+  const tray = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    if (tray.current) tray.current.position.x = Math.sin(state.clock.elapsedTime * 1.4) * 0.15;
+  });
+  if (schedule !== 'juice-club') return null;
+  return (
+    <group>
+      {[0, 1, 2].map((index) => (
+        <mesh key={index} position={[0.9 - index * 1.25, 0.035, -1.65 + index * 0.08]} rotation={[-Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.38, 0.035, 8, 22]} />
+          <meshBasicMaterial color={index < waitingCustomers.length ? '#ffd166' : '#fff0c7'} transparent opacity={index < waitingCustomers.length ? 0.82 : 0.22} />
+        </mesh>
+      ))}
+      <group ref={tray} position={[3, 1.24, -2.32]}>
+        <mesh><boxGeometry args={[0.9, 0.06, 0.38]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
+        <mesh position={[-0.22, 0.16, 0]}><cylinderGeometry args={[0.1, 0.08, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.85} /></mesh>
+        <mesh position={[0.22, 0.11, 0]}><boxGeometry args={[0.2, 0.2, 0.2]} /><meshStandardMaterial color="#dfb976" /></mesh>
+      </group>
+    </group>
+  );
+}
+
+function AmbientSocialMoments() {
+  const messageIndex = useRef(0);
+  useEffect(() => {
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
+    const messages: Record<string, string[]> = {
+      'morning-play': ['Finn invites everyone to the block circle.', 'Mia waves from a small story-time group.'],
+      'art-time': ['Ruby compares paint colors with the art table group.', 'Mr. Davis reminds the artists to share the brushes.'],
+      'juice-club': ['The Juice Club line shuffles forward together.', 'Noah cheers when a fresh tray reaches the counter.'],
+      'outdoor-play': ['Zoe calls out a friendly playground challenge.', 'Leo and Sam gather near the next activity spot.'],
+      pickup: ['The pickup group checks cubbies and waves goodbye.', 'Ms. Harper thanks everyone for helping tidy the room.'],
+    };
+    const showMoment = () => {
+      const state = useGameStore.getState();
+      if (
+        state.zone !== 'hub'
+        || state.activeDialogue
+        || state.journalOpen
+        || state.zoneTransitioning
+        || state.activeInteractable
+      ) return;
+      const scheduleMessages = messages[state.schedule] ?? messages['morning-play'];
+      const message = scheduleMessages[messageIndex.current % scheduleMessages.length];
+      messageIndex.current += 1;
+      state.setAmbientMessage(message);
+      if (clearTimer) clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => useGameStore.getState().setAmbientMessage(null), 3800);
+    };
+    const first = setTimeout(showMoment, 8500);
+    const interval = setInterval(showMoment, 17000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(interval);
+      if (clearTimer) clearTimeout(clearTimer);
+    };
+  }, []);
+  return null;
 }
 
 function ActivityProp({ schedule, rainy, phase }: { schedule: string; rainy: boolean; phase: number }) {

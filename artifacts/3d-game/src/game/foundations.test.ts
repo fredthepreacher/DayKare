@@ -7,10 +7,8 @@ import {
   normalizeQuestStates,
 } from './quests';
 import {
-  CAMERA_ZOOM_MAX,
-  CAMERA_ZOOM_MIN,
+  CAMERA_DISTANCE,
   addCameraOrbit,
-  adjustCameraZoom,
   consumeCameraRecenterRequest,
   getCameraInput,
   recenterCamera,
@@ -18,7 +16,7 @@ import {
 } from './cameraInput';
 import { clearInteractionCandidates, registerInteractionCandidate, resolveInteractionCandidate } from './interactionFocus';
 import { getNavigationTarget, getPortalWaypoints } from './navigation';
-import { clearTouchMove, getTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
+import { clearTouchMove, getTouchInput, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
 import {
   GARDEN_SPAWN,
   PLAYER_RADIUS,
@@ -32,7 +30,9 @@ import {
 import { normalizeSavedItems, normalizeTidyItems, serializeGameState } from './store';
 import { HUB_ROUTES, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
-import { teacherPatrolSpots } from './NPCs';
+import { kidActivityMode, teacherPatrolSpots } from './NPCs';
+import { isGameplayBlocked } from './gameplayGate';
+import { isTouchDoubleTap, isTouchTap } from './TouchControls';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -208,6 +208,15 @@ assert.equal(useGameStore.getState().pendingZone, 'garden');
 useGameStore.getState().completeZoneTransition();
 assert.equal(useGameStore.getState().zone, 'garden');
 assert.deepEqual(useGameStore.getState().playerPosition, GARDEN_SPAWN);
+assert.equal(useGameStore.getState().startGardenActivity(), true);
+assert.equal(useGameStore.getState().startGardenActivity(), false, 'Garden activity cannot be started twice');
+assert.equal(useGameStore.getState().advanceGardenActivity(), 2);
+assert.equal(useGameStore.getState().advanceGardenActivity(), 3);
+useGameStore.getState().completeActivity('garden-planting', 2, 1);
+assert.equal(useGameStore.getState().progression.activityRuns['garden-planting'], 1);
+assert.equal(useGameStore.getState().progression.activityRewards['garden-planting'], 2);
+useGameStore.getState().resetGardenActivity();
+assert.equal(useGameStore.getState().gardenActivityStep, 0, 'Garden activity is repeatable');
 useGameStore.getState().setPlayerPosition([1, 0, 12]);
 const persistedGarden = serializeGameState(useGameStore.getState());
 assert.equal(persistedGarden.zone, 'garden');
@@ -228,6 +237,12 @@ assert.deepEqual(useGameStore.getState().droppedItems, []);
 useGameStore.getState().dropAt('binky', [0, 0, 3]);
 assert.deepEqual(useGameStore.getState().inventory, []);
 assert.equal(useGameStore.getState().droppedItems[0]?.zone, 'hub');
+trackPlayerPosition(new THREE.Vector3(5, 0, 5));
+useGameStore.getState().recoverDroppedItem('dropped-binky');
+assert.deepEqual(useGameStore.getState().inventory, [], 'a dropped quest item cannot be recovered remotely');
+trackPlayerPosition(new THREE.Vector3(0, 0, 3));
+useGameStore.getState().recoverDroppedItem('dropped-binky');
+assert.deepEqual(useGameStore.getState().inventory, ['binky'], 'nearby dropped items can be recovered safely');
 
 for (const teacher of [
   { name: 'Ms. Harper', defaultPos: [-2, 0, 2] as [number, number, number] },
@@ -246,6 +261,13 @@ for (const teacher of [
   }
 }
 
+for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+  assert.ok(
+    ['standing', 'sitting', 'playing', 'gathering'].includes(kidActivityMode(scheduleName, false, 4.2)),
+    `kid activity mode is defined for ${scheduleName}`,
+  );
+}
+
 recenterCamera();
 assert.equal(consumeCameraRecenterRequest(), true);
 addCameraOrbit(100, -20);
@@ -253,13 +275,11 @@ const directYaw = getCameraInput().yaw;
 stepCameraInput(1 / 30);
 stepCameraInput(1 / 120);
 assert.equal(getCameraInput().yaw, directYaw, 'camera drag does not accumulate frame-dependent inertia');
-adjustCameraZoom(100);
-assert.equal(getCameraInput().targetZoom, CAMERA_ZOOM_MAX, 'camera zoom clamps to its far limit');
-const zoomBeforeEase = getCameraInput().zoom;
-stepCameraInput(1 / 60);
-assert.ok(getCameraInput().zoom > zoomBeforeEase, 'camera zoom eases toward its target');
-adjustCameraZoom(-100);
-assert.equal(getCameraInput().targetZoom, CAMERA_ZOOM_MIN, 'camera zoom clamps to its near limit');
+assert.equal(CAMERA_DISTANCE, 8.8, 'desktop and touch use one stable camera frame');
+assert.equal(isGameplayBlocked({ journalOpen: true, activeDialogue: null, zoneTransitioning: false }), true);
+assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: { text: 'pause' }, zoneTransitioning: false }), true);
+assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: null, zoneTransitioning: true }), true);
+assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: null, zoneTransitioning: false }), false);
 
 setTouchMove(2, -2);
 assert.deepEqual({ x: getTouchInput().x, y: getTouchInput().y }, { x: 1, y: -1 }, 'touch movement clamps to a stable unit range');
@@ -268,8 +288,14 @@ setTouchCrouch(true);
 assert.equal(getTouchInput().crouch, true);
 clearTouchMove();
 assert.deepEqual({ x: getTouchInput().x, y: getTouchInput().y }, { x: 0, y: 0 });
-toggleTouchRun();
-setTouchCrouch(false);
+resetTouchInput();
+assert.deepEqual(getTouchInput(), { x: 0, y: 0, run: false, crouch: false }, 'blocking overlays clear all touch toggles');
+assert.equal(isTouchTap(true, 0), false, 'a completed hold cannot become a tap on pointer release');
+assert.equal(isTouchTap(false, 12), true, 'a short untouched release remains a tap');
+assert.equal(isTouchTap(false, 24), false, 'a movement gesture cannot become a tap');
+assert.equal(isTouchDoubleTap(0, 200), false, 'the zero sentinel cannot count as a completed first tap');
+assert.equal(isTouchDoubleTap(100, 300), true, 'two completed taps inside the window toggle run');
+assert.equal(isTouchDoubleTap(0, 300), false, 'tap state cleared by cancellation cannot toggle run');
 
 clearInteractionCandidates();
 const fartherQuestTarget = {
@@ -294,6 +320,33 @@ const focused = resolveInteractionCandidate(
   new THREE.Vector3(0, 0, -1),
 );
 assert.equal(focused?.id, 'close-intended');
+const gardenCandidateCleanup = registerInteractionCandidate({
+  id: 'garden-activity-host',
+  position: new THREE.Vector3(-10.8, 0, 5.35),
+  range: 2.4,
+  priority: 72,
+  valid: true,
+});
+assert.equal(
+  resolveInteractionCandidate(
+    new THREE.Vector3(-10.8, 0, 5.35),
+    new THREE.Vector3(0, 0, -1),
+    undefined,
+    -1,
+  )?.id,
+  'garden-activity-host',
+);
+gardenCandidateCleanup();
+assert.equal(
+  resolveInteractionCandidate(
+    new THREE.Vector3(-10.8, 0, 5.35),
+    new THREE.Vector3(0, 0, -1),
+    undefined,
+    -1,
+  ),
+  null,
+  'Garden-only interaction is removed when returning to the Hub',
+);
 clearInteractionCandidates();
 
 console.log('DayKare foundation checks passed');

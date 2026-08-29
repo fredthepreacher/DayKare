@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { objectiveIsActive } from './quests';
 import { useGameStore } from './store';
+import { SuppliedArtwork } from './Artwork';
 
 export function Interactables({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
@@ -67,6 +68,7 @@ function JuiceStand({ playerRef }: { playerRef: React.RefObject<THREE.Group | nu
         <boxGeometry args={[1.8, 0.5, 0.1]} />
         <meshStandardMaterial color="#8338ec" />
       </mesh>
+      <SuppliedArtwork fileName="11_juice_club_branding.png" position={[0, 1.5, 0.065]} size={[1.7, 1.28]} />
       <mesh position={[-0.5, 1.35, 0]} castShadow>
         <cylinderGeometry args={[0.2, 0.2, 0.5, 16]} />
         <meshStandardMaterial color="#ff5400" transparent opacity={0.8} />

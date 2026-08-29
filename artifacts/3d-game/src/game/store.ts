@@ -24,6 +24,7 @@ import {
   isWalkable,
   type GameZone,
 } from './world';
+import { resetTouchInput } from './touchInput';
 
 export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -89,6 +90,8 @@ export interface GameState {
   gardenPosition: [number, number, number];
   zoneTransitioning: boolean;
   pendingZone: GameZone | null;
+  gardenActivityStep: number;
+  ambientMessage: string | null;
   
   // Actions
   setQuality: (q: 'low' | 'high') => void;
@@ -122,6 +125,10 @@ export interface GameState {
   cycleTricycleColor: () => void;
   triggerTeleport: () => void;
   completeActivity: (activityId: string, tokenReward: number, reputationReward: number) => void;
+  startGardenActivity: () => boolean;
+  advanceGardenActivity: () => number;
+  resetGardenActivity: () => void;
+  setAmbientMessage: (message: string | null) => void;
   addProgressionTokens: (amount: number) => void;
   buyHubUpgrade: (id: string, cost: number) => boolean;
   setTrustedHelperPass: () => void;
@@ -200,6 +207,8 @@ const initialState = {
   gardenPosition: GARDEN_SPAWN,
   zoneTransitioning: false,
   pendingZone: null,
+  gardenActivityStep: 0,
+  ambientMessage: null,
 };
 
 const BINKY_STATUSES = new Set<BinkyStatus>([
@@ -372,7 +381,12 @@ export const useGameStore = create<GameState>()(
       }),
       recoverDroppedItem: (id) => set((state) => {
         const droppedItem = state.droppedItems.find((candidate) => candidate.id === id);
-        if (!droppedItem) return state;
+        const player = getTrackedPlayerPosition();
+        if (
+          !droppedItem
+          || droppedItem.zone !== state.zone
+          || Math.hypot(player[0] - droppedItem.position[0], player[2] - droppedItem.position[2]) > 2.1
+        ) return state;
         return {
           droppedItems: state.droppedItems.filter((candidate) => candidate.id !== id),
           inventory: state.inventory.includes(droppedItem.item)
@@ -555,9 +569,18 @@ export const useGameStore = create<GameState>()(
         return state;
       }),
       
-      setActiveInteractable: (id) => set({ activeInteractable: id }),
-      setActiveDialogue: (dialogue) => set({ activeDialogue: dialogue }),
-      toggleJournal: () => set((state) => ({ journalOpen: !state.journalOpen })),
+      setActiveInteractable: (id) => set((state) => ({
+        activeInteractable: state.activeDialogue || state.journalOpen || state.zoneTransitioning ? null : id,
+      })),
+      setActiveDialogue: (dialogue) => set({
+        activeDialogue: dialogue,
+        activeInteractable: null,
+      }),
+      toggleJournal: () => set((state) => {
+        const journalOpen = !state.journalOpen;
+        if (journalOpen) resetTouchInput();
+        return { journalOpen, activeInteractable: null };
+      }),
       cycleTricycleColor: () => set((state) => ({ tricycleColorIndex: (state.tricycleColorIndex + 1) % 4 })),
       triggerTeleport: () => set((state) => ({
         teleportTrigger: state.teleportTrigger + 1,
@@ -584,6 +607,33 @@ export const useGameStore = create<GameState>()(
         };
         return { progression: withQualifiedRoutes(nextProgression) };
       }),
+      startGardenActivity: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'garden' || state.zoneTransitioning || state.gardenActivityStep !== 0) return state;
+          changed = true;
+          return { gardenActivityStep: 1 };
+        });
+        return changed;
+      },
+      advanceGardenActivity: () => {
+        let nextStep = 0;
+        set((state) => {
+          if (state.zone !== 'garden' || state.zoneTransitioning || state.gardenActivityStep < 1 || state.gardenActivityStep >= 3) {
+            nextStep = state.gardenActivityStep;
+            return state;
+          }
+          nextStep = state.gardenActivityStep + 1;
+          return { gardenActivityStep: nextStep };
+        });
+        return nextStep;
+      },
+      resetGardenActivity: () => set({ gardenActivityStep: 0 }),
+      setAmbientMessage: (ambientMessage) => set((state) => (
+        state.activeDialogue || state.journalOpen || state.zoneTransitioning
+          ? { ambientMessage: null }
+          : { ambientMessage }
+      )),
       addProgressionTokens: (amount) => set((state) => {
         const progression = withQualifiedRoutes({
           ...state.progression,
@@ -655,12 +705,14 @@ export const useGameStore = create<GameState>()(
         if (!state.zoneTransitioning || !state.pendingZone) return state;
         const zone = state.pendingZone;
         const position = zone === 'garden' ? state.gardenPosition : state.hubPosition;
+        resetTouchInput();
         return {
           zone,
           playerPosition: position,
           zoneTransitioning: false,
           pendingZone: null,
           teleportTrigger: state.teleportTrigger + 1,
+          activeInteractable: null,
         };
       }),
       resetGame: () => set(initialState),

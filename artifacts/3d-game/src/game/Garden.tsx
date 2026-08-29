@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { useGameStore } from './store';
 import { getWorldSolidTransform, WORLD_SOLIDS } from './world';
+import { CharacterModel } from './CharacterModel';
+import { SuppliedArtwork } from './Artwork';
 
 const FLOWERS = [
   [-15, -15, '#e8613c'], [-12.5, -14.2, '#ffd166'], [-9.8, -15, '#8a63c7'],
@@ -21,6 +23,7 @@ export function Garden() {
     <group>
       <GardenEnvironment />
       <GardenDetails />
+      <GardenActivityHost />
       <GardenReturnGate />
     </group>
   );
@@ -173,6 +176,71 @@ function GardenDetails() {
           <boxGeometry args={[3.7, 1.22, 0.04]} />
           <meshStandardMaterial color="#4d9a73" roughness={0.76} />
         </mesh>
+        <SuppliedArtwork fileName="12_garden_signage.png" position={[0, 0.98, 0.14]} size={[3.55, 1.3]} />
+      </group>
+    </group>
+  );
+}
+
+function GardenActivityHost() {
+  const ref = useRef<THREE.Group>(null);
+  const step = useGameStore((state) => state.gardenActivityStep);
+  const active = useGameStore((state) => state.activeInteractable === 'garden-activity-host');
+  const position = useMemo(() => new THREE.Vector3(-10.8, 0, 5.35), []);
+  const candidate = useMemo(() => ({
+    id: 'garden-activity-host',
+    position,
+    range: 2.4,
+    priority: 72,
+    valid: true,
+  }), [position]);
+
+  useEffect(() => {
+    return registerInteractionCandidate(candidate);
+  }, [candidate]);
+  useFrame((state, delta) => {
+    updateInteractionCandidate('garden-activity-host', { position, valid: true });
+    if (!ref.current) return;
+    ref.current.position.y = Math.sin(state.clock.elapsedTime * 1.7) * 0.018;
+    ref.current.rotation.y = THREE.MathUtils.lerp(
+      ref.current.rotation.y,
+      active ? -0.15 : 0.2,
+      1 - Math.exp(-7 * delta),
+    );
+  });
+
+  return (
+    <group>
+      <group ref={ref} position={[-10.8, 0, 5.35]}>
+        <CharacterModel
+          bodyColor="#4f8d55"
+          accentColor="#ffd166"
+          hairColor="#6b4932"
+          hairStyle="sprout"
+          skinColor="#d99a72"
+          mood="happy"
+          accessory="badge"
+          activityMode="gathering"
+          motionSeed={4.2}
+        />
+      </group>
+      <group position={[-10.8, 0, 4.55]}>
+        {[0, 1, 2].map((index) => (
+          <group key={index} position={[-0.55 + index * 0.55, 0, 0]}>
+            <mesh position={[0, 0.12, 0]}>
+              <cylinderGeometry args={[0.035, 0.045, 0.24, 7]} />
+              <meshStandardMaterial color="#4f8d55" />
+            </mesh>
+            <mesh position={[0, 0.32, 0]} scale={index < step ? 1 : 0.35}>
+              <sphereGeometry args={[0.13, 8, 6]} />
+              <meshStandardMaterial color={['#e8613c', '#ffd166', '#8a63c7'][index]} />
+            </mesh>
+          </group>
+        ))}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]}>
+          <torusGeometry args={[1.05, 0.04, 8, 28]} />
+          <meshBasicMaterial color="#ffd166" transparent opacity={active ? 0.8 : 0.24} />
+        </mesh>
       </group>
     </group>
   );
@@ -190,7 +258,9 @@ function GardenReturnGate() {
     valid: true,
   }), [position]);
 
-  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  useEffect(() => {
+    return registerInteractionCandidate(candidate);
+  }, [candidate]);
   useFrame((state, delta) => {
     updateInteractionCandidate('garden-return', { position, valid: true });
     if (!ref.current) return;

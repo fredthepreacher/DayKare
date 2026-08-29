@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { clearTouchMove, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
-import { addCameraOrbit, adjustCameraZoom, recenterCamera, CAMERA_ZOOM_STEP } from './cameraInput';
+import { clearTouchMove, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
+import { addCameraOrbit, recenterCamera } from './cameraInput';
 
 const HOLD_DELAY_MS = 520;
 const DOUBLE_TAP_WINDOW_MS = 360;
 const TAP_MOVEMENT_LIMIT = 18;
+
+export function isTouchTap(holdTriggered: boolean, maxTravel: number) {
+  return !holdTriggered && maxTravel <= TAP_MOVEMENT_LIMIT;
+}
+
+export function isTouchDoubleTap(lastTapAt: number, now: number) {
+  return lastTapAt > 0 && now - lastTapAt <= DOUBLE_TAP_WINDOW_MS;
+}
 
 interface TouchControlsProps {
   movementEnabled: boolean;
@@ -25,7 +33,6 @@ export function TouchControls({
   const lookPointer = useRef<number | null>(null);
   const lookPoint = useRef({ x: 0, y: 0 });
   const lookPointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinchDistance = useRef(0);
   const startPoint = useRef({ x: 0, y: 0 });
   const maxTravel = useRef(0);
   const lastTapAt = useRef(0);
@@ -43,17 +50,19 @@ export function TouchControls({
       activePointer.current = null;
       lookPointer.current = null;
       lookPointers.current.clear();
-      pinchDistance.current = 0;
-      clearTouchMove();
+      resetTouchInput();
+      holdTriggered.current = false;
+      lastTapAt.current = 0;
       setKnob({ x: 0, y: 0 });
+      setRunEnabled(false);
+      setCrouchEnabled(false);
     }
   }, [movementEnabled]);
 
   useEffect(() => {
     return () => {
       if (holdTimer.current) clearTimeout(holdTimer.current);
-      clearTouchMove();
-      setTouchCrouch(false);
+      resetTouchInput();
       lookPointers.current.clear();
     };
   }, []);
@@ -123,12 +132,13 @@ export function TouchControls({
       holdTimer.current = null;
     }
     activePointer.current = null;
+    const wasHold = holdTriggered.current;
     clearTouchMove();
     setKnob({ x: 0, y: 0 });
 
-    if (!holdTriggered.current && maxTravel.current <= TAP_MOVEMENT_LIMIT) {
+    if (isTouchTap(wasHold, maxTravel.current)) {
       const now = performance.now();
-      if (now - lastTapAt.current <= DOUBLE_TAP_WINDOW_MS) {
+      if (isTouchDoubleTap(lastTapAt.current, now)) {
         const next = toggleTouchRun();
         setRunEnabled(next);
         lastTapAt.current = 0;
@@ -137,6 +147,7 @@ export function TouchControls({
         lastTapAt.current = now;
       }
     }
+    holdTriggered.current = false;
   };
 
   const cancelPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -147,8 +158,11 @@ export function TouchControls({
     }
     activePointer.current = null;
     holdTriggered.current = false;
-    clearTouchMove();
+    lastTapAt.current = 0;
+    resetTouchInput();
     setKnob({ x: 0, y: 0 });
+    setRunEnabled(false);
+    setCrouchEnabled(false);
   };
 
   const startLook = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -161,8 +175,6 @@ export function TouchControls({
       lookPoint.current = { x: event.clientX, y: event.clientY };
     } else if (lookPointers.current.size === 2) {
       lookPointer.current = null;
-      const [first, second] = [...lookPointers.current.values()];
-      pinchDistance.current = Math.hypot(first.x - second.x, first.y - second.y);
     }
   };
 
@@ -171,16 +183,7 @@ export function TouchControls({
     event.preventDefault();
     lookPointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
-    if (lookPointers.current.size >= 2) {
-      const [first, second] = [...lookPointers.current.values()];
-      const nextDistance = Math.hypot(first.x - second.x, first.y - second.y);
-      if (pinchDistance.current > 0) {
-        // Spreading fingers zooms in; bringing them together zooms out.
-        adjustCameraZoom((pinchDistance.current - nextDistance) * 0.028);
-      }
-      pinchDistance.current = nextDistance;
-      return;
-    }
+    if (lookPointers.current.size >= 2) return;
 
     if (lookPointer.current === event.pointerId) {
       addCameraOrbit(event.clientX - lookPoint.current.x, event.clientY - lookPoint.current.y);
@@ -198,7 +201,6 @@ export function TouchControls({
     } else {
       lookPointer.current = null;
     }
-    pinchDistance.current = 0;
   };
 
   return (
@@ -211,7 +213,7 @@ export function TouchControls({
           onPointerUp={finishLook}
           onPointerCancel={finishLook}
           role="application"
-          aria-label="Drag to orbit the camera. Pinch to zoom."
+           aria-label="Drag to orbit the camera."
         >
           <button
             type="button"
@@ -223,30 +225,6 @@ export function TouchControls({
           >
             Center camera
           </button>
-          <div className="daykare-touch-camera-controls" aria-label="Camera zoom controls">
-            <button
-              type="button"
-              aria-label="Zoom in"
-              title="Zoom in"
-              onPointerDown={(event) => {
-                event.stopPropagation();
-              }}
-              onClick={() => adjustCameraZoom(-CAMERA_ZOOM_STEP)}
-            >
-              +
-            </button>
-            <button
-              type="button"
-              aria-label="Zoom out"
-              title="Zoom out"
-              onPointerDown={(event) => {
-                event.stopPropagation();
-              }}
-              onClick={() => adjustCameraZoom(CAMERA_ZOOM_STEP)}
-            >
-              −
-            </button>
-          </div>
         </div>
       )}
       {movementEnabled && (
