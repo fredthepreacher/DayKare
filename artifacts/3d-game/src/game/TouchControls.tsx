@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { LocateFixed } from 'lucide-react';
 import { clearTouchMove, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun, TouchPointerOwnership } from './touchInput';
 import { addCameraOrbit, recenterCamera } from './cameraInput';
 
@@ -27,6 +28,7 @@ export function TouchControls({
   interactionDetail,
   onInteract,
 }: TouchControlsProps) {
+  const touchUiRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<HTMLDivElement>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerOwnership = useRef(new TouchPointerOwnership());
@@ -38,6 +40,64 @@ export function TouchControls({
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [runEnabled, setRunEnabled] = useState(false);
   const [crouchEnabled, setCrouchEnabled] = useState(false);
+
+  useLayoutEffect(() => {
+    const touchUi = touchUiRef.current;
+    if (!touchUi) return;
+
+    const updateViewportLayout = () => {
+      const viewport = window.visualViewport;
+      const width = viewport?.width ?? window.innerWidth;
+      const height = viewport?.height ?? window.innerHeight;
+      const offsetLeft = viewport?.offsetLeft ?? 0;
+      const offsetTop = viewport?.offsetTop ?? 0;
+      const visibleBottom = offsetTop + height;
+      const hudRects = ['.daykare-hud-left', '.daykare-hud-right']
+        .map((selector) => document.querySelector<HTMLElement>(selector)?.getBoundingClientRect())
+        .filter((rect): rect is DOMRect => Boolean(rect));
+      const hudBottom = hudRects.reduce(
+        (bottom, rect) => Math.max(bottom, rect.bottom),
+        offsetTop,
+      );
+      const recenterSize = 46;
+      const preferredTop = Math.max(offsetTop + 8, hudBottom + 8);
+      const latestVisibleTop = Math.max(offsetTop + 8, visibleBottom - recenterSize - 8);
+
+      touchUi.style.setProperty('--daykare-visual-left', `${offsetLeft}px`);
+      touchUi.style.setProperty('--daykare-visual-top', `${offsetTop}px`);
+      touchUi.style.setProperty('--daykare-visual-width', `${width}px`);
+      touchUi.style.setProperty('--daykare-visual-height', `${height}px`);
+      touchUi.style.setProperty(
+        '--daykare-touch-recenter-top',
+        `${Math.min(preferredTop, latestVisibleTop)}px`,
+      );
+    };
+
+    updateViewportLayout();
+    const resizeObserver = new ResizeObserver(updateViewportLayout);
+    const mutationObserver = new MutationObserver(updateViewportLayout);
+    for (const selector of ['.daykare-hud-left', '.daykare-hud-right']) {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (!element) continue;
+      resizeObserver.observe(element);
+      mutationObserver.observe(element, { childList: true, subtree: true });
+    }
+
+    const viewport = window.visualViewport;
+    window.addEventListener('resize', updateViewportLayout);
+    window.addEventListener('orientationchange', updateViewportLayout);
+    viewport?.addEventListener('resize', updateViewportLayout);
+    viewport?.addEventListener('scroll', updateViewportLayout);
+
+    return () => {
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      window.removeEventListener('resize', updateViewportLayout);
+      window.removeEventListener('orientationchange', updateViewportLayout);
+      viewport?.removeEventListener('resize', updateViewportLayout);
+      viewport?.removeEventListener('scroll', updateViewportLayout);
+    };
+  }, []);
 
   useEffect(() => {
     if (!movementEnabled) {
@@ -197,7 +257,7 @@ export function TouchControls({
   };
 
   return (
-    <div className="daykare-touch-ui" aria-label="Touch game controls">
+    <div ref={touchUiRef} className="daykare-touch-ui" aria-label="Touch game controls">
       {movementEnabled && (
         <div
           className="daykare-touch-look"
@@ -215,8 +275,11 @@ export function TouchControls({
               event.stopPropagation();
             }}
             onClick={recenterCamera}
+            aria-label="Center camera"
+            title="Center camera"
           >
-            Center camera
+            <LocateFixed aria-hidden="true" size={21} strokeWidth={2.5} />
+            <span className="sr-only">Center camera</span>
           </button>
         </div>
       )}

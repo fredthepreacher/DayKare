@@ -513,7 +513,7 @@ export function UI() {
           </button>
         </div>
         {activeQuest && activeObjective && (
-          <div className="max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-3 rounded-xl shadow-lg flex gap-3 items-start">
+          <div className="daykare-quest-card max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-3 rounded-xl shadow-lg flex gap-3 items-start">
             <img
               src={`${import.meta.env.BASE_URL}daykare-assets/13_ui_quest_icons.png`}
               alt=""
@@ -547,7 +547,7 @@ export function UI() {
           <Book className="w-6 h-6 text-primary" />
         </button>
 
-        <div className="daykare-progress-chip bg-card/90 backdrop-blur border-2 border-amber-400/25 px-3 py-2 rounded-xl shadow flex items-center gap-3 text-card-foreground">
+        <div className="daykare-progress-chip daykare-hud-progress bg-card/90 backdrop-blur border-2 border-amber-400/25 px-3 py-2 rounded-xl shadow flex items-center gap-3 text-card-foreground">
           <div className="flex items-center gap-1 font-bold text-amber-700">
             <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
             {progression.tokens}
@@ -556,13 +556,13 @@ export function UI() {
           <div className="text-xs font-bold text-muted-foreground">{progression.reputation} REP</div>
         </div>
 
-        <div className="bg-card/90 backdrop-blur border-2 border-emerald-500/25 px-3 py-2 rounded-xl shadow flex items-center gap-2 text-card-foreground">
+        <div className="daykare-hud-zone bg-card/90 backdrop-blur border-2 border-emerald-500/25 px-3 py-2 rounded-xl shadow flex items-center gap-2 text-card-foreground">
           <MapPinned className="w-4 h-4 text-emerald-600" />
           <span className="text-xs font-black uppercase tracking-wide">{zone === 'garden' ? 'Garden District' : 'DayKare Hub'}</span>
         </div>
         
         {schedule === 'juice-club' && (
-          <div className="bg-card/90 backdrop-blur border-2 border-green-500/20 p-3 rounded-xl shadow flex flex-col items-end text-green-600 font-bold">
+          <div className="daykare-hud-juice bg-card/90 backdrop-blur border-2 border-green-500/20 p-3 rounded-xl shadow flex flex-col items-end text-green-600 font-bold">
             <div className="flex items-center gap-2 text-lg">
               <DollarSign className="w-5 h-5" />
               <span>{juiceClubCash}.00</span>

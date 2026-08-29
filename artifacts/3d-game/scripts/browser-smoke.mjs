@@ -682,7 +682,15 @@ try {
     { width: 320, height: 568, label: 'compact portrait' },
     { width: 844, height: 390, label: 'landscape' },
   ]) {
+    await evaluate(client, `globalThis.__daykareStore.setState({
+      isRiding: true,
+      schedule: 'juice-club',
+      waitingCustomers: ['Max'],
+      juiceClubActiveCustomer: 'Max',
+      juiceClubCustomerPhase: 'ordering'
+    })`);
     await setViewport(client, viewport.width, viewport.height, true);
+    await waitFor(client, 'Boolean(document.querySelector(".daykare-touch-interact"))', `${viewport.label} interaction control`);
     const controlLayout = await evaluate(client, `(() => {
       const visual = window.visualViewport ?? {
         offsetLeft: 0,
@@ -695,7 +703,43 @@ try {
         '.daykare-touch-movement',
         '.daykare-touch-look',
         '.daykare-touch-recenter',
+        '.daykare-touch-interact',
       ];
+      const collisionSelectors = [
+        '.daykare-hud-left',
+        '.daykare-hud-right',
+        '.daykare-touch-movement',
+        '.daykare-touch-interact',
+        '.daykare-touch-recenter',
+      ];
+      const rectFor = (selector) => {
+        const element = document.querySelector(selector);
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return {
+          selector,
+          left: rect.left,
+          top: rect.top,
+          right: rect.right,
+          bottom: rect.bottom,
+        };
+      };
+      const collisionRects = collisionSelectors.map(rectFor).filter(Boolean);
+      const overlaps = [];
+      for (let i = 0; i < collisionRects.length; i += 1) {
+        for (let j = i + 1; j < collisionRects.length; j += 1) {
+          const a = collisionRects[i];
+          const b = collisionRects[j];
+          if (
+            a.right > b.left + 1
+            && b.right > a.left + 1
+            && a.bottom > b.top + 1
+            && b.bottom > a.top + 1
+          ) {
+            overlaps.push([a.selector, b.selector]);
+          }
+        }
+      }
       return {
         metrics: {
           innerWidth: window.innerWidth,
@@ -717,18 +761,8 @@ try {
           right: visual.offsetLeft + visual.width,
           bottom: visual.offsetTop + visual.height,
         },
-        controls: selectors.map((selector) => {
-          const element = document.querySelector(selector);
-          if (!element) return { selector, missing: true };
-          const rect = element.getBoundingClientRect();
-          return {
-            selector,
-            left: rect.left,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.bottom,
-          };
-        }),
+        controls: selectors.map((selector) => rectFor(selector) ?? { selector, missing: true }),
+        overlaps,
       };
     })()`);
     for (const control of controlLayout.controls) {
@@ -741,7 +775,21 @@ try {
         `${viewport.label} keeps ${control.selector} inside the bottom edge: ${JSON.stringify({ control, layout: controlLayout })}`,
       );
     }
+    assert.deepEqual(
+      controlLayout.overlaps,
+      [],
+      `${viewport.label} keeps HUD and touch controls separated: ${JSON.stringify(controlLayout.overlaps)}`,
+    );
+    if (process.env.DAYKARE_CAPTURE_DIR) {
+      const screenshot = await client.send('Page.captureScreenshot', { format: 'png' });
+      const captureName = viewport.label.replaceAll(' ', '-');
+      await writeFile(
+        path.join(process.env.DAYKARE_CAPTURE_DIR, `daykare-hud-${captureName}.png`),
+        Buffer.from(screenshot.data, 'base64'),
+      );
+    }
   }
+  await evaluate(client, 'globalThis.__daykareStore.setState({ isRiding: false })');
 
   await setViewport(client, 390, 844, true);
   const padPoint = await evaluate(client, `(() => {

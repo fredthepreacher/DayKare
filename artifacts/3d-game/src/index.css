@@ -181,10 +181,14 @@
 
   .daykare-touch-ui {
     display: block;
-    position: absolute;
-    inset: 0;
+    position: fixed;
+    left: var(--daykare-visual-left, 0px);
+    top: var(--daykare-visual-top, 0px);
+    width: var(--daykare-visual-width, 100vw);
+    height: var(--daykare-visual-height, 100dvh);
     pointer-events: none;
     z-index: 45;
+    overflow: visible;
   }
 
   .daykare-touch-look {
@@ -195,17 +199,29 @@
   }
 
   .daykare-touch-recenter {
-    position: absolute;
-    right: max(12px, env(safe-area-inset-right));
-    top: 0;
+    position: fixed;
+    left: 50%;
+    top: var(--daykare-touch-recenter-top, max(8px, env(safe-area-inset-top)));
+    width: 46px;
+    min-width: 46px;
+    height: 46px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    transform: translateX(-50%);
     border: 1px solid rgb(255 255 255 / 35%);
-    border-radius: 999px;
+    border-radius: 15px;
     background: rgb(41 30 24 / 68%);
     color: white;
-    padding: 0.45rem 0.7rem;
-    font-size: 0.68rem;
     font-weight: 800;
     pointer-events: auto;
+    box-shadow: 0 8px 18px rgb(31 20 20 / 22%);
+    backdrop-filter: blur(10px);
+    touch-action: manipulation;
+  }
+
+  .daykare-touch-recenter:active {
+    transform: translateX(-50%) scale(0.94);
   }
 
   .daykare-touch-movement {
