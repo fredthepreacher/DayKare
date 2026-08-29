@@ -62,7 +62,8 @@ import { useGameStore } from './store';
 import { KID_CAST, facingAngleForDirection, kidActivityMode, kidDestination, resolveNpcMovement, stepNpc, teacherPatrolProfile, teacherPatrolSpots } from './NPCs';
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
-import { GARDEN_CAST, gardenNpcDestination } from './Garden';
+import { GARDEN_CAST, GARDEN_LANDMARKS, gardenNpcDestination } from './Garden';
+import { ROUTE_FOCUS_RING_Y, getRouteGateInteractionPosition } from './HubProgression';
 import { artworkBackingSize, validateArtworkSurfaceAnchor, type ArtworkSurfaceAnchor } from './Artwork';
 import { dialogueDismissLabel } from './dialogueActions';
 import { getSharedActivitySession, reportSessionArrival, resetActivitySessions } from './activitySessions';
@@ -1451,6 +1452,30 @@ for (let frame = 0; frame < 80; frame += 1) {
 }
 assert.equal(shortSpikeProbe.getSnapshot().adaptiveSafeguardActive, false, 'a short frame-rate drop does not reduce optional animation');
 
+for (const landmark of GARDEN_LANDMARKS) {
+  assert.equal(
+    isWalkable(new THREE.Vector3(...landmark.position), PLAYER_RADIUS, [], 'garden'),
+    true,
+    `Garden landmark ${landmark.id} has a reachable interaction marker`,
+  );
+}
+
+const returnThreshold = getWorldSolidTransform('garden-return-threshold', 2.5, 1.25);
+assert.deepEqual(returnThreshold.size, [2.4, 2.5, 0.5], 'Garden return gate visual derives from its collision footprint');
+for (const route of HUB_ROUTES) {
+  const gate = getWorldSolidTransform(`route-${route.id}`, 2.5, 1.25);
+  assert.deepEqual(
+    getRouteGateInteractionPosition(route.id).toArray(),
+    [gate.position[0], 0, gate.position[2]],
+    `${route.label} interaction focus matches its collision-derived visible gate`,
+  );
+  assert.equal(
+    getRouteGateInteractionPosition(route.id).y + ROUTE_FOCUS_RING_Y,
+    0.035,
+    `${route.label} focus ring stays on the ground while its gate geometry uses the collider center`,
+  );
+}
+
 clearInteractionCandidates();
 const fartherQuestTarget = {
   id: 'farther-quest',
@@ -1474,6 +1499,41 @@ const focused = resolveInteractionCandidate(
   new THREE.Vector3(0, 0, -1),
 );
 assert.equal(focused?.id, 'close-intended');
+clearInteractionCandidates();
+registerInteractionCandidate({
+  id: 'calling-teacher',
+  position: new THREE.Vector3(0, 0, -1.7),
+  range: 2,
+  priority: 62,
+  urgentPriority: true,
+  valid: true,
+});
+registerInteractionCandidate({
+  id: 'nearby-child',
+  position: new THREE.Vector3(0, 0, -0.25),
+  range: 2,
+  priority: 55,
+  valid: true,
+});
+assert.equal(
+  resolveInteractionCandidate(new THREE.Vector3(), new THREE.Vector3(0, 0, -1))?.id,
+  'calling-teacher',
+  'an active teacher call takes precedence over a nearby non-quest target',
+);
+registerInteractionCandidate({
+  id: 'quest-child',
+  position: new THREE.Vector3(0.2, 0, -1.8),
+  range: 2,
+  priority: 55,
+  questPriority: true,
+  valid: true,
+});
+assert.equal(
+  resolveInteractionCandidate(new THREE.Vector3(), new THREE.Vector3(0, 0, -1))?.id,
+  'quest-child',
+  'quest priority remains authoritative over an active teacher call',
+);
+clearInteractionCandidates();
 const gardenCandidateCleanup = registerInteractionCandidate({
   id: 'garden-activity-host',
   position: new THREE.Vector3(-10.8, 0, 5.35),

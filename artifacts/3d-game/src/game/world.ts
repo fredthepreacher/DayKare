@@ -191,6 +191,9 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   gardenCircle('garden-tree-d', 'furniture', 14.2, -8.5, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
   gardenCircle('garden-tree-e', 'furniture', 2, -13.8, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
   gardenBox('garden-sign', 'furniture', -2.15, 2.15, -15.82, -15.58, { cameraRole: 'substantial', maxY: 1.9 }),
+  // The arch is a real threshold: its footprint matches the visible return
+  // gate and keeps the southern edge from reading as open terrain.
+  gardenBox('garden-return-threshold', 'route-gate', -1.2, 1.2, 15.75, 16.25, { maxY: 2.5 }),
 ];
 
 export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {

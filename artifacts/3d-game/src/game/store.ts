@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import * as THREE from 'three';
 import {
   ACTIVITY_DEFINITIONS,
@@ -100,6 +100,8 @@ export interface GameState {
   pendingZone: GameZone | null;
   gardenActivityStep: number;
   ambientMessage: string | null;
+  // This is deliberately session-only: it must never alter the save payload.
+  storageWarning: boolean;
   
   // Actions
   setQuality: (q: 'low' | 'high') => void;
@@ -224,6 +226,42 @@ const initialState = {
   pendingZone: null,
   gardenActivityStep: 0,
   ambientMessage: null,
+  storageWarning: false,
+};
+
+let reportStorageUnavailable: (() => void) | undefined;
+let storageOperationFailed = false;
+
+function noteStorageUnavailable() {
+  storageOperationFailed = true;
+  reportStorageUnavailable?.();
+}
+
+// Private browsing and embedded webviews can expose localStorage but throw on
+// individual operations. Keep the game state in memory when that happens.
+const resilientStorage = {
+  getItem: (name: string) => {
+    try {
+      return window.localStorage.getItem(name);
+    } catch {
+      noteStorageUnavailable();
+      return null;
+    }
+  },
+  setItem: (name: string, value: string) => {
+    try {
+      window.localStorage.setItem(name, value);
+    } catch {
+      noteStorageUnavailable();
+    }
+  },
+  removeItem: (name: string) => {
+    try {
+      window.localStorage.removeItem(name);
+    } catch {
+      noteStorageUnavailable();
+    }
+  },
 };
 
 const BINKY_STATUSES = new Set<BinkyStatus>([
@@ -1181,6 +1219,7 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: 'daykare-save',
+      storage: createJSONStorage(() => resilientStorage),
       partialize: serializeGameState,
       version: PROGRESSION_VERSION,
       migrate: (persistedState, storedVersion) => {
@@ -1200,3 +1239,10 @@ export const useGameStore = create<GameState>()(
     }
   )
 );
+
+reportStorageUnavailable = () => {
+  if (!useGameStore.getState().storageWarning) {
+    useGameStore.setState({ storageWarning: true });
+  }
+};
+if (storageOperationFailed) reportStorageUnavailable();

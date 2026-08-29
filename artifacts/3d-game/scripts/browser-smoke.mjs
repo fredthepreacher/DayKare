@@ -218,6 +218,11 @@ try {
   await evaluate(client, `(async () => {
     const { useGameStore } = await import(${modulePath});
     globalThis.__daykareStore = useGameStore;
+    const focusSource = document.createElement('button');
+    focusSource.id = 'browser-dialogue-focus-source';
+    focusSource.textContent = 'Dialogue focus source';
+    document.body.append(focusSource);
+    focusSource.focus();
     useGameStore.getState().setActiveDialogue({
       name: 'Browser Check',
       text: 'Choose a test option.',
@@ -234,13 +239,50 @@ try {
     'dialogue state reaches the live game store',
   );
   await waitFor(client, 'Boolean(document.querySelector(".daykare-dialogue-cancel"))', 'mobile cancel control');
+  await waitFor(
+    client,
+    'document.activeElement?.textContent?.includes("Keep open")',
+    'dialogue focuses its first action',
+  );
+  assert.deepEqual(
+    await evaluate(client, `(() => {
+      const dialogue = document.querySelector('.daykare-dialogue');
+      return {
+        role: dialogue?.getAttribute('role'),
+        modal: dialogue?.getAttribute('aria-modal'),
+        label: dialogue?.getAttribute('aria-label'),
+      };
+    })()`),
+    { role: 'dialog', modal: 'true', label: 'Browser Check dialogue' },
+    'dialogue exposes modal semantics and an accessible name',
+  );
   assert.equal(
     await evaluate(client, 'document.querySelector(".daykare-dialogue-cancel")?.textContent?.includes("Cancel / Leave")'),
     true,
     'mobile option dialogue exposes Cancel / Leave',
   );
-  await evaluate(client, 'document.querySelector(".daykare-dialogue-cancel").click()');
-  await waitFor(client, 'globalThis.__daykareStore.getState().activeDialogue === null', 'dialogue cancellation');
+  assert.equal(
+    await evaluate(client, `(() => {
+      const cancel = document.querySelector('.daykare-dialogue-cancel');
+      cancel.focus();
+      cancel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+      const wrappedForward = document.activeElement?.textContent?.includes('Keep open') === true;
+      document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+      return wrappedForward && document.activeElement === cancel;
+    })()`),
+    true,
+    'dialogue traps forward and reverse keyboard focus',
+  );
+  await evaluate(client, `document.activeElement.dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })
+  )`);
+  await waitFor(client, 'globalThis.__daykareStore.getState().activeDialogue === null', 'Escape closes dialogue');
+  await waitFor(
+    client,
+    'document.activeElement?.id === "browser-dialogue-focus-source"',
+    'dialogue restores prior focus',
+  );
+  await evaluate(client, 'document.querySelector("#browser-dialogue-focus-source")?.remove()');
 
   await evaluate(client, `(() => {
     globalThis.__daykareStore.getState().setTimeOfDay(14.25);
@@ -262,6 +304,35 @@ try {
     14.25,
     'local save rehydrates after a real page reload',
   );
+  assert.equal(
+    await evaluate(client, `localStorage.getItem('daykare-save')?.includes('storageWarning') ?? false`),
+    false,
+    'session-only storage warnings are excluded from the save payload',
+  );
+  await evaluate(client, `(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    try {
+      Storage.prototype.setItem = function setItemFailure() {
+        throw new DOMException('Storage blocked for browser check', 'SecurityError');
+      };
+      globalThis.__daykareStore.getState().setTimeOfDay(13.75);
+    } finally {
+      Storage.prototype.setItem = originalSetItem;
+    }
+  })()`);
+  await waitFor(
+    client,
+    'Boolean(document.querySelector(".daykare-save-warning"))',
+    'save-unavailable warning',
+  );
+  assert.equal(
+    await evaluate(client, `document.querySelector('.daykare-save-warning')?.textContent?.includes(
+      'progress will not be saved'
+    )`),
+    true,
+    'a localStorage write failure produces a clear non-fatal warning',
+  );
+  await evaluate(client, `globalThis.__daykareStore.setState({ storageWarning: false })`);
 
   await evaluate(client, `(() => {
     const store = globalThis.__daykareStore;
@@ -1001,11 +1072,32 @@ try {
   await evaluate(client, 'globalThis.__daykareStore.getState().toggleJournal()');
   await waitFor(client, 'globalThis.__daykareStore.getState().journalOpen === false', 'Journal closes');
 
-  await evaluate(client, 'globalThis.__daykareStore.setState({ zone: "garden" })');
+  await evaluate(client, `globalThis.__daykareStore.setState((state) => ({
+    zone: 'garden',
+    gardenPosition: [6.42, 0, -0.2],
+    playerPosition: [6.42, 0, -0.2],
+    teleportTrigger: state.teleportTrigger + 1,
+  }))`);
   await waitForResource(
     'Garden.tsx',
     'Garden module loads when the Garden opens',
   );
+  await sleep(500);
+  await evaluate(client, `globalThis.__daykareStore.setState({
+    activeInteractable: 'garden-landmark-pond'
+  })`);
+  await waitFor(
+    client,
+    'document.querySelector(".daykare-touch-interact")?.textContent?.includes("Notice Pond Ripples")',
+    'Garden landmark interaction prompt',
+  );
+  await evaluate(client, 'document.querySelector(".daykare-touch-interact").click()');
+  await waitFor(
+    client,
+    'globalThis.__daykareStore.getState().activeDialogue?.name === "Ripple Pond"',
+    'Garden landmark interaction dialogue',
+  );
+  await evaluate(client, 'globalThis.__daykareStore.getState().setActiveDialogue(null)');
   await evaluate(client, 'globalThis.__daykareStore.setState({ zone: "hub" })');
 
   assert.equal(

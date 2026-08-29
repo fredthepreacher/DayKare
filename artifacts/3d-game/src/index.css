@@ -143,6 +143,24 @@
   display: none;
 }
 
+.daykare-center-notices {
+  position: absolute;
+  top: max(24px, calc(var(--daykare-hud-bottom, 0px) + 12px));
+  left: 50%;
+  z-index: 19;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(calc(100vw - 32px), 32rem);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.daykare-center-notices > * {
+  max-width: 100%;
+  text-align: center;
+}
+
 .daykare-performance-panel {
   position: absolute;
   left: 12px;
@@ -200,7 +218,7 @@
 
   .daykare-touch-recenter {
     position: fixed;
-    left: 50%;
+    left: var(--daykare-touch-recenter-left, 50%);
     top: var(--daykare-touch-recenter-top, max(8px, env(safe-area-inset-top)));
     width: 46px;
     min-width: 46px;
@@ -392,11 +410,25 @@
   }
 
   .daykare-suspicion {
-    top: max(82px, calc(env(safe-area-inset-top) + 72px));
     max-width: calc(100vw - 32px);
     padding: 7px 12px;
     font-size: 12px;
     white-space: nowrap;
+  }
+
+  .daykare-center-notices {
+    top: max(
+      calc(env(safe-area-inset-top) + 74px),
+      calc(var(--daykare-hud-bottom, 0px) + 8px)
+    );
+    width: min(calc(100vw - 20px), 27rem);
+    gap: 6px;
+  }
+
+  .daykare-save-warning,
+  .daykare-ambient-message {
+    font-size: 12px;
+    line-height: 1.3;
   }
 
   .daykare-dialogue {
@@ -534,4 +566,15 @@
     bottom: max(30px, calc(env(safe-area-inset-bottom) + 24px));
   }
 
+}
+
+@media (pointer: coarse) and (orientation: landscape) {
+  .daykare-hud-left,
+  .daykare-hud-right {
+    transform: scale(0.72);
+  }
+
+  .daykare-center-notices {
+    width: min(calc(100vw - 32px), 24rem);
+  }
 }

@@ -1,5 +1,5 @@
 import { useGameStore } from './store';
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef, type KeyboardEvent } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import { Controls } from './Controls';
 import {
@@ -83,11 +83,69 @@ export function UI() {
     resetGardenActivity,
     completeActivity,
     ambientMessage,
+    storageWarning,
   } = useGameStore();
 
   const [subscribe] = useKeyboardControls<Controls>();
   const interactRef = useRef<() => void>(() => undefined);
   const queueCursor = useRef(0);
+  const dialogueRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const dialogueWasOpen = useRef(false);
+
+  useEffect(() => {
+    if (activeDialogue) {
+      if (!dialogueWasOpen.current && document.activeElement instanceof HTMLElement) {
+        previousFocusRef.current = document.activeElement;
+      }
+      dialogueWasOpen.current = true;
+      const frame = window.requestAnimationFrame(() => {
+        const dialogue = dialogueRef.current;
+        const firstControl = dialogue?.querySelector<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        (firstControl ?? dialogue)?.focus();
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    if (dialogueWasOpen.current) {
+      dialogueWasOpen.current = false;
+      const previousFocus = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    }
+    return undefined;
+  }, [activeDialogue]);
+
+  const onDialogueKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveDialogue(null);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const dialogue = dialogueRef.current;
+    if (!dialogue) return;
+    const controls = Array.from(dialogue.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.offsetParent !== null);
+    if (!controls.length) {
+      event.preventDefault();
+      dialogue.focus();
+      return;
+    }
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   useEffect(() => {
     const handleAudioUnlock = () => unlockGameAudio();
@@ -266,6 +324,24 @@ export function UI() {
               text: 'The bed is ready for another planting round whenever you are.',
             });
           }
+        } else if (activeInteractable.startsWith('garden-landmark-')) {
+          const landmark = activeInteractable.replace('garden-landmark-', '');
+          const landmarkDialogue: Record<string, { name: string; text: string }> = {
+            pond: {
+              name: 'Ripple Pond',
+              text: 'Tiny ripples circle the lily pads. The lookout marker keeps everyone a safe step back from the water.',
+            },
+            gazebo: {
+              name: 'Garden Gazebo',
+              text: 'The roof carries songs across the Garden. It is a calm place for circle time and leaf-sharing.',
+            },
+            greenhouse: {
+              name: 'Seedling Greenhouse',
+              text: 'Warm glass protects the newest sprouts. Look closely and you can see three different leaf shapes.',
+            },
+          };
+          const dialogue = landmarkDialogue[landmark];
+          if (dialogue) setActiveDialogue(dialogue);
         } else if (activeInteractable.startsWith('garden-npc-')) {
           const name = activeInteractable.replace('garden-npc-', '');
           const gardenDialogue: Record<string, string> = {
@@ -444,6 +520,14 @@ export function UI() {
       if (gardenActivityStep < 3) return `Tend Seedlings · ${gardenActivityStep}/3`;
       return 'Plant Another Bed';
     }
+    if (activeInteractable.startsWith('garden-landmark-')) {
+      const labels: Record<string, string> = {
+        pond: 'Notice Pond Ripples',
+        gazebo: 'Listen at the Gazebo',
+        greenhouse: 'Inspect Seedlings',
+      };
+      return labels[activeInteractable.replace('garden-landmark-', '')] ?? 'Explore Garden Landmark';
+    }
     if (activeInteractable.startsWith('garden-npc-')) return `Talk to ${activeInteractable.replace('garden-npc-', '')}`;
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
@@ -463,6 +547,7 @@ export function UI() {
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
     if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
+    if (activeInteractable.startsWith('garden-landmark-')) return 'Garden discovery · safe observation point';
     if (activeInteractable.startsWith('garden-npc-')) return 'Garden routine';
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
@@ -555,14 +640,6 @@ export function UI() {
         )}
       </div>
 
-      {/* Teacher Suspicion */}
-      {teacherSuspicion > 0 && (
-        <div className="daykare-suspicion absolute top-6 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5" />
-          Teacher Suspicion: {Math.round(teacherSuspicion)}%
-        </div>
-      )}
-
       {/* HUD - Top Right */}
       <div className="daykare-hud-right absolute top-6 right-6 flex flex-col items-end gap-3 pointer-events-auto">
         <button 
@@ -603,19 +680,35 @@ export function UI() {
         )}
       </div>
 
-      {ambientMessage && !activeDialogue && !journalOpen && !zoneTransitioning && (
-        <div className="absolute top-28 left-1/2 -translate-x-1/2 max-w-md rounded-full bg-[#fff8e8]/94 border-2 border-[#e6ae2f]/45 px-5 py-3 text-sm font-bold text-[#5c3a21] shadow-xl" role="status" aria-live="polite">
-          {ambientMessage}
-        </div>
-      )}
+      <div className="daykare-center-notices" aria-live="polite">
+        {teacherSuspicion > 0 && (
+          <div className="daykare-suspicion bg-red-500/90 text-white px-6 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" />
+            Teacher Suspicion: {Math.round(teacherSuspicion)}%
+          </div>
+        )}
+        {storageWarning && (
+          <div className="daykare-save-warning max-w-md rounded-xl bg-amber-50/95 border-2 border-amber-500/55 px-4 py-2 text-sm font-bold text-amber-950 shadow-xl" role="status">
+            Saving is unavailable in this browser. Your game will continue, but progress will not be saved.
+          </div>
+        )}
+        {ambientMessage && !activeDialogue && !journalOpen && !zoneTransitioning && (
+          <div className="daykare-ambient-message max-w-md rounded-full bg-[#fff8e8]/94 border-2 border-[#e6ae2f]/45 px-5 py-3 text-sm font-bold text-[#5c3a21] shadow-xl">
+            {ambientMessage}
+          </div>
+        )}
+      </div>
 
       {/* Dialogue Overlay */}
       {activeDialogue && (
         <div
+          ref={dialogueRef}
           className="daykare-dialogue absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-card border-4 border-primary p-6 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-8 pointer-events-auto z-20"
           role="dialog"
           aria-modal="true"
           aria-label={`${activeDialogue.name} dialogue`}
+          tabIndex={-1}
+          onKeyDown={onDialogueKeyDown}
         >
           <div className="font-serif font-bold text-2xl text-primary mb-2">{activeDialogue.name}</div>
           <div className="text-lg text-card-foreground mb-4">{activeDialogue.text}</div>

@@ -8,6 +8,7 @@ export interface InteractionCandidate {
   valid: boolean;
   approach?: THREE.Vector3;
   questPriority?: boolean;
+  urgentPriority?: boolean;
 }
 
 const candidates = new Map<string, InteractionCandidate>();
@@ -39,16 +40,26 @@ export function resolveInteractionCandidate(
   cameraIntentScratch.copy(cameraForward ?? playerForward).setY(0).normalize();
   let best: { candidate: InteractionCandidate; score: number } | null = null;
   let hasQuestCandidate = false;
+  let hasUrgentCandidate = false;
   for (const candidate of candidates.values()) {
     if (candidate.valid && candidate.questPriority && playerPosition.distanceTo(candidate.position) <= candidate.range) {
       hasQuestCandidate = true;
       break;
     }
   }
+  if (!hasQuestCandidate) {
+    for (const candidate of candidates.values()) {
+      if (candidate.valid && candidate.urgentPriority && playerPosition.distanceTo(candidate.position) <= candidate.range) {
+        hasUrgentCandidate = true;
+        break;
+      }
+    }
+  }
   for (const candidate of candidates.values()) {
     if (
       !candidate.valid
       || (hasQuestCandidate && !candidate.questPriority)
+      || (!hasQuestCandidate && hasUrgentCandidate && !candidate.urgentPriority)
     ) continue;
     const distance = playerPosition.distanceTo(candidate.position);
     if (distance > candidate.range) continue;

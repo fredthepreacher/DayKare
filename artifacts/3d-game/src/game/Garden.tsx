@@ -118,6 +118,7 @@ export function Garden() {
     <group>
       <GardenEnvironment />
       <GardenDetails />
+      <GardenLandmarks />
       <GardenCast />
       <GardenActivityHost />
       <GardenReturnGate />
@@ -332,6 +333,7 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
       </group>
        {settledActivity && sharedParticipant && <GardenSessionProp participant={sharedParticipant} />}
        {settledActivity && !sharedParticipant && <GardenActivityProp activity={settledActivity} role={definition.role} />}
+       {definition.role === 'teacher' && settledActivity === 'supervise' && <GardenTeacherCue />}
     </group>
   );
 }
@@ -343,9 +345,18 @@ function gardenSessionActivity(participant: SharedActivityParticipant): GardenAc
 
 function GardenSessionProp({ participant }: { participant: SharedActivityParticipant }) {
   if (participant.activity === 'teacher-help' || participant.activity === 'teacher-observation') {
-    return <mesh position={[0.4, 0.9, -0.3]}><boxGeometry args={[0.24, 0.34, 0.06]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
+    return <mesh position={[0.4, 0.9, -0.3]}><boxGeometry args={[0.34, 0.46, 0.07]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
   }
-  return <mesh position={[0.42, 0.82, -0.28]}><boxGeometry args={[0.26, 0.2, 0.05]} /><meshStandardMaterial color="#fff1cf" /></mesh>;
+  return <mesh position={[0.42, 0.82, -0.28]}><boxGeometry args={[0.42, 0.3, 0.06]} /><meshStandardMaterial color="#fff1cf" /></mesh>;
+}
+
+function GardenTeacherCue() {
+  return (
+    <group position={[0.46, 1.5, -0.28]}>
+      <mesh><torusGeometry args={[0.16, 0.035, 8, 16]} /><meshBasicMaterial color="#ffd166" /></mesh>
+      <mesh position={[0.15, -0.15, 0]} rotation={[0, 0, -0.7]}><cylinderGeometry args={[0.025, 0.025, 0.28, 6]} /><meshBasicMaterial color="#ffd166" /></mesh>
+    </group>
+  );
 }
 
 function turnToward(ref: THREE.Group, target: THREE.Vector3, delta: number) {
@@ -448,8 +459,17 @@ function GardenEnvironment() {
         <boxGeometry args={[2.8, 0.05, 31]} />
         <meshStandardMaterial color={path} roughness={0.92} />
       </mesh>
-      <mesh position={[0, 0.028, -3]} receiveShadow>
-        <boxGeometry args={[25, 0.052, 2.2]} />
+      <mesh position={[-3.5, 0.028, -3]} receiveShadow>
+        <boxGeometry args={[18, 0.052, 2.2]} />
+        <meshStandardMaterial color={path} roughness={0.92} />
+      </mesh>
+      {/* The narrow lookout spur visibly ends before the pond's collision edge. */}
+      <mesh position={[5.85, 0.03, -1.6]} rotation={[0, -1.2, 0]} receiveShadow>
+        <boxGeometry args={[3.05, 0.055, 1.05]} />
+        <meshStandardMaterial color={path} roughness={0.92} />
+      </mesh>
+      <mesh position={[6.42, 0.034, -0.2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <circleGeometry args={[0.62, 18]} />
         <meshStandardMaterial color={path} roughness={0.92} />
       </mesh>
       {WORLD_SOLIDS.filter((solid) => solid.zone === 'garden' && solid.kind === 'boundary').map((solid) => {
@@ -474,6 +494,7 @@ function GardenEnvironment() {
       <GardenBed id="garden-bed-east" color="#82583f" />
       <Pond />
       <Gazebo />
+      <GardenSessionStages />
     </group>
   );
 }
@@ -541,6 +562,25 @@ function Gazebo() {
   );
 }
 
+function GardenSessionStages() {
+  return (
+    <group>
+      {/* Fixed, low-profile stations let the rotating garden routine read as
+          watering, pond watching, and circle time instead of hub activities. */}
+      <group position={[-13.7, 0, 2.8]}>
+        <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.72, 16]} /><meshStandardMaterial color="#d9b77b" roughness={0.9} /></mesh>
+        <mesh position={[-0.32, 0.2, 0.16]}><cylinderGeometry args={[0.16, 0.2, 0.32, 8]} /><meshStandardMaterial color="#4c82d4" /></mesh>
+        <mesh position={[0.18, 0.1, -0.2]}><sphereGeometry args={[0.16, 8, 6]} /><meshStandardMaterial color="#55b89b" /></mesh>
+      </group>
+      <group position={[6.55, 0, -0.2]}>
+        <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.68, 16]} /><meshStandardMaterial color="#e7cf9f" roughness={0.92} /></mesh>
+        <mesh position={[0.28, 0.12, 0]}><boxGeometry args={[0.34, 0.18, 0.22]} /><meshStandardMaterial color="#355272" /></mesh>
+      </group>
+      <mesh position={[0, 0.035, 9.25]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[1.35, 20]} /><meshStandardMaterial color="#8fd0c5" transparent opacity={0.7} /></mesh>
+    </group>
+  );
+}
+
 function GardenDetails() {
   return (
     <group>
@@ -579,6 +619,73 @@ function GardenDetails() {
         </mesh>
       </group>
       <SuppliedArtwork fileName="12_garden_signage.png" surfaceAnchor={{ solidId: 'garden-sign', face: 'south', height: 0.98 }} size={[3.55, 1.3]} support="none" />
+    </group>
+  );
+}
+
+export const GARDEN_LANDMARKS = [
+  {
+    id: 'pond',
+    position: [6.42, 0, -0.2] as [number, number, number],
+    color: '#62b8c7',
+  },
+  {
+    id: 'gazebo',
+    position: [0, 0, 2.45] as [number, number, number],
+    color: '#e88962',
+  },
+  {
+    id: 'greenhouse',
+    position: [-7.9, 0, -8.5] as [number, number, number],
+    color: '#5d947d',
+  },
+] as const;
+
+function GardenLandmarks() {
+  return (
+    <group>
+      {GARDEN_LANDMARKS.map((landmark) => (
+        <GardenLandmark key={landmark.id} {...landmark} />
+      ))}
+    </group>
+  );
+}
+
+function GardenLandmark({
+  id,
+  position,
+  color,
+}: {
+  id: (typeof GARDEN_LANDMARKS)[number]['id'];
+  position: [number, number, number];
+  color: string;
+}) {
+  const interactionId = `garden-landmark-${id}`;
+  const active = useGameStore((state) => state.activeInteractable === interactionId);
+  const candidatePosition = useMemo(() => new THREE.Vector3(...position), [position]);
+  const candidate = useMemo(() => ({
+    id: interactionId,
+    position: candidatePosition,
+    range: 1.85,
+    priority: 18,
+    valid: true,
+  }), [candidatePosition, interactionId]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.48, 0.035, 8, 20]} />
+        <meshBasicMaterial color={color} transparent opacity={active ? 0.88 : 0.24} />
+      </mesh>
+      <mesh position={[0, 0.17, 0.38]} rotation={[-0.18, 0, 0]}>
+        <boxGeometry args={[0.5, 0.28, 0.05]} />
+        <meshStandardMaterial color="#fff0c7" roughness={0.84} />
+      </mesh>
+      <mesh position={[0, 0.18, 0.35]}>
+        <circleGeometry args={[0.07, 10]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
     </group>
   );
 }
@@ -650,7 +757,8 @@ function GardenActivityHost() {
 function GardenReturnGate() {
   const ref = useRef<THREE.Group>(null);
   const active = useGameStore((state) => state.activeInteractable === 'garden-return');
-  const position = useMemo(() => new THREE.Vector3(0, 0, 16), []);
+  const threshold = useMemo(() => getWorldSolidTransform('garden-return-threshold', 2.5, 1.25), []);
+  const position = useMemo(() => new THREE.Vector3(threshold.position[0], 0, threshold.position[2]), [threshold]);
   const candidate = useMemo(() => ({
     id: 'garden-return',
     position,
@@ -671,11 +779,15 @@ function GardenReturnGate() {
   });
 
   return (
-    <group ref={ref} position={[0, 0, 16]}>
-      <mesh position={[-1.05, 1.25, 0]} castShadow><boxGeometry args={[0.25, 2.5, 0.35]} /><meshStandardMaterial color="#e88962" /></mesh>
-      <mesh position={[1.05, 1.25, 0]} castShadow><boxGeometry args={[0.25, 2.5, 0.35]} /><meshStandardMaterial color="#e88962" /></mesh>
-      <mesh position={[0, 2.42, 0]} castShadow><boxGeometry args={[2.35, 0.25, 0.35]} /><meshStandardMaterial color="#e88962" /></mesh>
-      <mesh position={[0, 1.72, -0.2]} castShadow><boxGeometry args={[1.55, 0.5, 0.08]} /><meshStandardMaterial color="#fff0c7" /></mesh>
+    <group ref={ref} position={[threshold.position[0], 0, threshold.position[2]]}>
+      <mesh position={[-threshold.size[0] / 2 + 0.14, threshold.position[1], 0]} castShadow><boxGeometry args={[0.28, threshold.size[1], threshold.size[2]]} /><meshStandardMaterial color="#e88962" /></mesh>
+      <mesh position={[threshold.size[0] / 2 - 0.14, threshold.position[1], 0]} castShadow><boxGeometry args={[0.28, threshold.size[1], threshold.size[2]]} /><meshStandardMaterial color="#e88962" /></mesh>
+      <mesh position={[0, threshold.size[1] - 0.12, 0]} castShadow><boxGeometry args={[threshold.size[0], 0.25, threshold.size[2]]} /><meshStandardMaterial color="#e88962" /></mesh>
+      <mesh position={[0, 1.05, 0]} castShadow>
+        <boxGeometry args={[threshold.size[0] - 0.34, 1.85, threshold.size[2] - 0.08]} />
+        <meshStandardMaterial color="#7a9b67" roughness={0.88} />
+      </mesh>
+      <mesh position={[0, 1.72, -threshold.size[2] / 2 - 0.05]} castShadow><boxGeometry args={[1.72, 0.5, 0.08]} /><meshStandardMaterial color="#fff0c7" /></mesh>
       <mesh position={[0, 0.045, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <torusGeometry args={[1.35, 0.045, 8, 28]} />
         <meshBasicMaterial color="#ffd166" transparent opacity={active ? 0.78 : 0.28} />

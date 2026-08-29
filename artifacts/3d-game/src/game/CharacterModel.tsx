@@ -71,9 +71,15 @@ export function CharacterModel({
   const currentPosition = useRef(new THREE.Vector3());
   const movementBlend = useRef(0);
   const runningBlend = useRef(0);
+  const previousActivity = useRef(activityMode);
+  const activityChangedAt = useRef(-10);
 
   useFrame((state, delta) => {
     if (!rig.current) return;
+    if (previousActivity.current !== activityMode) {
+      previousActivity.current = activityMode;
+      activityChangedAt.current = state.clock.elapsedTime;
+    }
 
     rig.current.parent?.getWorldPosition(currentPosition.current);
     const distance = currentPosition.current.distanceTo(lastPosition.current);
@@ -92,6 +98,12 @@ export function CharacterModel({
       * (1 - movementBlend.current)
       * idleEnergy;
     const talkGesture = isTalking ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.14 : 0;
+    // A short "arrived" gesture makes a new activity read as a deliberate
+    // transition rather than a character instantly changing pose.
+    const transitionAge = state.clock.elapsedTime - activityChangedAt.current;
+    const activityTransition = transitionAge >= 0 && transitionAge < 0.72
+      ? Math.sin((transitionAge / 0.72) * Math.PI) * 0.26
+      : 0;
     const activityGesture = activityMode === 'coloring'
       ? 0.24 + Math.sin(state.clock.elapsedTime * 2.8 + motionSeed) * 0.08
       : activityMode === 'toy-play' || activityMode === 'playing'
@@ -120,8 +132,8 @@ export function CharacterModel({
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
       const wave = socialReaction === 'wave' ? Math.sin(state.clock.elapsedTime * 6 + motionSeed) * 0.5 : 0;
       const cheer = socialReaction === 'cheer' ? -0.7 : 0;
-      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045 + cheer + activityGesture;
-      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045 + wave + cheer + activityGesture * 0.7;
+      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045 + cheer + activityGesture + activityTransition;
+      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045 + wave + cheer + activityGesture * 0.7 + activityTransition * 0.55;
       leftLeg.current.rotation.x = -stride * 0.7;
       rightLeg.current.rotation.x = stride * 0.7;
       leftArm.current.rotation.z = -0.08 - idleGesture * 0.025 - talkGesture;
@@ -172,7 +184,9 @@ export function CharacterModel({
       rig.current.position.y = THREE.MathUtils.lerp(rig.current.position.y, targetRootY, 1 - Math.exp(-12 * delta));
       rig.current.rotation.z = activityMode === 'gathering'
         ? Math.sin(state.clock.elapsedTime * 1.2 + motionSeed) * 0.025
-        : 0;
+        : activityMode === 'dancing'
+          ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.09
+          : activityTransition * 0.16;
     }
   });
 

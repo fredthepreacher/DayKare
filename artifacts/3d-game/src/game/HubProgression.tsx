@@ -5,6 +5,7 @@ import { registerInteractionCandidate, updateInteractionCandidate } from './inte
 import { HUB_ROUTES, isRouteUnlocked, type RouteDefinition } from './progression';
 import { useGameStore } from './store';
 import { playGameSound } from './audio';
+import { getWorldSolidTransform } from './world';
 
 export function HubProgression({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
@@ -14,6 +15,8 @@ export function HubProgression({ playerRef }: { playerRef: React.RefObject<THREE
     </group>
   );
 }
+
+export const ROUTE_FOCUS_RING_Y = 0.035;
 
 function FocusRing({ active, color, radius = 1 }: { active: boolean; color: string; radius?: number }) {
   const ring = useRef<THREE.Mesh>(null);
@@ -25,7 +28,7 @@ function FocusRing({ active, color, radius = 1 }: { active: boolean; color: stri
     (ring.current.material as THREE.MeshBasicMaterial).opacity = 0.48 + Math.sin(state.clock.elapsedTime * 5) * 0.12;
   });
   return (
-    <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]} scale={0.01} visible={active}>
+    <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]} position={[0, ROUTE_FOCUS_RING_Y, 0]} scale={0.01} visible={active}>
       <torusGeometry args={[radius, 0.035, 8, 32]} />
       <meshBasicMaterial color={color} transparent opacity={0.55} />
     </mesh>
@@ -38,7 +41,8 @@ function FutureAccessPoint({ route }: { route: RouteDefinition; playerRef: React
   const active = useGameStore((state) => state.activeInteractable === `route-${route.id}`);
   const unlocked = isRouteUnlocked(route, progression);
   const id = `route-${route.id}`;
-  const position = useMemo(() => new THREE.Vector3(...route.position), [route.position]);
+  const gate = useMemo(() => getWorldSolidTransform(`route-${route.id}`, 2.5, 1.25), [route.id]);
+  const position = useMemo(() => getRouteGateInteractionPosition(route.id), [route.id]);
   const candidate = useMemo(() => ({ id, position, range: 2.4, priority: 8, valid: true }), [id, position]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   useFrame((_, delta) => {
@@ -48,15 +52,24 @@ function FutureAccessPoint({ route }: { route: RouteDefinition; playerRef: React
     ref.current.scale.setScalar(scale);
   });
   return (
-    <group ref={ref} position={route.position}>
-      <mesh position={[-0.72, 1.25, 0]} castShadow><boxGeometry args={[0.22, 2.5, 0.35]} /><meshStandardMaterial color={route.color} roughness={0.72} /></mesh>
-      <mesh position={[0.72, 1.25, 0]} castShadow><boxGeometry args={[0.22, 2.5, 0.35]} /><meshStandardMaterial color={route.color} roughness={0.72} /></mesh>
-      <mesh position={[0, 2.42, 0]} castShadow><boxGeometry args={[1.65, 0.22, 0.35]} /><meshStandardMaterial color={route.color} roughness={0.72} /></mesh>
-      <mesh position={[0, 1.78, -0.2]} castShadow><boxGeometry args={[1.24, 0.54, 0.08]} /><meshStandardMaterial color={unlocked ? '#fff0b8' : '#ddd5ca'} roughness={0.68} /></mesh>
-      <mesh position={[0, 1.78, -0.25]} rotation={[0, 0, Math.PI / 4]} castShadow><boxGeometry args={[0.15, 0.15, 0.04]} /><meshStandardMaterial color={unlocked ? route.color : '#9c938d'} emissive={unlocked ? route.color : '#000000'} emissiveIntensity={unlocked ? 0.2 : 0} /></mesh>
-      <FocusRing active={active} color={unlocked ? '#ffd166' : '#c5b8ad'} radius={1.25} />
+    <group ref={ref} position={position}>
+      <mesh position={[-gate.size[0] / 2 + 0.14, gate.position[1], 0]} castShadow><boxGeometry args={[0.28, gate.size[1], gate.size[2]]} /><meshStandardMaterial color={route.color} roughness={0.72} /></mesh>
+      <mesh position={[gate.size[0] / 2 - 0.14, gate.position[1], 0]} castShadow><boxGeometry args={[0.28, gate.size[1], gate.size[2]]} /><meshStandardMaterial color={route.color} roughness={0.72} /></mesh>
+      <mesh position={[0, gate.position[1] + gate.size[1] / 2 - 0.12, 0]} castShadow><boxGeometry args={[gate.size[0], 0.24, gate.size[2]]} /><meshStandardMaterial color={route.color} roughness={0.72} /></mesh>
+      <mesh position={[0, gate.position[1] - 0.08, 0]} castShadow>
+        <boxGeometry args={[gate.size[0] - 0.36, gate.size[1] - 0.42, gate.size[2] - 0.08]} />
+        <meshStandardMaterial color={unlocked ? '#7fa26f' : '#a79d93'} roughness={0.88} />
+      </mesh>
+      <mesh position={[0, gate.position[1] + 0.53, -gate.size[2] / 2 - 0.045]} castShadow><boxGeometry args={[gate.size[0] - 0.5, 0.54, 0.08]} /><meshStandardMaterial color={unlocked ? '#fff0b8' : '#ddd5ca'} roughness={0.68} /></mesh>
+      <mesh position={[0, gate.position[1] + 0.53, -gate.size[2] / 2 - 0.09]} rotation={[0, 0, Math.PI / 4]} castShadow><boxGeometry args={[0.15, 0.15, 0.04]} /><meshStandardMaterial color={unlocked ? route.color : '#9c938d'} emissive={unlocked ? route.color : '#000000'} emissiveIntensity={unlocked ? 0.2 : 0} /></mesh>
+      <FocusRing active={active} color={unlocked ? '#ffd166' : '#c5b8ad'} radius={gate.size[0] / 2 + 0.15} />
     </group>
   );
+}
+
+export function getRouteGateInteractionPosition(routeId: string) {
+  const transform = getWorldSolidTransform(`route-${routeId}`, 2.5, 1.25);
+  return new THREE.Vector3(transform.position[0], 0, transform.position[2]);
 }
 
 function RainbowTidyUp({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {

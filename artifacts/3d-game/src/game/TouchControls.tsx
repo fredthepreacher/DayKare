@@ -52,7 +52,7 @@ export function TouchControls({
       const offsetLeft = viewport?.offsetLeft ?? 0;
       const offsetTop = viewport?.offsetTop ?? 0;
       const visibleBottom = offsetTop + height;
-      const hudRects = ['.daykare-hud-left', '.daykare-hud-right']
+       const hudRects = ['.daykare-hud-left', '.daykare-hud-right']
         .map((selector) => document.querySelector<HTMLElement>(selector)?.getBoundingClientRect())
         .filter((rect): rect is DOMRect => Boolean(rect));
       const hudBottom = hudRects.reduce(
@@ -63,11 +63,14 @@ export function TouchControls({
       const preferredTop = Math.max(offsetTop + 8, hudBottom + 8);
       const latestVisibleTop = Math.max(offsetTop + 8, visibleBottom - recenterSize - 8);
 
-      touchUi.style.setProperty('--daykare-visual-left', `${offsetLeft}px`);
-      touchUi.style.setProperty('--daykare-visual-top', `${offsetTop}px`);
-      touchUi.style.setProperty('--daykare-visual-width', `${width}px`);
-      touchUi.style.setProperty('--daykare-visual-height', `${height}px`);
-      touchUi.style.setProperty(
+       const root = document.documentElement;
+       root.style.setProperty('--daykare-visual-left', `${offsetLeft}px`);
+       root.style.setProperty('--daykare-visual-top', `${offsetTop}px`);
+       root.style.setProperty('--daykare-visual-width', `${width}px`);
+       root.style.setProperty('--daykare-visual-height', `${height}px`);
+       root.style.setProperty('--daykare-hud-bottom', `${hudBottom}px`);
+       root.style.setProperty('--daykare-touch-recenter-left', `${offsetLeft + width / 2}px`);
+       root.style.setProperty(
         '--daykare-touch-recenter-top',
         `${Math.min(preferredTop, latestVisibleTop)}px`,
       );
@@ -85,7 +88,6 @@ export function TouchControls({
 
     scheduleViewportLayout();
     const resizeObserver = new ResizeObserver(scheduleViewportLayout);
-    const mutationObserver = new MutationObserver(scheduleViewportLayout);
     resizeObserver.observe(document.documentElement);
     const appShell = document.querySelector<HTMLElement>('.daykare-app-shell');
     if (appShell) resizeObserver.observe(appShell);
@@ -93,18 +95,17 @@ export function TouchControls({
       const element = document.querySelector<HTMLElement>(selector);
       if (!element) continue;
       resizeObserver.observe(element);
-      mutationObserver.observe(element, { childList: true, subtree: true });
     }
 
     const viewport = window.visualViewport;
     window.addEventListener('resize', scheduleViewportLayout);
     window.addEventListener('orientationchange', scheduleViewportLayout);
     viewport?.addEventListener('resize', scheduleViewportLayout);
-    viewport?.addEventListener('scroll', scheduleViewportLayout);
+     viewport?.addEventListener('scroll', scheduleViewportLayout);
+     document.fonts?.ready.then(scheduleViewportLayout).catch(() => undefined);
 
     return () => {
       resizeObserver.disconnect();
-      mutationObserver.disconnect();
       cancelAnimationFrame(viewportFrame);
       if (viewportTimer) clearTimeout(viewportTimer);
       window.removeEventListener('resize', scheduleViewportLayout);

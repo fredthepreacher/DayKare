@@ -360,6 +360,7 @@ function Teacher({
     updateInteractionCandidate(`teacher-${name}`, {
       position: mirror,
       priority: liveIntervention.phase === 'calling-player' ? 62 : 48,
+      urgentPriority: liveIntervention.phase === 'calling-player',
       valid: true,
     });
 
@@ -912,6 +913,34 @@ function InterventionProp({ phase }: { phase: TeacherInterventionState['phase'] 
         <boxGeometry args={[0.13, 0.025, 0.018]} />
         <meshBasicMaterial color="#68a9a7" />
       </mesh>
+      {phase === 'warning' && (
+        <mesh position={[0, 0.42, -0.03]} rotation={[0, 0, Math.PI]}>
+          <coneGeometry args={[0.16, 0.28, 3]} />
+          <meshBasicMaterial color="#e6ae2f" />
+        </mesh>
+      )}
+      {phase === 'redirecting' && (
+        <group position={[0.06, 0.37, -0.03]} rotation={[0, 0, -Math.PI / 2]}>
+          <mesh><coneGeometry args={[0.1, 0.26, 3]} /><meshBasicMaterial color="#4c82d4" /></mesh>
+          <mesh position={[0, -0.16, 0]}><boxGeometry args={[0.09, 0.28, 0.02]} /><meshBasicMaterial color="#4c82d4" /></mesh>
+        </group>
+      )}
+      {phase === 'separating' && (
+        <group position={[0, 0.38, -0.03]}>
+          {[-0.11, 0.11].map((x) => <mesh key={x} position={[x, 0, 0]}><boxGeometry args={[0.06, 0.3, 0.02]} /><meshBasicMaterial color="#d77b6d" /></mesh>)}
+        </group>
+      )}
+      {phase === 'calling-player' && (
+        <group position={[0.16, 0.4, -0.03]}>
+          {[0, 0.12, 0.23].map((x, index) => <mesh key={x} position={[x, index * 0.045, 0]}><sphereGeometry args={[0.055 + index * 0.018, 7, 5]} /><meshBasicMaterial color="#457b9d" /></mesh>)}
+        </group>
+      )}
+      {phase === 'praise' && (
+        <mesh position={[0, 0.43, -0.03]} rotation={[0, 0, Math.PI / 4]}>
+          <boxGeometry args={[0.22, 0.22, 0.02]} />
+          <meshBasicMaterial color="#70b77e" />
+        </mesh>
+      )}
     </group>
   );
 }
