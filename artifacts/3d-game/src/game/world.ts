@@ -13,9 +13,12 @@ export type SolidKind =
   | 'activity-station'
   | 'camera-blocker';
 
+export type GameZone = 'hub' | 'garden';
+
 export interface WorldSolid {
   id: string;
   kind: SolidKind;
+  zone: GameZone;
   minX: number;
   maxX: number;
   minZ: number;
@@ -51,7 +54,11 @@ export interface WorldSolidTransform {
 }
 
 const box = (id: string, kind: SolidKind, minX: number, maxX: number, minZ: number, maxZ: number): WorldSolid => ({
-  id, kind, minX, maxX, minZ, maxZ,
+  id, kind, zone: 'hub', minX, maxX, minZ, maxZ,
+});
+
+const gardenBox = (id: string, kind: SolidKind, minX: number, maxX: number, minZ: number, maxZ: number): WorldSolid => ({
+  id, kind, zone: 'garden', minX, maxX, minZ, maxZ,
 });
 
 export const PLAY_SLIDE_RAMP = {
@@ -78,6 +85,7 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('cubbies', 'cubby', -7.6, -3.8, -7.1, -6.3),
   box('reading-nook', 'furniture', 4.6, 6.6, -7.4, -5.8),
   box('storage-box-a', 'box', -14.7, -13.3, 9.3, 10.7),
+  box('storage-box-upper', 'box', -14.4, -13.6, 9.6, 10.4),
   box('storage-box-b', 'box', -11.8, -10.2, 13.1, 14.9),
   box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8),
   PLAY_SLIDE_RAMP.solid,
@@ -86,6 +94,17 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('route-storybook-lane', 'route-gate', -15.4, -13, -14.3, -12.3),
   box('route-maker-market', 'route-gate', 13, 15.4, 12.2, 14.3),
   box('rainbow-tidy-up', 'activity-station', -0.65, 0.65, -4.65, -3.35),
+  gardenBox('garden-north-boundary', 'boundary', -18.3, 18.3, -18.3, -17.7),
+  gardenBox('garden-south-boundary', 'boundary', -18.3, 18.3, 17.7, 18.3),
+  gardenBox('garden-west-boundary', 'boundary', -18.3, -17.7, -18, 18),
+  gardenBox('garden-east-boundary', 'boundary', 17.7, 18.3, -18, 18),
+  gardenBox('garden-greenhouse-west', 'wall', -14.8, -8.8, -11.8, -11.2),
+  gardenBox('garden-greenhouse-east', 'wall', -14.8, -8.8, -5.8, -5.2),
+  gardenBox('garden-greenhouse-north', 'wall', -14.8, -14.2, -11.8, -5.2),
+  gardenBox('garden-pond', 'playground', 7.2, 12.8, -3.2, 2.8),
+  gardenBox('garden-gazebo', 'furniture', -3.2, 3.2, 5.8, 6.4),
+  gardenBox('garden-bed-west', 'activity-station', -12.8, -8.8, 1.2, 4.4),
+  gardenBox('garden-bed-east', 'activity-station', 8.8, 12.8, 8.2, 11.4),
 ];
 
 export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {
@@ -110,7 +129,12 @@ export const WORLD_WALKABLE_REGIONS: WalkableRegion[] = [
   { id: 'art-room', minX: -15.7, maxX: -8.3, minZ: -15.7, maxZ: -8.3 },
   { id: 'storage', minX: -15.7, maxX: -8.3, minZ: 8.3, maxZ: 15.7 },
   { id: 'playground', minX: 8.3, maxX: 15.7, minZ: -15.7, maxZ: 15.7 },
+  { id: 'garden', minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 },
 ];
+
+export const GARDEN_SPAWN: [number, number, number] = [0, 0, 14];
+export const GARDEN_RETURN_SPAWN: [number, number, number] = [12, 0, -10.4];
+export const GARDEN_BOUNDS = { minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 };
 
 export const WORLD_ANCHORS: WorldAnchor[] = [
   { id: 'classroom-circle', position: [0, 0, 0], room: 'classroom', activity: 'morning-play' },
@@ -139,6 +163,7 @@ export const CAMERA_BLOCKERS = WORLD_SOLIDS.filter((solid) => (
   || solid.kind === 'box'
   || solid.kind === 'playground'
   || solid.kind === 'activity-station'
+  || solid.kind === 'route-gate'
 ));
 
 export const PLAYER_RADIUS = 0.42;
@@ -165,6 +190,31 @@ function overlapsCircle(point: THREE.Vector3, radius: number, solid: WorldSolid)
   return distanceToSolid(point, solid) < radius;
 }
 
+export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_RADIUS, zone: GameZone = 'hub') {
+  const contains = (region: WalkableRegion) => (
+    position.x >= region.minX + radius
+    && position.x <= region.maxX - radius
+    && position.z >= region.minZ + radius
+    && position.z <= region.maxZ - radius
+  );
+  if (zone === 'garden') {
+    const garden = WORLD_WALKABLE_REGIONS.find((region) => region.id === 'garden');
+    return garden ? contains(garden) : false;
+  }
+  if (WORLD_WALKABLE_REGIONS.filter((region) => region.id !== 'garden').some(contains)) return true;
+
+  // Door openings occupy the thin divider strips between authored floor regions.
+  return WORLD_PORTALS.some((portal) => {
+    const halfWidth = portal.width / 2 - radius;
+    if (portal.axis === 'x') {
+      return Math.abs(position.x - portal.position[0]) <= 0.3 + radius
+        && Math.abs(position.z - portal.position[2]) <= halfWidth;
+    }
+    return Math.abs(position.z - portal.position[2]) <= 0.3 + radius
+      && Math.abs(position.x - portal.position[0]) <= halfWidth;
+  });
+}
+
 function pushOut(point: THREE.Vector3, radius: number, solid: WorldSolid, axis: 'x' | 'z') {
   if (!overlapsCircle(point, radius, solid)) return;
   const clearance = radius + 0.0001;
@@ -179,8 +229,17 @@ function pushOut(point: THREE.Vector3, radius: number, solid: WorldSolid, axis: 
   }
 }
 
-export function isWalkable(position: THREE.Vector3, radius = PLAYER_RADIUS, ignoredKinds: SolidKind[] = []) {
-  return !WORLD_SOLIDS.some((solid) => !ignoredKinds.includes(solid.kind) && overlapsCircle(position, radius, solid));
+export function isWalkable(
+  position: THREE.Vector3,
+  radius = PLAYER_RADIUS,
+  ignoredKinds: SolidKind[] = [],
+  zone: GameZone = 'hub',
+) {
+  return isWithinWalkableBounds(position, radius, zone) && !WORLD_SOLIDS.some((solid) => (
+    solid.zone === zone
+    && !ignoredKinds.includes(solid.kind)
+    && overlapsCircle(position, radius, solid)
+  ));
 }
 
 export function resolveMovement(
@@ -188,6 +247,7 @@ export function resolveMovement(
   desired: THREE.Vector3,
   radius = PLAYER_RADIUS,
   maxStep = 0.38,
+  zone: GameZone = 'hub',
 ) {
   const next = current.clone();
   const distance = Math.hypot(desired.x - current.x, desired.z - current.z);
@@ -197,14 +257,23 @@ export function resolveMovement(
 
   for (let step = 0; step < steps; step += 1) {
     next.x += stepX;
-    for (const solid of WORLD_SOLIDS) pushOut(next, radius, solid, 'x');
+    for (const solid of WORLD_SOLIDS) {
+      if (solid.zone === zone) pushOut(next, radius, solid, 'x');
+    }
     next.z += stepZ;
-    for (const solid of WORLD_SOLIDS) pushOut(next, radius, solid, 'z');
+    for (const solid of WORLD_SOLIDS) {
+      if (solid.zone === zone) pushOut(next, radius, solid, 'z');
+    }
   }
   return next;
 }
 
-export function resolveCameraPosition(target: THREE.Vector3, desired: THREE.Vector3, radius = 0.2) {
+export function resolveCameraPosition(
+  target: THREE.Vector3,
+  desired: THREE.Vector3,
+  radius = 0.2,
+  zone: GameZone = 'hub',
+) {
   const direction = desired.clone().sub(target);
   const distance = direction.length();
   if (distance < 0.001) return desired.clone();
@@ -213,7 +282,7 @@ export function resolveCameraPosition(target: THREE.Vector3, desired: THREE.Vect
   const steps = Math.ceil(distance / 0.2);
   for (let index = 1; index <= steps; index += 1) {
     const sample = target.clone().addScaledVector(direction, distance * (index / steps));
-    if (CAMERA_BLOCKERS.some((solid) => overlapsCircle(sample, radius, solid))) {
+    if (CAMERA_BLOCKERS.some((solid) => solid.zone === zone && overlapsCircle(sample, radius, solid))) {
       // The last verified-clear sample is authoritative. A forced minimum can
       // jump past nearby geometry when the player stands close to a wall.
       safeDistance = distance * ((index - 1) / steps);
@@ -223,10 +292,15 @@ export function resolveCameraPosition(target: THREE.Vector3, desired: THREE.Vect
   return target.clone().addScaledVector(direction, safeDistance);
 }
 
-export function findApproachPoint(target: THREE.Vector3, preferred: THREE.Vector3, radius = PLAYER_RADIUS) {
+export function findApproachPoint(
+  target: THREE.Vector3,
+  preferred: THREE.Vector3,
+  radius = PLAYER_RADIUS,
+  zone: GameZone = 'hub',
+) {
   const towardTarget = preferred.clone().sub(target).setY(0);
   if (towardTarget.lengthSq() < 0.01) towardTarget.set(0, 0, 1);
   towardTarget.normalize();
   const approach = target.clone().addScaledVector(towardTarget, radius + 0.7);
-  return isWalkable(approach, radius) ? approach : target.clone();
+  return isWalkable(approach, radius, [], zone) ? approach : target.clone();
 }

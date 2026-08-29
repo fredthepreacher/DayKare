@@ -64,6 +64,11 @@ export function UI() {
     advanceQuestObjective,
     completeTidyToy,
     buyHubUpgrade,
+    zone,
+    zoneTransitioning,
+    pendingZone,
+    enterGarden,
+    returnToHub,
   } = useGameStore();
 
   const [subscribe] = useKeyboardControls<Controls>();
@@ -81,7 +86,7 @@ export function UI() {
   // Juice Club Customers Simulation
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
-    if (schedule === 'juice-club') {
+    if (schedule === 'juice-club' && zone === 'hub') {
       // Add a customer every 10 seconds if none waiting
       interval = setInterval(() => {
         const potentialCustomers = ['Max', 'Noah', 'Zoe'];
@@ -90,10 +95,11 @@ export function UI() {
       }, 10000);
     }
     return () => clearInterval(interval);
-  }, [schedule]);
+  }, [schedule, zone]);
 
   useEffect(() => {
     const runInteraction = () => {
+      if (zoneTransitioning) return;
       if (activeDialogue) {
         if (!activeDialogue.options) {
           setActiveDialogue(null);
@@ -171,18 +177,26 @@ export function UI() {
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
           }
+        } else if (activeInteractable === 'garden-return') {
+          returnToHub();
         } else if (activeInteractable.startsWith('route-')) {
           const routeId = activeInteractable.replace('route-', '');
           const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
           if (route) {
             const unlocked = isRouteUnlocked(route, progression);
-            setActiveDialogue({
-              name: route.label,
-              text: unlocked
-                ? `${route.description} This connection is ready for a future district expansion.`
-                : `${route.subtitle}. Build ${requirementLabel(route)} to prepare this route.`,
-            });
+            if (route.id === 'garden-district' && unlocked) {
+              enterGarden();
+            } else {
+              setActiveDialogue({
+                name: route.label,
+                text: unlocked
+                  ? `${route.description} This route is prepared, but it is not open yet.`
+                  : `${route.subtitle}. Build ${requirementLabel(route)} to prepare this route.`,
+              });
+            }
           }
+        } else if (activeInteractable.startsWith('teacher-')) {
+          handleTeacherInteraction(activeInteractable.replace('teacher-', ''));
         } else if (activeInteractable.startsWith('kid-')) {
           const kidName = activeInteractable.split('-')[1];
           handleKidInteraction(kidName);
@@ -197,7 +211,32 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression, quests]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression, quests, zoneTransitioning]);
+
+  const handleTeacherInteraction = (name: string) => {
+    if (name === 'Mr. Davis') {
+      if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
+        setActiveDialogue({ name, text: 'I moved a small pink toy to the Storage Room for safekeeping. Check the grounded boxes along the back wall.' });
+      } else if (schedule === 'outdoor-play') {
+        setActiveDialogue({ name, text: isRainy ? 'Rain plan today: I am checking the reading and building corners.' : 'I am patrolling the playground fence and keeping the gate paths clear.' });
+      } else if (schedule === 'juice-club') {
+        setActiveDialogue({ name, text: 'I am supervising the Juice Club line. Keep the counter stocked and leave a clear path for customers.' });
+      } else if (schedule === 'art-time') {
+        setActiveDialogue({ name, text: 'I am making rounds between the art table and the hallway. Brushes stay at the table when you are finished.' });
+      } else if (schedule === 'pickup') {
+        setActiveDialogue({ name, text: 'Pickup patrol is underway. I am checking the hallway and making sure everyone has their things.' });
+      } else {
+        setActiveDialogue({ name, text: 'Morning rounds: classroom, hallway, then the playground gate. Let me know if a toy blocks a path.' });
+      }
+      return;
+    }
+    setActiveDialogue({
+      name,
+      text: schedule === 'art-time'
+        ? 'I am helping everyone settle at the art tables. Choose a clear place before you begin.'
+        : 'I am watching today’s activity and helping everyone take turns.',
+    });
+  };
 
   const handleKidInteraction = (name: string) => {
     // Binky Quest Logic
@@ -280,11 +319,13 @@ export function UI() {
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Place Toy';
+    if (activeInteractable === 'garden-return') return 'Return to DayKare';
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Check Route';
-      return `${isRouteUnlocked(route, progression) ? 'Preview' : 'Check'} ${route.label}`;
+      return `${isRouteUnlocked(route, progression) && route.id === 'garden-district' ? 'Enter' : 'Check'} ${route.label}`;
     }
+    if (activeInteractable.startsWith('teacher-')) return `Talk to ${activeInteractable.replace('teacher-', '')}`;
     if (activeInteractable.startsWith('kid-')) return `Talk to ${activeInteractable.split('-')[1]}`;
     if (activeInteractable.includes('block')) return 'Pick up Toy';
     return 'Interact';
@@ -295,13 +336,17 @@ export function UI() {
     if (activeDialogue) return null;
     if (!activeInteractable) return null;
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
+    if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Future access point';
-      return isRouteUnlocked(route, progression) ? 'Route prepared for expansion' : `Locked · ${requirementLabel(route)}`;
+      return isRouteUnlocked(route, progression)
+        ? route.id === 'garden-district' ? 'Connected route · Garden spawn' : 'Route prepared'
+        : `Locked · ${requirementLabel(route)}`;
     }
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
     if (activeInteractable === 'tricycle') return 'Ride or customize';
+    if (activeInteractable.startsWith('teacher-')) return 'Teacher guidance';
     if (activeInteractable.startsWith('kid-')) return 'Friend interaction';
     return 'Nearby object';
   };
@@ -392,6 +437,11 @@ export function UI() {
           <div className="w-px h-4 bg-amber-300/50" />
           <div className="text-xs font-bold text-muted-foreground">{progression.reputation} REP</div>
         </div>
+
+        <div className="bg-card/90 backdrop-blur border-2 border-emerald-500/25 px-3 py-2 rounded-xl shadow flex items-center gap-2 text-card-foreground">
+          <MapPinned className="w-4 h-4 text-emerald-600" />
+          <span className="text-xs font-black uppercase tracking-wide">{zone === 'garden' ? 'Garden District' : 'DayKare Hub'}</span>
+        </div>
         
         {schedule === 'juice-club' && (
           <div className="bg-card/90 backdrop-blur border-2 border-green-500/20 p-3 rounded-xl shadow flex flex-col items-end text-green-600 font-bold">
@@ -448,6 +498,18 @@ export function UI() {
               </span>
             </button>
           )}
+        </div>
+      )}
+
+      {zoneTransitioning && (
+        <div className="absolute inset-0 z-[80] bg-[#183f35]/92 text-white flex items-center justify-center pointer-events-auto" role="status" aria-live="assertive">
+          <div className="text-center px-6">
+            <div className="w-14 h-14 mx-auto rounded-full border-4 border-white/25 border-t-[#ffd166] animate-spin" />
+            <div className="font-serif text-3xl font-bold mt-5">
+              {pendingZone === 'garden' ? 'Opening Garden District' : 'Returning to DayKare'}
+            </div>
+            <div className="text-sm text-white/75 mt-2">Following the connected garden path…</div>
+          </div>
         </div>
       )}
 
@@ -704,9 +766,9 @@ export function UI() {
       )}
 
       <TouchControls
-        movementEnabled={!journalOpen && !activeDialogue}
-        interactionLabel={journalOpen || activeDialogue ? null : interactionLabel}
-        interactionDetail={journalOpen || activeDialogue ? null : interactionDetail}
+        movementEnabled={!journalOpen && !activeDialogue && !zoneTransitioning}
+        interactionLabel={journalOpen || activeDialogue || zoneTransitioning ? null : interactionLabel}
+        interactionDetail={journalOpen || activeDialogue || zoneTransitioning ? null : interactionDetail}
         onInteract={() => interactRef.current()}
       />
 

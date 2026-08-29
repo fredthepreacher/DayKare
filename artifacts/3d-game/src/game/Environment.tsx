@@ -95,18 +95,15 @@ export function Environment() {
       {/* Storage Boxes */}
       <group>
         <AuthoredSolidBox id="storage-box-a" height={1} color="#bb9457" />
-        <mesh position={[-14, 1.5, 10]} castShadow>
-          <boxGeometry args={[0.8, 0.8, 0.8]} />
-          <meshStandardMaterial color="#99582a" />
-        </mesh>
+        <AuthoredSolidBox id="storage-box-upper" height={0.8} centerY={1.4} color="#99582a" />
         <AuthoredSolidBox id="storage-box-b" height={1} color="#bb9457" />
       </group>
     </group>
   );
 }
 
-function AuthoredSolidBox({ id, height, color }: { id: string; height: number; color: string }) {
-  const transform = getWorldSolidTransform(id, height);
+function AuthoredSolidBox({ id, height, centerY, color }: { id: string; height: number; centerY?: number; color: string }) {
+  const transform = getWorldSolidTransform(id, height, centerY);
   return (
     <mesh position={transform.position} castShadow receiveShadow>
       <boxGeometry args={transform.size} />

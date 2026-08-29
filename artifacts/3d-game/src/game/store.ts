@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import * as THREE from 'three';
 import {
   createInitialProgression,
   getUnlockedRoutes,
@@ -16,7 +17,13 @@ import {
   resetRepeatableQuest,
   type QuestStates,
 } from './quests';
-import { getTrackedPlayerPosition } from './world';
+import {
+  GARDEN_SPAWN,
+  GARDEN_RETURN_SPAWN,
+  getTrackedPlayerPosition,
+  isWalkable,
+  type GameZone,
+} from './world';
 
 export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -31,6 +38,7 @@ export interface DroppedWorldItem {
   id: string;
   item: string;
   position: [number, number, number];
+  zone: GameZone;
 }
 
 export interface GameState {
@@ -75,6 +83,12 @@ export interface GameState {
   tricycleColorIndex: number;
   teleportTrigger: number;
   progression: ProgressionState;
+  zone: GameZone;
+  playerPosition: [number, number, number];
+  hubPosition: [number, number, number];
+  gardenPosition: [number, number, number];
+  zoneTransitioning: boolean;
+  pendingZone: GameZone | null;
   
   // Actions
   setQuality: (q: 'low' | 'high') => void;
@@ -111,6 +125,10 @@ export interface GameState {
   addProgressionTokens: (amount: number) => void;
   buyHubUpgrade: (id: string, cost: number) => boolean;
   setTrustedHelperPass: () => void;
+  setPlayerPosition: (position: [number, number, number]) => void;
+  enterGarden: () => boolean;
+  returnToHub: () => boolean;
+  completeZoneTransition: () => void;
   resetGame: () => void;
 }
 
@@ -176,6 +194,12 @@ const initialState = {
   tricycleColorIndex: 0,
   teleportTrigger: 0,
   progression: createInitialProgression(),
+  zone: 'hub' as GameZone,
+  playerPosition: [0, 0, 0] as [number, number, number],
+  hubPosition: [0, 0, 0] as [number, number, number],
+  gardenPosition: GARDEN_SPAWN,
+  zoneTransitioning: false,
+  pendingZone: null,
 };
 
 const BINKY_STATUSES = new Set<BinkyStatus>([
@@ -193,6 +217,18 @@ export function normalizeTidyItems(value: unknown) {
   return safeStringArray(value).filter((item) => TIDY_ITEMS.has(item)).slice(-3);
 }
 
+function safePosition(value: unknown, fallback: [number, number, number], zone: GameZone) {
+  if (
+    Array.isArray(value)
+    && value.length === 3
+    && value.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+  ) {
+    const position: [number, number, number] = [value[0], value[1], value[2]];
+    if (isWalkable(new THREE.Vector3(...position), 0.34, [], zone)) return position;
+  }
+  return fallback;
+}
+
 function safeDroppedItems(value: unknown): DroppedWorldItem[] {
   if (!Array.isArray(value)) return [];
   const byItem = new Map<string, DroppedWorldItem>();
@@ -200,12 +236,16 @@ function safeDroppedItems(value: unknown): DroppedWorldItem[] {
     if (!candidate || typeof candidate !== 'object') return;
     const item = (candidate as Partial<DroppedWorldItem>).item;
     const position = (candidate as Partial<DroppedWorldItem>).position;
+    const zone = (candidate as Partial<DroppedWorldItem>).zone === 'garden' ? 'garden' : 'hub';
     if (typeof item !== 'string' || !Array.isArray(position) || position.length !== 3) return;
     if (!position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))) return;
+    if ((item === 'binky' || TIDY_ITEMS.has(item)) && zone !== 'hub') return;
+    if (!isWalkable(new THREE.Vector3(...position), 0.25, [], zone)) return;
     byItem.set(item, {
       id: `dropped-${item}`,
       item,
       position: [position[0], position[1], position[2]],
+      zone,
     });
   });
   return [...byItem.values()];
@@ -219,10 +259,44 @@ export function normalizeSavedItems(inventoryValue: unknown, droppedValue: unkno
   };
 }
 
+function currentPosition(state: Pick<GameState, 'zone'>): [number, number, number] {
+  const tracked = getTrackedPlayerPosition();
+  return [tracked[0], tracked[1], tracked[2]];
+}
+
 function safeBinkyStatus(value: unknown, quests: QuestStates): BinkyStatus {
   return typeof value === 'string' && BINKY_STATUSES.has(value as BinkyStatus)
     ? value as BinkyStatus
     : legacyStatusForQuest(quests) as BinkyStatus;
+}
+
+export function serializeGameState(state: GameState) {
+  return {
+    quality: state.quality,
+    timeOfDay: state.timeOfDay,
+    schedule: state.schedule,
+    isRainy: state.isRainy,
+    inventory: state.inventory,
+    collectibles: state.collectibles,
+    friends: state.friends,
+    binkyStatus: state.binkyStatus,
+    binkyClues: state.binkyClues,
+    quests: state.quests,
+    droppedItems: state.droppedItems,
+    tidyPlacedItems: state.tidyPlacedItems,
+    juiceStock: state.juiceStock,
+    crackerStock: state.crackerStock,
+    juiceClubCash: state.juiceClubCash,
+    juiceClubCustomersServed: state.juiceClubCustomersServed,
+    juiceClubSatisfaction: state.juiceClubSatisfaction,
+    juiceUpgrades: state.juiceUpgrades,
+    tricycleColorIndex: state.tricycleColorIndex,
+    progression: state.progression,
+    zone: state.zone,
+    playerPosition: state.playerPosition,
+    hubPosition: state.hubPosition,
+    gardenPosition: state.gardenPosition,
+  };
 }
 
 export const useGameStore = create<GameState>()(
@@ -261,15 +335,17 @@ export const useGameStore = create<GameState>()(
       drop: (item) => set((state) => {
         if (!state.inventory.includes(item)) return state;
         const protectedItem = item === 'binky' || item.endsWith('-block');
+        if (protectedItem && state.zone !== 'hub') return state;
         const position: [number, number, number] = protectedItem
           && state.progression.hubUpgrades.includes('storage-organizer')
           ? [-10.5, 0.25, 10.2]
-          : getTrackedPlayerPosition();
+          : currentPosition(state);
+        if (!isWalkable(new THREE.Vector3(...position), 0.25, [], state.zone)) return state;
         if (item === 'binky') {
           return {
             droppedItems: [
               ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
-              { id: `dropped-${item}`, item, position },
+              { id: `dropped-${item}`, item, position, zone: state.zone },
             ],
             inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
           };
@@ -277,17 +353,19 @@ export const useGameStore = create<GameState>()(
         return {
           droppedItems: [
             ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
-            { id: `dropped-${item}`, item, position },
+            { id: `dropped-${item}`, item, position, zone: state.zone },
           ],
           inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
         };
       }),
       dropAt: (item, position) => set((state) => {
         if (!state.inventory.includes(item)) return state;
+        if ((item === 'binky' || item.endsWith('-block')) && state.zone !== 'hub') return state;
+        if (!isWalkable(new THREE.Vector3(...position), 0.25, [], state.zone)) return state;
         return {
           droppedItems: [
             ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
-            { id: `dropped-${item}`, item, position },
+            { id: `dropped-${item}`, item, position, zone: state.zone },
           ],
           inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
         };
@@ -481,7 +559,12 @@ export const useGameStore = create<GameState>()(
       setActiveDialogue: (dialogue) => set({ activeDialogue: dialogue }),
       toggleJournal: () => set((state) => ({ journalOpen: !state.journalOpen })),
       cycleTricycleColor: () => set((state) => ({ tricycleColorIndex: (state.tricycleColorIndex + 1) % 4 })),
-      triggerTeleport: () => set((state) => ({ teleportTrigger: state.teleportTrigger + 1 })),
+      triggerTeleport: () => set((state) => ({
+        teleportTrigger: state.teleportTrigger + 1,
+        playerPosition: state.zone === 'garden' ? GARDEN_SPAWN : [0, 0, 0],
+        hubPosition: state.zone === 'hub' ? [0, 0, 0] : state.hubPosition,
+        gardenPosition: state.zone === 'garden' ? GARDEN_SPAWN : state.gardenPosition,
+      })),
       completeActivity: (activityId, tokenReward, reputationReward) => set((state) => {
         const nextRuns = {
           ...state.progression.activityRuns,
@@ -526,32 +609,65 @@ export const useGameStore = create<GameState>()(
       setTrustedHelperPass: () => set((state) => ({
         progression: { ...state.progression, trustedHelperPass: true },
       })),
+      setPlayerPosition: (position) => set((state) => ({
+        playerPosition: position,
+        hubPosition: state.zone === 'hub' ? position : state.hubPosition,
+        gardenPosition: state.zone === 'garden' ? position : state.gardenPosition,
+      })),
+      enterGarden: () => {
+        let changed = false;
+        set((state) => {
+          if (
+            state.zone !== 'hub'
+            || state.zoneTransitioning
+            || !state.progression.routeUnlocks.includes('garden-district')
+          ) return state;
+          changed = true;
+          const position = currentPosition(state);
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'garden' as GameZone,
+            hubPosition: position,
+            gardenPosition: GARDEN_SPAWN,
+            activeInteractable: null,
+            activeDialogue: null,
+          };
+        });
+        return changed;
+      },
+      returnToHub: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'garden' || state.zoneTransitioning) return state;
+          changed = true;
+          const position = currentPosition(state);
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'hub' as GameZone,
+            gardenPosition: position,
+            activeInteractable: null,
+            activeDialogue: null,
+          };
+        });
+        return changed;
+      },
+      completeZoneTransition: () => set((state) => {
+        if (!state.zoneTransitioning || !state.pendingZone) return state;
+        const zone = state.pendingZone;
+        const position = zone === 'garden' ? state.gardenPosition : state.hubPosition;
+        return {
+          zone,
+          playerPosition: position,
+          zoneTransitioning: false,
+          pendingZone: null,
+          teleportTrigger: state.teleportTrigger + 1,
+        };
+      }),
       resetGame: () => set(initialState),
     }),
     {
       name: 'daykare-save',
-      partialize: (state) => ({
-        quality: state.quality,
-        timeOfDay: state.timeOfDay,
-        schedule: state.schedule,
-        isRainy: state.isRainy,
-        inventory: state.inventory,
-        collectibles: state.collectibles,
-        friends: state.friends,
-        binkyStatus: state.binkyStatus,
-        binkyClues: state.binkyClues,
-        quests: state.quests,
-        droppedItems: state.droppedItems,
-        tidyPlacedItems: state.tidyPlacedItems,
-        juiceStock: state.juiceStock,
-        crackerStock: state.crackerStock,
-        juiceClubCash: state.juiceClubCash,
-        juiceClubCustomersServed: state.juiceClubCustomersServed,
-        juiceClubSatisfaction: state.juiceClubSatisfaction,
-        juiceUpgrades: state.juiceUpgrades,
-        tricycleColorIndex: state.tricycleColorIndex,
-        progression: state.progression,
-      }),
+      partialize: serializeGameState,
       version: PROGRESSION_VERSION,
       migrate: (persistedState, storedVersion) => {
         const persisted = persistedState as Partial<GameState>;
@@ -573,6 +689,14 @@ export const useGameStore = create<GameState>()(
             tidyPlacedItems,
             quests: normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory),
             progression: normalizeProgression(persisted.progression),
+            zone: (persisted.zone === 'garden' ? 'garden' : 'hub') as GameZone,
+            playerPosition: safePosition(
+              persisted.playerPosition,
+              persisted.zone === 'garden' ? GARDEN_SPAWN : [0, 0, 0],
+              persisted.zone === 'garden' ? 'garden' : 'hub',
+            ),
+            hubPosition: safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub'),
+            gardenPosition: safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden'),
           };
         }
          const migratedQuests = normalizeQuestStates(
@@ -592,10 +716,18 @@ export const useGameStore = create<GameState>()(
            binkyStatus: migratedBinkyStatus,
            quests: migratedQuests,
            droppedItems: needsBinkyRecovery
-             ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number] }]
+             ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number], zone: 'hub' as GameZone }]
              : droppedItems,
            tidyPlacedItems,
            progression: normalizeProgression(persisted.progression),
+           zone: (persisted.zone === 'garden' ? 'garden' : 'hub') as GameZone,
+           playerPosition: safePosition(
+             persisted.playerPosition,
+             persisted.zone === 'garden' ? GARDEN_SPAWN : [0, 0, 0],
+             persisted.zone === 'garden' ? 'garden' : 'hub',
+           ),
+           hubPosition: safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub'),
+           gardenPosition: safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden'),
         };
       },
       merge: (persistedState, currentState) => {
@@ -616,10 +748,20 @@ export const useGameStore = create<GameState>()(
           binkyStatus: safeBinkyStatus(persisted.binkyStatus, quests),
           quests,
           droppedItems: needsBinkyRecovery
-            ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number] }]
+            ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number], zone: 'hub' as GameZone }]
             : droppedItems,
           tidyPlacedItems: normalizeTidyItems(persisted.tidyPlacedItems),
           progression: normalizeProgression(persisted.progression),
+          zone: (persisted.zone === 'garden' ? 'garden' : 'hub') as GameZone,
+          playerPosition: safePosition(
+            persisted.playerPosition,
+            persisted.zone === 'garden' ? GARDEN_SPAWN : [0, 0, 0],
+            persisted.zone === 'garden' ? 'garden' : 'hub',
+          ),
+          hubPosition: safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub'),
+          gardenPosition: safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden'),
+          zoneTransitioning: false,
+          pendingZone: null,
         };
       },
     }

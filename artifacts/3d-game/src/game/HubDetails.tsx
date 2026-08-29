@@ -204,14 +204,14 @@ function ArtGallery({ imaginationMode }: { imaginationMode: boolean }) {
     : ['#e8613c', '#4c82d4', '#e6ae2f'];
 
   return (
-    <group position={[-7.72, 1.65, 0]} rotation={[0, Math.PI / 2, 0]}>
+    <group position={[-7.64, 1.65, 0]} rotation={[0, Math.PI / 2, 0]}>
       {frames.map((color, index) => (
-        <group key={color} position={[0, 0, -4 + index * 4]}>
+        <group key={color} position={[-4 + index * 4, 0, 0]}>
           <mesh castShadow>
             <boxGeometry args={[1.15, 1.5, 0.12]} />
             <meshStandardMaterial color="#e7c79b" roughness={0.75} />
           </mesh>
-          <mesh position={[0.02, 0, -0.08]} rotation={[0, 0, index === 1 ? 0.12 : -0.08]}>
+          <mesh position={[0, 0, 0.075]}>
             <boxGeometry args={[0.82, 1.12, 0.025]} />
             <meshStandardMaterial color={color} roughness={0.62} />
           </mesh>

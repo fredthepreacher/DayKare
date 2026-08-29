@@ -18,15 +18,21 @@ import {
 } from './cameraInput';
 import { clearInteractionCandidates, registerInteractionCandidate, resolveInteractionCandidate } from './interactionFocus';
 import { getNavigationTarget, getPortalWaypoints } from './navigation';
+import { clearTouchMove, getTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
 import {
+  GARDEN_SPAWN,
   PLAYER_RADIUS,
   PLAY_SLIDE_RAMP,
   getWorldSolidTransform,
   isWalkable,
   resolveCameraPosition,
   resolveMovement,
+  trackPlayerPosition,
 } from './world';
-import { normalizeSavedItems, normalizeTidyItems } from './store';
+import { normalizeSavedItems, normalizeTidyItems, serializeGameState } from './store';
+import { HUB_ROUTES, normalizeProgression } from './progression';
+import { useGameStore } from './store';
+import { teacherPatrolSpots } from './NPCs';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -105,6 +111,15 @@ assert.deepEqual(
   ['blue-block', 'red-block', 'yellow-block'],
 );
 
+const unsafeOwnership = normalizeSavedItems(
+  [],
+  [
+    { id: 'outside', item: 'blue-block', position: [99, 0, 99], zone: 'hub' },
+    { id: 'garden-quest-item', item: 'binky', position: [0, 0, 12], zone: 'garden' },
+  ],
+);
+assert.deepEqual(unsafeOwnership.droppedItems, [], 'invalid and cross-zone quest drops recover instead of persisting');
+
 let quests = createInitialQuests();
 quests = advanceObjective(quests, 'where-binky', 'talk-to-leo');
 assert.equal(quests['where-binky'].currentObjectiveId, 'ask-mia');
@@ -128,6 +143,11 @@ const closeWallTarget = new THREE.Vector3(0, 1, -6.5);
 const closeWallCamera = resolveCameraPosition(closeWallTarget, new THREE.Vector3(0, 1, -9));
 assert.ok(closeWallCamera.distanceTo(closeWallTarget) < 1.8, 'nearby blockers override framing minimums');
 assert.ok(closeWallCamera.z > -7.5, 'camera remains on the target-facing side of the wall');
+const routeGateCamera = resolveCameraPosition(
+  new THREE.Vector3(12, 1, -13),
+  new THREE.Vector3(16, 1, -13),
+);
+assert.ok(routeGateCamera.x < 13, 'route gate blocks the camera before it clips through the arch');
 
 const route = getPortalWaypoints(new THREE.Vector3(0, 0, 0), new THREE.Vector3(12, 0, 5));
 assert.equal(route[0].x, 7.1);
@@ -143,6 +163,72 @@ assert.deepEqual(artTable.position, [-12, 0.5, -12]);
 assert.deepEqual(artTable.size, [3.3999999999999986, 1, 3.3999999999999986]);
 assert.ok(PLAY_SLIDE_RAMP.solid.minZ <= PLAY_SLIDE_RAMP.position[2] - 1);
 assert.ok(PLAY_SLIDE_RAMP.solid.maxZ >= PLAY_SLIDE_RAMP.position[2] + 1);
+const upperStorageBox = getWorldSolidTransform('storage-box-upper', 0.8, 1.4);
+assert.deepEqual(upperStorageBox.position, [-14, 1.4, 10]);
+assert.deepEqual(upperStorageBox.size, [0.8000000000000007, 0.8, 0.8000000000000007]);
+
+assert.equal(isWalkable(new THREE.Vector3(10, 0, 0), PLAYER_RADIUS, [], 'hub'), true);
+assert.equal(isWalkable(new THREE.Vector3(10, 0, 0), PLAYER_RADIUS, [], 'garden'), false, 'Garden pond owns Garden-only collision');
+const gardenEdge = resolveMovement(
+  new THREE.Vector3(0, 0, 14),
+  new THREE.Vector3(0, 0, 22),
+  PLAYER_RADIUS,
+  0.38,
+  'garden',
+);
+assert.ok(gardenEdge.z < 17.4, 'Garden bounds prevent leaving the playable region');
+
+const gardenRoute = HUB_ROUTES.find((routeDefinition) => routeDefinition.id === 'garden-district');
+assert.ok(gardenRoute);
+assert.equal(normalizeProgression({ reputation: 9 }).routeUnlocks.includes('garden-district'), false);
+assert.equal(normalizeProgression({ reputation: 10 }).routeUnlocks.includes('garden-district'), true);
+
+useGameStore.getState().resetGame();
+assert.equal(useGameStore.getState().enterGarden(), false, 'Garden remains blocked below ten reputation');
+useGameStore.getState().completeActivity('test-reputation', 0, 10);
+assert.equal(useGameStore.getState().progression.routeUnlocks.includes('garden-district'), true);
+trackPlayerPosition(new THREE.Vector3(12, 0, -10.4));
+assert.equal(useGameStore.getState().enterGarden(), true);
+assert.equal(useGameStore.getState().pendingZone, 'garden');
+useGameStore.getState().completeZoneTransition();
+assert.equal(useGameStore.getState().zone, 'garden');
+assert.deepEqual(useGameStore.getState().playerPosition, GARDEN_SPAWN);
+useGameStore.getState().setPlayerPosition([1, 0, 12]);
+const persistedGarden = serializeGameState(useGameStore.getState());
+assert.equal(persistedGarden.zone, 'garden');
+assert.deepEqual(persistedGarden.playerPosition, [1, 0, 12], 'Garden position is included in local save state');
+assert.deepEqual(persistedGarden.hubPosition, [12, 0, -10.4], 'hub return position survives a Garden save');
+trackPlayerPosition(new THREE.Vector3(0, 0, 16));
+assert.equal(useGameStore.getState().returnToHub(), true);
+useGameStore.getState().completeZoneTransition();
+assert.equal(useGameStore.getState().zone, 'hub');
+assert.deepEqual(useGameStore.getState().playerPosition, [12, 0, -10.4], 'return restores the saved hub-side gate position');
+
+useGameStore.getState().resetGame();
+useGameStore.setState({ inventory: ['binky'] });
+useGameStore.getState().dropAt('binky', [3, 0, -3]);
+assert.deepEqual(useGameStore.getState().inventory, ['binky'], 'solid-overlapping drops are rejected');
+assert.deepEqual(useGameStore.getState().droppedItems, []);
+useGameStore.getState().dropAt('binky', [0, 0, 3]);
+assert.deepEqual(useGameStore.getState().inventory, []);
+assert.equal(useGameStore.getState().droppedItems[0]?.zone, 'hub');
+
+for (const teacher of [
+  { name: 'Ms. Harper', defaultPos: [-2, 0, 2] as [number, number, number] },
+  { name: 'Mr. Davis', defaultPos: [4, 0, 4] as [number, number, number] },
+]) {
+  for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+    for (const rainy of [false, true]) {
+      for (const patrolPoint of teacherPatrolSpots(teacher.name, scheduleName, rainy, teacher.defaultPos)) {
+        assert.equal(
+          isWalkable(new THREE.Vector3(...patrolPoint), 0.34),
+          true,
+          `${teacher.name} ${scheduleName} patrol point ${patrolPoint.join(',')} must be reachable`,
+        );
+      }
+    }
+  }
+}
 
 recenterCamera();
 assert.equal(consumeCameraRecenterRequest(), true);
@@ -158,6 +244,16 @@ stepCameraInput(1 / 60);
 assert.ok(getCameraInput().zoom > zoomBeforeEase, 'camera zoom eases toward its target');
 adjustCameraZoom(-100);
 assert.equal(getCameraInput().targetZoom, CAMERA_ZOOM_MIN, 'camera zoom clamps to its near limit');
+
+setTouchMove(2, -2);
+assert.deepEqual({ x: getTouchInput().x, y: getTouchInput().y }, { x: 1, y: -1 }, 'touch movement clamps to a stable unit range');
+assert.equal(toggleTouchRun(), true);
+setTouchCrouch(true);
+assert.equal(getTouchInput().crouch, true);
+clearTouchMove();
+assert.deepEqual({ x: getTouchInput().x, y: getTouchInput().y }, { x: 0, y: 0 });
+toggleTouchRun();
+setTouchCrouch(false);
 
 clearInteractionCandidates();
 const fartherQuestTarget = {

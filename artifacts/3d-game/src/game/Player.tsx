@@ -20,6 +20,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const tricycleColorIndex = useGameStore((s) => s.tricycleColorIndex);
   const teleportTrigger = useGameStore((s) => s.teleportTrigger);
   const activeDialogue = useGameStore((s) => s.activeDialogue);
+  const zone = useGameStore((s) => s.zone);
+  const playerPosition = useGameStore((s) => s.playerPosition);
+  const zoneTransitioning = useGameStore((s) => s.zoneTransitioning);
+  const setPlayerPosition = useGameStore((s) => s.setPlayerPosition);
   
   // State
   const velocity = useRef(new THREE.Vector3());
@@ -39,6 +43,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const mouseDragging = useRef(false);
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
+  const positionSaveAccumulator = useRef(0);
   
   const colors = ["#d62828", "#3a86ff", "#ff006e", "#06d6a0"];
   
@@ -78,7 +83,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     if (!localRef.current) return;
     
     if (teleportTrigger !== lastTeleport.current) {
-      localRef.current.position.set(0, 0, 0);
+      localRef.current.position.set(...playerPosition);
+      velocity.current.set(0, 0, 0);
+      desiredVelocity.current.set(0, 0, 0);
+      yVelocity.current = 0;
       lastTeleport.current = teleportTrigger;
     }
     
@@ -108,7 +116,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
 
     desiredVelocity.current.set(0, 0, 0);
 
-    if (!activeDialogue) {
+    if (!activeDialogue && !zoneTransitioning) {
       if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
       if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
       if (keys.left) desiredVelocity.current.addScaledVector(right.current, -speed);
@@ -148,10 +156,21 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       localRef.current.position,
       nextPos,
       isRiding ? TRICYCLE_RADIUS : PLAYER_RADIUS,
+      0.38,
+      zone,
     );
     localRef.current.position.x = resolvedPosition.x;
     localRef.current.position.z = resolvedPosition.z;
     trackPlayerPosition(localRef.current.position);
+    positionSaveAccumulator.current += delta;
+    if (positionSaveAccumulator.current >= 0.5) {
+      positionSaveAccumulator.current = 0;
+      setPlayerPosition([
+        localRef.current.position.x,
+        localRef.current.position.y,
+        localRef.current.position.z,
+      ]);
+    }
 
     // Jumping and Gravity
     const isGrounded = localRef.current.position.y <= 0;
@@ -190,13 +209,13 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     cameraLookTarget.current.copy(cameraFocus.current);
     cameraLookTarget.current.y += isCrouching ? 0.78 : 1.0;
     cameraSafePosition.current.copy(
-      resolveCameraPosition(cameraLookTarget.current, idealCameraPosition.current),
+      resolveCameraPosition(cameraLookTarget.current, idealCameraPosition.current, 0.2, zone),
     );
     const cameraBlend = 1 - Math.exp(-7 * delta);
     const safeDistance = cameraSafePosition.current.distanceTo(cameraLookTarget.current);
     const currentDistance = camera.position.distanceTo(cameraLookTarget.current);
     cameraCurrentSafePosition.current.copy(
-      resolveCameraPosition(cameraLookTarget.current, camera.position),
+      resolveCameraPosition(cameraLookTarget.current, camera.position, 0.2, zone),
     );
     const currentPositionIsSafe = cameraCurrentSafePosition.current.distanceToSquared(camera.position) < 0.0025;
     // Pull in immediately when a new obstruction appears so interpolation
@@ -212,7 +231,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   });
 
   return (
-    <group ref={localRef} position={[0, 0, 0]}>
+    <group ref={localRef} position={playerPosition}>
       <group position={[0, isRiding ? 0.3 : 0, 0]}>
         <CharacterModel
           bodyColor="#f47b43"

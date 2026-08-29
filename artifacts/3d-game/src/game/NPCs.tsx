@@ -137,18 +137,43 @@ function Teacher({
   const trusted = useGameStore((state) => state.progression.trustedHelperPass);
   const imagination = useGameStore((state) => state.isImaginationMode);
   const activeDialogue = useGameStore((state) => state.activeDialogue);
+  const active = useGameStore((state) => state.activeInteractable === `teacher-${name}`);
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const suspicionAccumulator = useRef(0);
   useEffect(() => registerNpcPosition(`teacher-${name}`, mirror), [name, mirror]);
+  const candidate = useMemo(() => ({
+    id: `teacher-${name}`,
+    position: mirror,
+    range: 2.35,
+    priority: 48,
+    valid: true,
+  }), [mirror, name]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   const destination = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
+  const patrol = useRef({ key: '', index: 0, dwellUntil: 0 });
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!ref.current) return;
-    destination.set(...defaultPos);
-    if (name === 'Ms. Harper' && schedule === 'outdoor-play' && !isRainy) destination.set(10, 0, -2);
-    if (name === 'Ms. Harper' && schedule === 'art-time') destination.set(-10, 0, -11);
-    stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, 1.4);
+    const key = `${schedule}:${isRainy}`;
+    const spots = teacherPatrolSpots(name, schedule, isRainy, defaultPos);
+    if (patrol.current.key !== key) {
+      patrol.current = { key, index: 0, dwellUntil: 0 };
+    }
+    destination.set(...spots[patrol.current.index % spots.length]);
+    const arrived = ref.current.position.distanceTo(destination) < 0.48;
+    if (arrived && patrol.current.dwellUntil === 0) {
+      patrol.current.dwellUntil = state.clock.elapsedTime + 4.5 + (namePhase(name) % 2.5);
+    } else if (arrived && state.clock.elapsedTime >= patrol.current.dwellUntil) {
+      patrol.current.index = (patrol.current.index + 1) % spots.length;
+      patrol.current.dwellUntil = 0;
+    }
+    if (active && playerRef.current) {
+      smoothTurn(ref.current, playerRef.current.position, delta);
+    } else if (!arrived) {
+      stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, name === 'Mr. Davis' ? 1.25 : 1.35);
+    }
     mirror.copy(ref.current.position);
+    updateInteractionCandidate(`teacher-${name}`, { position: mirror, valid: true });
 
     if (name === 'Ms. Harper' && playerRef.current) {
       suspicionAccumulator.current += delta;
@@ -181,6 +206,26 @@ function Teacher({
       </group>
     </group>
   );
+}
+
+export function teacherPatrolSpots(
+  name: string,
+  schedule: string,
+  isRainy: boolean,
+  defaultPos: [number, number, number],
+): [number, number, number][] {
+  if (name === 'Ms. Harper') {
+    if (schedule === 'art-time') return [[-9.7, 0, -10], [-9.2, 0, -13.8]];
+    if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, -2], [12, 0, 10.8]];
+    if (schedule === 'pickup') return [[-6, 0, -1.6], [-6, 0, 2]];
+    return [defaultPos, [-4.5, 0, 2.8]];
+  }
+  if (schedule === 'art-time') return [[-9.4, 0, -9.8], [-9.4, 0, -14.2], [-12, 0, -7]];
+  if (schedule === 'juice-club') return [[5.2, 0, -3], [5.2, 0, -0.8], [1.2, 0, 1.5]];
+  if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, 10], [14.8, 0, 5.5], [14, 0, -8.5], [10, 0, -12]];
+  if (schedule === 'outdoor-play') return [[2, 0, -5.2], [2.2, 0, -5.8], [-2, 0, -5.6]];
+  if (schedule === 'pickup') return [[-9.3, 0, 4.5], [-9.3, 0, 0], [-9.3, 0, -4.5]];
+  return [[4.8, 0, 3.8], [5.3, 0, -1.2], [7, 0, 0]];
 }
 
 function Kid({

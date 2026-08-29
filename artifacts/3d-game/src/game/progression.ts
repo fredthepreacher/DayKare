@@ -26,14 +26,14 @@ export interface ProgressionState {
   trustedHelperPass: boolean;
 }
 
-export const PROGRESSION_VERSION = 2;
+export const PROGRESSION_VERSION = 3;
 
 export const HUB_ROUTES: RouteDefinition[] = [
   {
     id: 'garden-district',
     label: 'Garden District',
     subtitle: 'A quiet path beyond the east gate',
-    description: 'A future neighborhood of tiny gardens, bug hunts, and sunny shortcuts.',
+    description: 'A connected garden of winding paths, flower beds, a pond, and sunny places to explore.',
     position: [14, 0, -13],
     color: '#4d9a73',
     requirement: { kind: 'reputation', value: 10 },

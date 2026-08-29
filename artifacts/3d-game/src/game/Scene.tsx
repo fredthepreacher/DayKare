@@ -6,9 +6,10 @@ import { NPCs } from './NPCs';
 import { Interactables } from './Interactables';
 import { HubDetails } from './HubDetails';
 import { HubProgression } from './HubProgression';
+import { Garden } from './Garden';
 import { keyMap } from './Controls';
 import { UI } from './UI';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
@@ -34,6 +35,15 @@ function GameScene() {
   const playerRef = useRef<THREE.Group>(null);
   const isRainy = useGameStore(s => s.isRainy);
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
+  const zone = useGameStore(s => s.zone);
+  const zoneTransitioning = useGameStore(s => s.zoneTransitioning);
+  const completeZoneTransition = useGameStore(s => s.completeZoneTransition);
+
+  useEffect(() => {
+    if (!zoneTransitioning) return;
+    const timer = window.setTimeout(completeZoneTransition, 700);
+    return () => window.clearTimeout(timer);
+  }, [zoneTransitioning, completeZoneTransition]);
 
   return (
     <>
@@ -49,11 +59,17 @@ function GameScene() {
         <fog attach="fog" args={[isImaginationMode ? '#2b1055' : '#8899a6', 5, 30]} />
       )}
       
-      <Environment />
-      <HubDetails />
-      <HubProgression playerRef={playerRef} />
-      <Interactables playerRef={playerRef} />
-      <NPCs playerRef={playerRef} />
+      {zone === 'hub' ? (
+        <>
+          <Environment />
+          <HubDetails />
+          <HubProgression playerRef={playerRef} />
+          <Interactables playerRef={playerRef} />
+          <NPCs playerRef={playerRef} />
+        </>
+      ) : (
+        <Garden />
+      )}
       <Player ref={playerRef} />
       <InteractionFocusSystem playerRef={playerRef} />
     </>
