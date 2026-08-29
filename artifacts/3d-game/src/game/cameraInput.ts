@@ -14,14 +14,19 @@ export const CAMERA_ZOOM_STEP = 0.7;
 
 const CAMERA_ZOOM_STORAGE_KEY = 'daykare.cameraZoom';
 const DESKTOP_CAMERA_ZOOM = 7.4;
-const TOUCH_CAMERA_ZOOM = 8.6;
+const TOUCH_CAMERA_ZOOM = 10.2;
+const TOUCH_CAMERA_REOPEN_MIN = 9.2;
 
-function getDefaultCameraZoom() {
-  if (typeof window === 'undefined') return DESKTOP_CAMERA_ZOOM;
-
+function isTouchOrPortraitDevice() {
+  if (typeof window === 'undefined') return false;
   const hasCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches;
   const hasTouch = navigator.maxTouchPoints > 0;
-  return hasCoarsePointer || hasTouch ? TOUCH_CAMERA_ZOOM : DESKTOP_CAMERA_ZOOM;
+  const isPortraitViewport = window.innerWidth <= 767;
+  return hasCoarsePointer || hasTouch || isPortraitViewport;
+}
+
+function getDefaultCameraZoom() {
+  return isTouchOrPortraitDevice() ? TOUCH_CAMERA_ZOOM : DESKTOP_CAMERA_ZOOM;
 }
 
 function readSavedCameraZoom() {
@@ -31,8 +36,11 @@ function readSavedCameraZoom() {
     const storedValue = window.sessionStorage.getItem(CAMERA_ZOOM_STORAGE_KEY);
     if (storedValue === null) return null;
     const saved = Number(storedValue);
+    const minimumReopenZoom = isTouchOrPortraitDevice()
+      ? TOUCH_CAMERA_REOPEN_MIN
+      : CAMERA_ZOOM_MIN;
     return Number.isFinite(saved)
-      ? Math.max(CAMERA_ZOOM_MIN, Math.min(CAMERA_ZOOM_MAX, saved))
+      ? Math.max(minimumReopenZoom, Math.min(CAMERA_ZOOM_MAX, saved))
       : null;
   } catch {
     return null;

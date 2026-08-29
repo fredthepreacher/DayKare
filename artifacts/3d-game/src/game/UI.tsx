@@ -408,7 +408,14 @@ export function UI() {
 
       {/* Dialogue Overlay */}
       {activeDialogue && (
-        <div className="daykare-dialogue absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-card border-4 border-primary p-6 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-8 pointer-events-auto">
+        <div
+          className="daykare-dialogue absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-card border-4 border-primary p-6 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-8 pointer-events-auto z-20"
+          onClick={() => {
+            if (!activeDialogue.options) setActiveDialogue(null);
+          }}
+          role="dialog"
+          aria-label={`${activeDialogue.name} dialogue`}
+        >
           <div className="font-serif font-bold text-2xl text-primary mb-2">{activeDialogue.name}</div>
           <div className="text-lg text-card-foreground mb-4">{activeDialogue.text}</div>
           
@@ -425,9 +432,21 @@ export function UI() {
               ))}
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground animate-pulse mt-4 flex items-center gap-2">
-              <span className="bg-muted px-2 py-1 rounded">E</span> or tap to close
-            </div>
+            <button
+              type="button"
+              className="daykare-dialogue-close text-sm text-muted-foreground animate-pulse mt-4 flex items-center gap-2"
+              onClick={(event) => {
+                event.stopPropagation();
+                setActiveDialogue(null);
+              }}
+              aria-label="Continue and close dialogue"
+            >
+              <span className="bg-muted px-2 py-1 rounded">E</span>
+              <span className="daykare-dialogue-close-copy">
+                <strong>Continue</strong>
+                <small>Tap here or press E to close</small>
+              </span>
+            </button>
           )}
         </div>
       )}
@@ -686,8 +705,8 @@ export function UI() {
 
       <TouchControls
         movementEnabled={!journalOpen && !activeDialogue}
-        interactionLabel={journalOpen ? null : interactionLabel}
-        interactionDetail={journalOpen ? null : interactionDetail}
+        interactionLabel={journalOpen || activeDialogue ? null : interactionLabel}
+        interactionDetail={journalOpen || activeDialogue ? null : interactionDetail}
         onInteract={() => interactRef.current()}
       />
 

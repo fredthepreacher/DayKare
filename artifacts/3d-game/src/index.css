@@ -388,6 +388,8 @@
   .daykare-dialogue {
     bottom: max(104px, calc(env(safe-area-inset-bottom) + 96px));
     width: calc(100% - 28px);
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 132px);
+    overflow-y: auto;
     padding: 16px;
     border-width: 3px;
     border-radius: 20px;
@@ -405,6 +407,44 @@
   .daykare-dialogue button {
     min-height: 44px;
     flex: 1 1 auto;
+  }
+
+  .daykare-dialogue-close {
+    width: 100%;
+    min-height: 52px !important;
+    justify-content: center;
+    padding: 10px 14px;
+    border: 2px solid hsla(var(--primary), 0.42);
+    border-radius: 15px;
+    background: hsl(var(--primary) / 0.08);
+    color: hsl(var(--card-foreground));
+    font-size: 14px;
+    font-weight: 800;
+    text-align: center;
+    touch-action: manipulation;
+  }
+
+  .daykare-dialogue-close-copy {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.1;
+  }
+
+  .daykare-dialogue-close-copy strong {
+    font-size: 15px;
+  }
+
+  .daykare-dialogue-close-copy small {
+    color: hsl(var(--muted-foreground));
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .daykare-dialogue-close:active {
+    transform: scale(0.98);
+    background: hsl(var(--primary) / 0.16);
   }
 
   .daykare-journal-shell {
