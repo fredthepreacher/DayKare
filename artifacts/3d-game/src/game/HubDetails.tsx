@@ -1,8 +1,9 @@
 import { useFrame } from '@react-three/fiber';
 import { useRef } from 'react';
-import * as THREE from 'three';
 import { useGameStore } from './store';
 import { SuppliedArtwork } from './Artwork';
+
+import * as THREE from 'three';
 
 export function HubDetails() {
   const isImaginationMode = useGameStore((s) => s.isImaginationMode);
@@ -19,30 +20,30 @@ export function HubDetails() {
       <PlaygroundDetails />
       <CeilingMobile imaginationMode={isImaginationMode} />
       <ScheduleBeacon schedule={schedule} imaginationMode={isImaginationMode} />
-      <SuppliedArtwork fileName="02_wall_mural_welcome.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 0 }} size={[4.25, 3.15]} />
-      <SuppliedArtwork fileName="03_wall_decals_set.png" surfaceAnchor={{ solidId: 'hall-divider-south', face: 'east', height: 1.6, along: 4.5 }} size={[2.15, 1.6]} />
-      <SuppliedArtwork fileName="06_posters_charts.png" surfaceAnchor={{ solidId: 'north-boundary', face: 'south', height: 1.72, along: -12 }} size={[2.5, 1.88]} semanticRole="wayfinding" />
-      <SuppliedArtwork fileName="07_classroom_signs.png" surfaceAnchor={{ solidId: 'hall-divider-north', face: 'east', height: 1.6, along: -4.5 }} size={[2.15, 1.6]} semanticRole="wayfinding" />
-      <SuppliedArtwork fileName="08_floor_decals.png" position={[3.8, 0.035, 4.9]} size={[2.4, 1.8]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="floor-marker" />
-      <SuppliedArtwork fileName="17_motivational_banner.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.65, along: 0 }} size={[2.55, 1.9]} semanticRole="wayfinding" />
-      <SuppliedArtwork fileName="18_door_sign.png" position={[-14.1, 1.7, -7.66]} size={[1.75, 1.3]} semanticRole="wayfinding" />
-      <SuppliedArtwork fileName="04_classroom_scene.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 4.6 }} size={[2.55, 1.9]} />
-      <SuppliedArtwork fileName="05_playground_equipment.png" surfaceAnchor={{ solidId: 'east-boundary', face: 'west', height: 1.65, along: -4.2 }} size={[2.55, 1.9]} semanticRole="wayfinding" />
-      <SuppliedArtwork fileName="09_cubby_labels.png" surfaceAnchor={{ solidId: 'cubbies', face: 'north', height: 1.18, along: -5.7 }} size={[2.95, 0.72]} semanticRole="wayfinding" />
-      <SuppliedArtwork fileName="10_props_toys.png" position={[-12, 1.04, -12]} size={[2.25, 1.55]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="activity-surface" />
-      <SuppliedArtwork fileName="14_environment_props.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.65, along: 4.4 }} size={[2.35, 1.75]} />
-      <SuppliedArtwork fileName="15_wayfinding_floor_markers.png" position={[6.55, 0.035, -0.2]} size={[1.9, 1.35]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]} semanticRole="floor-marker" />
-      <SuppliedArtwork fileName="16_material_textures.png" position={[-12, 0.036, -5.5]} size={[2.1, 1.55]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="floor-marker" />
-      <SuppliedArtwork fileName="19_attendance_chart.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.7, along: -4.5 }} size={[2.3, 1.72]} semanticRole="wayfinding" />
+      <SuppliedArtwork fileName="02_wall_mural_welcome.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 0 }} size={[4.25, 3.15]} support="frame" />
+      <SuppliedArtwork fileName="03_wall_decals_set.png" surfaceAnchor={{ solidId: 'hall-divider-south', face: 'east', height: 1.6, along: 4.5 }} size={[2.15, 1.6]} support="corkboard" />
+      <SuppliedArtwork fileName="06_posters_charts.png" surfaceAnchor={{ solidId: 'north-boundary', face: 'south', height: 1.72, along: -12 }} size={[2.5, 1.88]} semanticRole="wayfinding" support="corkboard" />
+      <SuppliedArtwork fileName="07_classroom_signs.png" surfaceAnchor={{ solidId: 'hall-divider-north', face: 'east', height: 1.6, along: -4.5 }} size={[2.15, 1.6]} semanticRole="wayfinding" support="rail" />
+      <SuppliedArtwork fileName="17_motivational_banner.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.65, along: 0 }} size={[2.55, 1.9]} semanticRole="wayfinding" support="rail" />
+      <SuppliedArtwork fileName="18_door_sign.png" surfaceAnchor={{ solidId: 'hall-divider-north', face: 'east', height: 1.7, along: -6.65 }} size={[1.35, 1]} semanticRole="wayfinding" support="signboard" />
+      <SuppliedArtwork fileName="04_classroom_scene.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 4.6 }} size={[2.55, 1.9]} support="frame" />
+      <SuppliedArtwork fileName="05_playground_equipment.png" surfaceAnchor={{ solidId: 'east-boundary', face: 'west', height: 1.65, along: -4.2 }} size={[2.55, 1.9]} semanticRole="wayfinding" support="corkboard" />
+      <SuppliedArtwork fileName="09_cubby_labels.png" surfaceAnchor={{ solidId: 'cubbies', face: 'north', height: 1.18, along: -5.7 }} size={[2.95, 0.72]} semanticRole="wayfinding" support="rail" />
+      <SuppliedArtwork fileName="10_props_toys.png" position={[-12, 1.01, -12]} size={[2.25, 1.55]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="activity-surface" support="tray" />
+      <SuppliedArtwork fileName="14_environment_props.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.65, along: 4.4 }} size={[2.35, 1.75]} support="corkboard" />
+      <SuppliedArtwork fileName="19_attendance_chart.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.7, along: -4.5 }} size={[2.3, 1.72]} semanticRole="wayfinding" support="corkboard" />
+      <SuppliedArtwork fileName="08_floor_decals.png" position={[3.8, 0.026, 4.9]} size={[2.4, 1.8]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="floor-marker" support="none" />
+      <SuppliedArtwork fileName="15_wayfinding_floor_markers.png" position={[6.55, 0.027, -0.2]} size={[1.9, 1.35]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]} semanticRole="floor-marker" support="none" />
+      <SuppliedArtwork fileName="16_material_textures.png" position={[-12, 0.028, -5.5]} size={[2.1, 1.55]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="floor-marker" support="none" />
       {storageOrganizer && <LostAndFoundOrganizer />}
     </group>
   );
 }
 
 function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
-  const accent = imaginationMode ? '#52e7ff' : '#4c82d4';
-  const warm = imaginationMode ? '#ff4da6' : '#e8613c';
-  const sunny = imaginationMode ? '#ffd166' : '#e6ae2f';
+  const accent = imaginationMode ? '#52e7ff' : '#6e9c9a';
+  const warm = imaginationMode ? '#ff4da6' : '#d98a68';
+  const sunny = imaginationMode ? '#ffd166' : '#d8ae62';
   return (
     <group>
       {/* Classroom: low-cost wall dots and a soft story-time mat. */}
@@ -58,8 +59,8 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
       ))}
 
       {/* Hallway: a runner, name tiles, and cheerful pennants. */}
-      <mesh position={[-12, 0.025, 0]}>
-        <boxGeometry args={[2.35, 0.04, 10.8]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-12, 0.018, 0]}>
+        <planeGeometry args={[2.35, 10.8]} />
         <meshStandardMaterial color={imaginationMode ? '#5935a5' : '#d77b6d'} roughness={0.94} />
       </mesh>
       {[-5, -3, -1, 1, 3, 5].map((z, index) => (
@@ -76,8 +77,8 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
       ))}
 
       {/* Art room: washable rug, paint cups, and pinned paper. */}
-      <mesh position={[-12, 0.025, -14.65]}>
-        <boxGeometry args={[5.2, 0.04, 1.1]} />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-12, 0.018, -14.65]}>
+        <planeGeometry args={[5.2, 1.1]} />
         <meshStandardMaterial color={imaginationMode ? '#3d5bd6' : '#a8dce4'} roughness={0.92} />
       </mesh>
       {[-0.55, 0, 0.55].map((x, index) => (
@@ -113,9 +114,9 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
 
       {/* Playground: hopscotch tiles and a row of planted flowers. */}
       {[0, 1, 2, 3].map((index) => (
-        <mesh key={index} position={[9.05 + (index % 2) * 0.34, 0.04, -7.8 + index * 0.58]}>
-          <boxGeometry args={[0.58, 0.035, 0.5]} />
-          <meshStandardMaterial color={[sunny, accent, warm][index % 3]} roughness={0.9} />
+        <mesh key={index} rotation={[-Math.PI / 2, 0, index % 2 ? 0.15 : -0.15]} position={[9.05 + (index % 2) * 0.34, 0.019, -7.8 + index * 0.58]}>
+          <planeGeometry args={[0.58, 0.5]} />
+          <meshBasicMaterial color={[sunny, accent, warm][index % 3]} />
         </mesh>
       ))}
       {[-13.5, -12.4, -11.3].map((z, index) => (

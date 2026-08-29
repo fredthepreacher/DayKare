@@ -327,9 +327,9 @@ function GardenActivityProp({ activity, role }: { activity: GardenActivity; role
 
 function GardenEnvironment() {
   const imagination = useGameStore((state) => state.isImaginationMode);
-  const grass = imagination ? '#173d38' : '#8dbb72';
-  const path = imagination ? '#7254b3' : '#e6c98f';
-  const wall = imagination ? '#315f58' : '#6c9b5a';
+  const grass = imagination ? '#173d38' : '#91b976';
+  const path = imagination ? '#7254b3' : '#e7cf9f';
+  const wall = imagination ? '#315f58' : '#779b67';
 
   return (
     <group>
@@ -472,7 +472,7 @@ function GardenDetails() {
           <boxGeometry args={[3.7, 1.22, 0.04]} />
           <meshStandardMaterial color="#4d9a73" roughness={0.76} />
         </mesh>
-        <SuppliedArtwork fileName="12_garden_signage.png" position={[0, 0.98, 0.14]} size={[3.55, 1.3]} />
+        <SuppliedArtwork fileName="12_garden_signage.png" position={[0, 0.98, 0.14]} size={[3.55, 1.3]} support="none" />
       </group>
     </group>
   );

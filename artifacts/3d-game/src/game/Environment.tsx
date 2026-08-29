@@ -5,13 +5,13 @@ export function Environment() {
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
   
   // Colors adjust based on imagination mode
-  const floorMain = isImaginationMode ? "#2b1055" : "#e0cda7";
-  const floorArt = isImaginationMode ? "#0f380f" : "#d9e2e8";
-  const floorGrass = isImaginationMode ? "#590d22" : "#a3c485";
-  const floorStorage = isImaginationMode ? "#1a0b16" : "#6c6663";
-  const floorHall = isImaginationMode ? "#0d1b2a" : "#c4a484";
+  const floorMain = isImaginationMode ? "#2b1055" : "#dfc9a5";
+  const floorArt = isImaginationMode ? "#0f380f" : "#c9dcd4";
+  const floorGrass = isImaginationMode ? "#590d22" : "#a6c27a";
+  const floorStorage = isImaginationMode ? "#1a0b16" : "#bca084";
+  const floorHall = isImaginationMode ? "#0d1b2a" : "#d8b887";
   
-  const wallColor = isImaginationMode ? "#3c096c" : "#fdf8ec";
+  const wallColor = isImaginationMode ? "#3c096c" : "#f7edda";
 
   return (
     <group>
@@ -63,7 +63,19 @@ export function Environment() {
       {/* Visible walls are derived from the same bounds used by collision. */}
       {WORLD_SOLIDS.filter((solid) => solid.zone === 'hub' && (solid.kind === 'wall' || solid.kind === 'boundary')).map((solid) => {
         const transform = getWorldSolidTransform(solid.id, 3);
-        return <Wall key={solid.id} position={transform.position} size={transform.size} color={wallColor} />;
+        const color = isImaginationMode
+          ? wallColor
+          : solid.id.includes('divider')
+            ? '#d9b59a'
+            : solid.id.includes('boundary')
+              ? '#f3e4ca'
+              : wallColor;
+        return (
+          <group key={solid.id}>
+            <Wall position={transform.position} size={transform.size} color={color} />
+            <WallTrim position={[transform.position[0], 0.18, transform.position[2]]} size={transform.size} color={isImaginationMode ? '#6e4aa5' : '#e7c798'} />
+          </group>
+        );
       })}
 
       {/* Decorations / Decor */}
@@ -127,6 +139,15 @@ function Wall({ position, size, color }: { position: [number, number, number], s
     <mesh position={position} castShadow receiveShadow>
       <boxGeometry args={size} />
       <meshStandardMaterial color={color} />
+    </mesh>
+  );
+}
+
+function WallTrim({ position, size, color }: { position: [number, number, number], size: [number, number, number], color: string }) {
+  return (
+    <mesh position={position} receiveShadow>
+      <boxGeometry args={[size[0], 0.16, size[2] + 0.015]} />
+      <meshStandardMaterial color={color} roughness={0.88} />
     </mesh>
   );
 }
