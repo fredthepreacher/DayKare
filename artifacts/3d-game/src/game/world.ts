@@ -227,7 +227,7 @@ export const CAMERA_BLOCKERS = WORLD_SOLIDS.filter((solid) => (
 export const PLAYER_RADIUS = 0.42;
 export const TRICYCLE_RADIUS = 0.7;
 export const MIN_CAMERA_DISTANCE = 1.65;
-const EMERGENCY_CAMERA_DISTANCE = 0.45;
+const EMERGENCY_CAMERA_DISTANCE = MIN_CAMERA_DISTANCE;
 const trackedPlayerPosition: [number, number, number] = [0, 0, 0];
 
 export function trackPlayerPosition(position: THREE.Vector3) {

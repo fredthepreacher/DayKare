@@ -7,7 +7,27 @@ const npcPaths = new Map<string, { destinationKey: string; waypoints: THREE.Vect
 export function registerNpcPosition(id: string, position: THREE.Vector3) {
   npcPositions.set(id, position);
   return () => {
+    if (npcPositions.get(id) === position) {
+      npcPositions.delete(id);
+      npcPaths.delete(id);
+    }
+  };
+}
+
+export function clearNpcNavigation(id?: string) {
+  if (id) {
     npcPositions.delete(id);
+    npcPaths.delete(id);
+    return;
+  }
+  npcPositions.clear();
+  npcPaths.clear();
+}
+
+export function getNpcNavigationSnapshot() {
+  return {
+    positionCount: npcPositions.size,
+    pathCount: npcPaths.size,
   };
 }
 
@@ -31,14 +51,26 @@ export function getPortalWaypoints(start: THREE.Vector3, target: THREE.Vector3) 
   return waypoints;
 }
 
-export function getNavigationTarget(id: string, current: THREE.Vector3, destination: THREE.Vector3) {
-  const destinationKey = `${destination.x.toFixed(2)}:${destination.z.toFixed(2)}`;
+export function getNavigationTarget(
+  id: string,
+  current: THREE.Vector3,
+  destination: THREE.Vector3,
+  zone: 'hub' | 'garden' = 'hub',
+) {
+  const destinationKey = `${zone}:${destination.x.toFixed(2)}:${destination.z.toFixed(2)}`;
   let path = npcPaths.get(id);
   if (!path || path.destinationKey !== destinationKey) {
-    const waypoints = getPortalWaypoints(current, destination)
+    const candidateWaypoints = zone === 'hub'
+      ? getPortalWaypoints(current, destination)
+      : [destination.clone().setY(0)];
+    const waypoints = candidateWaypoints
       .map((waypoint) => waypoint.clone().setY(0))
-      .filter((waypoint) => isWalkable(waypoint, 0.34));
-    path = { destinationKey, waypoints: waypoints.length > 0 ? waypoints : [destination.clone().setY(0)], index: 0 };
+      .filter((waypoint) => isWalkable(waypoint, 0.34, [], zone));
+    path = {
+      destinationKey,
+      waypoints: waypoints.length > 0 ? waypoints : [destination.clone().setY(0)],
+      index: 0,
+    };
     npcPaths.set(id, path);
   }
 
@@ -54,12 +86,20 @@ export function getNavigationTarget(id: string, current: THREE.Vector3, destinat
     separation.add(current.clone().sub(position).multiplyScalar((1.4 - distance) / 1.4));
   });
   if (separation.lengthSq() > 0) waypoint.add(separation.normalize().multiplyScalar(0.65));
-  if (!isWalkable(waypoint, 0.34)) {
-    return resolveMovement(current, current.clone().add(new THREE.Vector3(
+  if (!isWalkable(waypoint, 0.34, [], zone)) {
+    const detour = new THREE.Vector3(
       waypoint.z - current.z,
       0,
       -(waypoint.x - current.x),
-    ).normalize().multiplyScalar(0.4)), 0.34);
+    );
+    if (detour.lengthSq() < 0.001) return current.clone();
+    return resolveMovement(
+      current,
+      current.clone().add(detour.normalize().multiplyScalar(0.4)),
+      0.34,
+      0.38,
+      zone,
+    );
   }
   return waypoint;
 }

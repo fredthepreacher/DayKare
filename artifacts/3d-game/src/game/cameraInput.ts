@@ -6,9 +6,23 @@ export interface CameraInputState {
   recenterRequested: boolean;
 }
 
-// One stable frame keeps the hub readable on both desktop and touch devices.
-// Obstruction handling in world.ts can still pull this frame forward safely.
+export interface CameraProfile {
+  distance: number;
+  fov: number;
+  height: number;
+  lookAhead: number;
+}
+
+// One stable frame keeps the hub readable on desktop and touch devices.
+// Portrait screens get a wider lens and a little more distance, not a user zoom.
 export const CAMERA_DISTANCE = 9.8;
+
+export function getCameraProfile(width: number, height: number): CameraProfile {
+  const portrait = height > width * 1.08;
+  return portrait
+    ? { distance: 11.4, fov: 68, height: 4.45, lookAhead: 0.9 }
+    : { distance: CAMERA_DISTANCE, fov: 60, height: 3.8, lookAhead: 0.58 };
+}
 
 const cameraInput: CameraInputState = {
   yaw: 0,

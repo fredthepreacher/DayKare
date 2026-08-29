@@ -11,11 +11,18 @@ import {
   addCameraOrbit,
   consumeCameraRecenterRequest,
   getCameraInput,
+  getCameraProfile,
   recenterCamera,
   stepCameraInput,
 } from './cameraInput';
 import { clearInteractionCandidates, registerInteractionCandidate, resolveInteractionCandidate } from './interactionFocus';
-import { getNavigationTarget, getPortalWaypoints } from './navigation';
+import {
+  clearNpcNavigation,
+  getNavigationTarget,
+  getNpcNavigationSnapshot,
+  getPortalWaypoints,
+  registerNpcPosition,
+} from './navigation';
 import { clearTouchMove, getTouchInput, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
 import {
   GARDEN_SPAWN,
@@ -32,9 +39,12 @@ import {
 import { normalizeSavedItems, normalizeTidyItems, restoreZoneState, serializeGameState } from './store';
 import { HUB_ROUTES, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
-import { kidActivityMode, kidDestination, teacherPatrolSpots } from './NPCs';
+import { facingAngleForDirection, kidActivityMode, kidDestination, teacherPatrolSpots } from './NPCs';
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
+import { GARDEN_CAST, gardenNpcDestination } from './Garden';
+import { artworkBackingSize } from './Artwork';
+import { dialogueDismissLabel } from './dialogueActions';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -184,6 +194,17 @@ const persistentDestination = new THREE.Vector3(12, 0, -11.5);
 const firstNpcWaypoint = getNavigationTarget('test-kid', new THREE.Vector3(0, 0, 0), persistentDestination);
 const secondNpcWaypoint = getNavigationTarget('test-kid', new THREE.Vector3(0.1, 0, 0), persistentDestination);
 assert.equal(firstNpcWaypoint.x, secondNpcWaypoint.x, 'NPC keeps the same portal waypoint while following a path');
+clearNpcNavigation();
+const cleanupMirror = new THREE.Vector3(0, 0, 0);
+const unregisterNpc = registerNpcPosition('cleanup-kid', cleanupMirror);
+getNavigationTarget('cleanup-kid', cleanupMirror, new THREE.Vector3(4, 0, 0));
+assert.deepEqual(getNpcNavigationSnapshot(), { positionCount: 1, pathCount: 1 });
+unregisterNpc();
+assert.deepEqual(
+  getNpcNavigationSnapshot(),
+  { positionCount: 0, pathCount: 0 },
+  'unmount cleanup removes both NPC separation and path registrations',
+);
 
 const artTable = getWorldSolidTransform('art-table', 1);
 assert.deepEqual(artTable.position, [-12, 0.5, -12]);
@@ -268,6 +289,18 @@ assert.equal(
 );
 
 useGameStore.getState().resetGame();
+useGameStore.setState({
+  schedule: 'juice-club',
+  waitingCustomers: ['Max', 'Noah'],
+  juiceStock: 2,
+  crackerStock: 2,
+});
+useGameStore.getState().serveCustomer();
+assert.deepEqual(useGameStore.getState().waitingCustomers, ['Noah'], 'Juice Club service promotes the next queued customer');
+assert.equal(useGameStore.getState().juiceClubServedCustomer, 'Max', 'served customer enters the visible drink-and-exit phase');
+useGameStore.getState().clearJuiceClubServedCustomer();
+assert.equal(useGameStore.getState().juiceClubServedCustomer, null);
+useGameStore.getState().resetGame();
 assert.equal(useGameStore.getState().enterGarden(), false, 'Garden remains blocked below ten reputation');
 useGameStore.setState((state) => ({
   progression: { ...state.progression, routeUnlocks: ['garden-district'] },
@@ -282,6 +315,8 @@ assert.equal(useGameStore.getState().pendingZone, 'garden');
 useGameStore.getState().completeZoneTransition();
 assert.equal(useGameStore.getState().zone, 'garden');
 assert.deepEqual(useGameStore.getState().playerPosition, GARDEN_SPAWN);
+useGameStore.getState().setAmbientMessage('stale Hub greeting');
+assert.equal(useGameStore.getState().ambientMessage, null, 'Hub social messages cannot publish after Garden remount');
 assert.equal(useGameStore.getState().startGardenActivity(), true);
 assert.equal(useGameStore.getState().startGardenActivity(), false, 'Garden activity cannot be started twice');
 assert.equal(useGameStore.getState().advanceGardenActivity(), 2);
@@ -368,6 +403,33 @@ for (const [index, name] of ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 
 }
 const promotedQueueDestination = kidDestination('Max', 'juice-club', false, [0, 0, 0], 0, 0, ['Max']);
 assert.equal(isWalkable(promotedQueueDestination, 0.34), true, 'front Juice Club customer can reach the live queue marker');
+const secondQueueDestination = kidDestination('Noah', 'juice-club', false, [0, 0, 0], 0, 0, ['Max', 'Noah']);
+assert.ok(secondQueueDestination.x < promotedQueueDestination.x, 'customers line up outward from the service point');
+const servedExitDestination = kidDestination('Max', 'juice-club', false, [0, 0, 0], 0, 0, ['Max'], 'Max');
+assert.ok(servedExitDestination.x > promotedQueueDestination.x, 'served customer leaves through the counter-side exit');
+const artPairA = kidDestination('Leo', 'art-time', false, [0, 0, 0], 0, 0, []);
+const artPairB = kidDestination('Mia', 'art-time', false, [0, 0, 0], 1, 0, []);
+assert.deepEqual(artPairA.toArray(), artPairB.toArray(), 'paired children share a coordinated art-session anchor');
+
+for (const definition of GARDEN_CAST) {
+  for (let cycle = 0; cycle < definition.route.length; cycle += 1) {
+    const stop = gardenNpcDestination(definition.name, cycle);
+    assert.ok(stop);
+    assert.equal(
+      isWalkable(stop.position, 0.34, [], 'garden'),
+      true,
+      `${definition.name} Garden stop ${cycle} stays on a valid Garden route`,
+    );
+  }
+}
+
+const wallSlideDisplacement = wallSlideResult.clone().sub(wallSlideStart);
+assert.ok(Math.abs(wallSlideDisplacement.z) > Math.abs(wallSlideDisplacement.x), 'collision changes the actual movement heading');
+assert.equal(
+  facingAngleForDirection(wallSlideDisplacement),
+  Math.atan2(-wallSlideDisplacement.x, -wallSlideDisplacement.z),
+  'NPC facing derives from resolved displacement rather than the blocked request',
+);
 
 recenterCamera();
 assert.equal(consumeCameraRecenterRequest(), true);
@@ -377,6 +439,14 @@ stepCameraInput(1 / 30);
 stepCameraInput(1 / 120);
 assert.equal(getCameraInput().yaw, directYaw, 'camera drag does not accumulate frame-dependent inertia');
 assert.equal(CAMERA_DISTANCE, 9.8, 'desktop and touch use one naturally wider stable camera frame');
+const landscapeProfile = getCameraProfile(1280, 720);
+const portraitProfile = getCameraProfile(390, 844);
+assert.ok(portraitProfile.distance > landscapeProfile.distance, 'portrait starts with a wider fixed camera distance');
+assert.ok(portraitProfile.fov > landscapeProfile.fov, 'portrait uses a wider lens instead of manual zoom');
+assert.ok(portraitProfile.lookAhead > landscapeProfile.lookAhead, 'portrait keeps useful movement look-ahead');
+assert.deepEqual(artworkBackingSize([2, 1]), [2.16, 1.16], 'artwork support extends beyond the supplied graphic');
+assert.equal(dialogueDismissLabel(false), 'Continue / Close');
+assert.equal(dialogueDismissLabel(true), 'Cancel / Leave');
 assert.equal(isGameplayBlocked({ journalOpen: true, activeDialogue: null, zoneTransitioning: false }), true);
 assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: { text: 'pause' }, zoneTransitioning: false }), true);
 assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: null, zoneTransitioning: true }), true);

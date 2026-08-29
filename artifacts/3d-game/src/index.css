@@ -377,6 +377,21 @@
     flex: 1 1 auto;
   }
 
+  .daykare-dialogue-actions {
+    flex-wrap: wrap;
+    padding-bottom: max(2px, env(safe-area-inset-bottom));
+  }
+
+  .daykare-dialogue-actions button {
+    min-width: min(150px, 100%);
+    min-height: 52px;
+    touch-action: manipulation;
+  }
+
+  .daykare-dialogue-cancel {
+    flex-basis: 100% !important;
+  }
+
   .daykare-dialogue-close {
     width: 100%;
     min-height: 52px !important;

@@ -1,11 +1,13 @@
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { useGameStore } from './store';
-import { getWorldSolidTransform, WORLD_SOLIDS } from './world';
-import { CharacterModel } from './CharacterModel';
+import { getWorldSolidTransform, isWalkable, WORLD_SOLIDS } from './world';
+import { CharacterModel, type CharacterModelProps } from './CharacterModel';
 import { SuppliedArtwork } from './Artwork';
+import { registerNpcPosition } from './navigation';
+import { facingAngleForDirection, stepNpc } from './NPCs';
 
 const FLOWERS = [
   [-15, -15, '#e8613c'], [-12.5, -14.2, '#ffd166'], [-9.8, -15, '#8a63c7'],
@@ -18,15 +20,258 @@ const TREES = [
   [-14.5, -1], [-7, 11.8], [6.4, 11.5], [14.2, -8.5], [2, -13.8],
 ] as const;
 
+type GardenActivity = 'water' | 'inspect' | 'pond-watch' | 'gazebo-talk' | 'play' | 'supervise' | 'social-walk';
+
+interface GardenNpcDefinition {
+  name: string;
+  role: 'kid' | 'teacher';
+  bodyColor: string;
+  accentColor: string;
+  hairColor: string;
+  skinColor: string;
+  hairStyle: NonNullable<CharacterModelProps['hairStyle']>;
+  route: { position: [number, number, number]; activity: GardenActivity }[];
+}
+
+export const GARDEN_CAST: GardenNpcDefinition[] = [
+  {
+    name: 'Lily',
+    role: 'kid',
+    bodyColor: '#db568a',
+    accentColor: '#8fd0c5',
+    hairColor: '#202334',
+    skinColor: '#e4aa7f',
+    hairStyle: 'ponytail',
+    route: [
+      { position: [-13.65, 0, 2.8], activity: 'water' },
+      { position: [-8.05, 0, 2.8], activity: 'inspect' },
+      { position: [-1.4, 0, 6.2], activity: 'gazebo-talk' },
+      { position: [-4.2, 0, -3.1], activity: 'social-walk' },
+    ],
+  },
+  {
+    name: 'Finn',
+    role: 'kid',
+    bodyColor: '#4c82d4',
+    accentColor: '#f3ca52',
+    hairColor: '#bd7448',
+    skinColor: '#f1bf98',
+    hairStyle: 'sprout',
+    route: [
+      { position: [6.45, 0, -0.2], activity: 'pond-watch' },
+      { position: [1.4, 0, 6.2], activity: 'gazebo-talk' },
+      { position: [4.6, 0, -3.1], activity: 'play' },
+      { position: [0, 0, -7.2], activity: 'social-walk' },
+    ],
+  },
+  {
+    name: 'Zoe',
+    role: 'kid',
+    bodyColor: '#e9aa45',
+    accentColor: '#e76f8c',
+    hairColor: '#8d5d2f',
+    skinColor: '#f2c4a0',
+    hairStyle: 'bob',
+    route: [
+      { position: [13.65, 0, 9.8], activity: 'water' },
+      { position: [8.05, 0, 9.8], activity: 'inspect' },
+      { position: [5.4, 0, 5.9], activity: 'play' },
+      { position: [4.8, 0, -3.1], activity: 'social-walk' },
+    ],
+  },
+  {
+    name: 'Ms. Harper',
+    role: 'teacher',
+    bodyColor: '#457b9d',
+    accentColor: '#e4bd6a',
+    hairColor: '#46352f',
+    skinColor: '#c98562',
+    hairStyle: 'bob',
+    route: [
+      { position: [-7.2, 0, 5.3], activity: 'supervise' },
+      { position: [5.9, 0, 2.9], activity: 'pond-watch' },
+      { position: [0, 0, 10.1], activity: 'supervise' },
+      { position: [0, 0, -3.1], activity: 'social-walk' },
+    ],
+  },
+];
+
 export function Garden() {
   return (
     <group>
       <GardenEnvironment />
       <GardenDetails />
+      <GardenCast />
       <GardenActivityHost />
       <GardenReturnGate />
     </group>
   );
+}
+
+export function gardenNpcDestination(name: string, cycle: number) {
+  const definition = GARDEN_CAST.find((candidate) => candidate.name === name);
+  if (!definition) return null;
+  const stop = definition.route[Math.abs(cycle) % definition.route.length];
+  return {
+    ...stop,
+    position: new THREE.Vector3(...stop.position),
+  };
+}
+
+function GardenCast() {
+  return (
+    <group>
+      {GARDEN_CAST.map((definition) => (
+        <GardenNpc key={definition.name} definition={definition} />
+      ))}
+    </group>
+  );
+}
+
+function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
+  const ref = useRef<THREE.Group>(null);
+  const firstStop = definition.route[0];
+  const mirror = useMemo(() => new THREE.Vector3(...firstStop.position), [firstStop.position]);
+  const destination = useMemo(() => new THREE.Vector3(...firstStop.position), [firstStop.position]);
+  const active = useGameStore((state) => state.activeInteractable === `garden-npc-${definition.name}`);
+  const activeDialogue = useGameStore((state) => state.activeDialogue);
+  const imagination = useGameStore((state) => state.isImaginationMode);
+  const routeState = useRef({
+    index: 0,
+    dwellUntil: 0,
+    stuckFor: 0,
+    lastPosition: new THREE.Vector3(...firstStop.position),
+  });
+  const [settledActivity, setSettledActivity] = useState<GardenActivity | null>(null);
+  const settledRef = useRef<GardenActivity | null>(null);
+  const candidate = useMemo(() => ({
+    id: `garden-npc-${definition.name}`,
+    position: mirror,
+    range: 2.15,
+    priority: definition.role === 'teacher' ? 32 : 24,
+    valid: true,
+  }), [definition.name, definition.role, mirror]);
+
+  useEffect(() => registerNpcPosition(`garden-npc-${definition.name}`, mirror), [definition.name, mirror]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+
+  useFrame((state, delta) => {
+    if (!ref.current) return;
+    const route = definition.route;
+    const stop = route[routeState.current.index % route.length];
+    destination.set(...stop.position);
+    const distance = ref.current.position.distanceTo(destination);
+    const arrived = distance < 0.5;
+    if (arrived && routeState.current.dwellUntil === 0) {
+      routeState.current.dwellUntil = state.clock.elapsedTime + 5.5 + (definition.name.length % 3);
+    } else if (arrived && state.clock.elapsedTime >= routeState.current.dwellUntil) {
+      routeState.current.index = (routeState.current.index + 1) % route.length;
+      routeState.current.dwellUntil = 0;
+    }
+
+    if (active) {
+      const player = new THREE.Vector3(...useGameStore.getState().playerPosition);
+      turnToward(ref.current, player, delta);
+    } else if (!arrived) {
+      stepNpc(
+        `garden-npc-${definition.name}`,
+        ref.current,
+        destination,
+        null,
+        delta,
+        definition.role === 'teacher' ? 1.18 : 1.08,
+        'garden',
+      );
+      const moved = ref.current.position.distanceTo(routeState.current.lastPosition);
+      routeState.current.stuckFor = moved < 0.002 ? routeState.current.stuckFor + delta : 0;
+      if (routeState.current.stuckFor > 2.6) {
+        routeState.current.index = (routeState.current.index + 1) % route.length;
+        routeState.current.dwellUntil = 0;
+        routeState.current.stuckFor = 0;
+      }
+    } else {
+      turnToward(ref.current, gardenActivityFocus(stop.activity, destination), delta);
+    }
+
+    const nextActivity = arrived && routeState.current.dwellUntil > state.clock.elapsedTime ? stop.activity : null;
+    if (nextActivity !== settledRef.current) {
+      settledRef.current = nextActivity;
+      setSettledActivity(nextActivity);
+    }
+    routeState.current.lastPosition.copy(ref.current.position);
+    mirror.copy(ref.current.position);
+    updateInteractionCandidate(`garden-npc-${definition.name}`, { position: mirror, valid: true });
+  });
+
+  return (
+    <group ref={ref} position={firstStop.position}>
+      <group scale={definition.role === 'teacher' ? 1.25 : 1}>
+        <CharacterModel
+          bodyColor={definition.bodyColor}
+          accentColor={definition.accentColor}
+          hairColor={definition.hairColor}
+          hairStyle={definition.hairStyle}
+          skinColor={definition.skinColor}
+          mood="happy"
+          isTeacher={definition.role === 'teacher'}
+          isTalking={activeDialogue?.name === definition.name}
+          imaginationMode={imagination}
+          activityMode={gardenActivityMode(settledActivity)}
+          motionSeed={definition.name.length * 0.71}
+          idleEnergy={0.65}
+        />
+      </group>
+      {settledActivity && <GardenActivityProp activity={settledActivity} role={definition.role} />}
+    </group>
+  );
+}
+
+function turnToward(ref: THREE.Group, target: THREE.Vector3, delta: number) {
+  const direction = target.clone().sub(ref.position).setY(0);
+  if (direction.lengthSq() < 0.001) return;
+  const targetAngle = facingAngleForDirection(direction);
+  const difference = THREE.MathUtils.euclideanModulo(targetAngle - ref.rotation.y + Math.PI, Math.PI * 2) - Math.PI;
+  ref.rotation.y += difference * (1 - Math.exp(-7 * delta));
+}
+
+function gardenActivityFocus(activity: GardenActivity, position: THREE.Vector3) {
+  if (activity === 'pond-watch') return new THREE.Vector3(10, 0, -0.2);
+  if (activity === 'gazebo-talk') return new THREE.Vector3(0, 0, 6.2);
+  if (activity === 'water' || activity === 'inspect') {
+    return new THREE.Vector3(position.x < 0 ? -10.8 : 10.8, 0, position.z);
+  }
+  if (activity === 'supervise') return new THREE.Vector3(0, 0, 5.5);
+  return position.clone().add(new THREE.Vector3(1, 0, -0.5));
+}
+
+function gardenActivityMode(activity: GardenActivity | null): NonNullable<CharacterModelProps['activityMode']> {
+  if (activity === 'play') return 'playing';
+  if (activity === 'pond-watch' || activity === 'gazebo-talk') return 'gathering';
+  return activity ? 'standing' : 'standing';
+}
+
+function GardenActivityProp({ activity, role }: { activity: GardenActivity; role: GardenNpcDefinition['role'] }) {
+  if (activity === 'water') {
+    return (
+      <group position={[0.42, 0.72, -0.28]} rotation={[0, 0, -0.18]}>
+        <mesh><cylinderGeometry args={[0.11, 0.13, 0.28, 8]} /><meshStandardMaterial color="#4c82d4" /></mesh>
+        <mesh position={[0.16, 0.03, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.04, 0.06, 0.28, 7]} /><meshStandardMaterial color="#4c82d4" /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'inspect') {
+    return <mesh position={[0.38, 0.86, -0.32]}><torusGeometry args={[0.11, 0.025, 8, 18]} /><meshStandardMaterial color="#e6ae2f" /></mesh>;
+  }
+  if (activity === 'pond-watch') {
+    return <mesh position={[0.36, 0.88, -0.32]}><boxGeometry args={[0.3, 0.18, 0.12]} /><meshStandardMaterial color="#355272" /></mesh>;
+  }
+  if (activity === 'play') {
+    return <mesh position={[0.5, 0.2, -0.4]}><sphereGeometry args={[0.18, 10, 8]} /><meshStandardMaterial color="#e8613c" /></mesh>;
+  }
+  if (role === 'teacher' && activity === 'supervise') {
+    return <mesh position={[0.4, 0.9, -0.3]}><boxGeometry args={[0.24, 0.34, 0.06]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
+  }
+  return null;
 }
 
 function GardenEnvironment() {
@@ -86,7 +331,7 @@ function GardenBed({ id, color }: { id: string; color: string }) {
         <meshStandardMaterial color={color} roughness={0.92} />
       </mesh>
       {[-0.65, 0, 0.65].map((z, index) => (
-        <group key={z} position={[0, 0.38, z]}>
+        <group key={z} position={[0, 0.22, z]}>
           <mesh position={[0, 0.13, 0]}>
             <cylinderGeometry args={[0.04, 0.055, 0.32, 7]} />
             <meshStandardMaterial color="#4f8d55" />

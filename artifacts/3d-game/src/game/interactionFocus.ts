@@ -7,6 +7,7 @@ export interface InteractionCandidate {
   priority: number;
   valid: boolean;
   approach?: THREE.Vector3;
+  questPriority?: boolean;
 }
 
 const candidates = new Map<string, InteractionCandidate>();
@@ -33,11 +34,15 @@ export function resolveInteractionCandidate(
   const forward = playerForward.clone().setY(0).normalize();
   const cameraIntent = (cameraForward ?? playerForward).clone().setY(0).normalize();
   let best: { candidate: InteractionCandidate; score: number } | null = null;
-  for (const candidate of candidates.values()) {
-    if (!candidate.valid) continue;
+  const validCandidates = [...candidates.values()].filter((candidate) => (
+    candidate.valid
+    && playerPosition.distanceTo(candidate.position) <= candidate.range
+  ));
+  const questCandidates = validCandidates.filter((candidate) => candidate.questPriority);
+  const candidatesToScore = questCandidates.length > 0 ? questCandidates : validCandidates;
+  for (const candidate of candidatesToScore) {
     const offset = candidate.position.clone().sub(playerPosition).setY(0);
     const distance = offset.length();
-    if (distance > candidate.range) continue;
     const direction = distance > 0.001 ? offset.clone().normalize() : forward;
     const facing = Math.max(-1, Math.min(1, forward.dot(direction)));
     const cameraFacing = Math.max(-1, Math.min(1, cameraIntent.dot(direction)));

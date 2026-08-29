@@ -25,10 +25,11 @@ function useCandidate(
   valid: boolean,
   range: number,
   priority: number,
+  questPriority = false,
 ) {
-  const candidate = useMemo(() => ({ id, position: position.clone(), valid, range, priority }), [id]);
+  const candidate = useMemo(() => ({ id, position: position.clone(), valid, range, priority, questPriority }), [id, questPriority]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
-  useFrame(() => updateInteractionCandidate(id, { position, valid, range, priority }));
+  useFrame(() => updateInteractionCandidate(id, { position, valid, range, priority, questPriority }));
 }
 
 function FocusHalo({ active, radius, color }: { active: boolean; radius: number; color: string }) {
@@ -65,10 +66,10 @@ function JuiceStand({ playerRef }: { playerRef: React.RefObject<THREE.Group | nu
         <meshStandardMaterial color="#ffd166" />
       </mesh>
       <mesh position={[0, 1.5, 0]} castShadow>
-        <boxGeometry args={[1.8, 0.5, 0.1]} />
+        <boxGeometry args={[1.95, 1.42, 0.12]} />
         <meshStandardMaterial color="#8338ec" />
       </mesh>
-      <SuppliedArtwork fileName="11_juice_club_branding.png" position={[0, 1.5, 0.065]} size={[1.7, 1.28]} />
+      <SuppliedArtwork fileName="11_juice_club_branding.png" position={[0, 1.5, 0.075]} size={[1.7, 1.22]} backingColor="#8338ec" />
       <mesh position={[-0.5, 1.35, 0]} castShadow>
         <cylinderGeometry args={[0.2, 0.2, 0.5, 16]} />
         <meshStandardMaterial color="#ff5400" transparent opacity={0.8} />
@@ -94,7 +95,7 @@ function Binky({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }
   const position = useMemo(() => new THREE.Vector3(), []);
   const source = dropped?.position ?? [-14, 0.2, 14];
   position.set(source[0], source[1], source[2]);
-  useCandidate('binky', position, visible, 1.7, 100);
+  useCandidate('binky', position, visible, 1.7, 100, visible);
   useFrame((_, delta) => {
     if (ref.current) ref.current.rotation.y += delta * (active ? 1.6 : 0.35);
   });
@@ -187,7 +188,7 @@ function ToyBlock({
   const position = useMemo(() => new THREE.Vector3(), []);
   const source = dropped?.position ?? authoredPosition;
   position.set(source[0], source[1], source[2]);
-  useCandidate(id, position, visible, 1.7, 80);
+  useCandidate(id, position, visible, 1.7, 80, visible);
   useFrame((state, delta) => {
     if (!visual.current) return;
     visual.current.rotation.y += delta * (active ? 1.4 : 0.12);

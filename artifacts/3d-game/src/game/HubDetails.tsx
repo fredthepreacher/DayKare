@@ -25,7 +25,15 @@ export function HubDetails() {
       <SuppliedArtwork fileName="07_classroom_signs.png" position={[-7.66, 1.6, -4.5]} size={[2.15, 1.6]} rotation={[0, Math.PI / 2, 0]} />
       <SuppliedArtwork fileName="08_floor_decals.png" position={[3.8, 0.035, 4.9]} size={[2.4, 1.8]} rotation={[-Math.PI / 2, 0, 0]} />
       <SuppliedArtwork fileName="17_motivational_banner.png" position={[-15.66, 1.65, 0]} size={[2.55, 1.9]} rotation={[0, Math.PI / 2, 0]} />
-      <SuppliedArtwork fileName="18_door_sign.png" position={[-7.66, 1.7, 0]} size={[1.75, 1.3]} rotation={[0, Math.PI / 2, 0]} />
+      <SuppliedArtwork fileName="18_door_sign.png" position={[-14.1, 1.7, -7.66]} size={[1.75, 1.3]} />
+      <SuppliedArtwork fileName="04_classroom_scene.png" position={[4.6, 1.72, 7.65]} size={[2.55, 1.9]} rotation={[0, Math.PI, 0]} />
+      <SuppliedArtwork fileName="05_playground_equipment.png" position={[15.66, 1.65, -4.2]} size={[2.55, 1.9]} rotation={[0, -Math.PI / 2, 0]} />
+      <SuppliedArtwork fileName="09_cubby_labels.png" position={[-5.7, 1.18, -7.04]} size={[2.95, 0.72]} rotation={[0, Math.PI, 0]} />
+      <SuppliedArtwork fileName="10_props_toys.png" position={[-12, 1.04, -12]} size={[2.25, 1.55]} rotation={[-Math.PI / 2, 0, 0]} />
+      <SuppliedArtwork fileName="14_environment_props.png" position={[-15.66, 1.65, 4.4]} size={[2.35, 1.75]} rotation={[0, Math.PI / 2, 0]} />
+      <SuppliedArtwork fileName="15_wayfinding_floor_markers.png" position={[6.55, 0.035, -0.2]} size={[1.9, 1.35]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]} />
+      <SuppliedArtwork fileName="16_material_textures.png" position={[-12, 0.036, -5.5]} size={[2.1, 1.55]} rotation={[-Math.PI / 2, 0, 0]} />
+      <SuppliedArtwork fileName="19_attendance_chart.png" position={[-15.66, 1.7, -4.5]} size={[2.3, 1.72]} rotation={[0, Math.PI / 2, 0]} />
       {storageOrganizer && <LostAndFoundOrganizer />}
     </group>
   );

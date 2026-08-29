@@ -6,7 +6,7 @@ import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
 import { CharacterModel } from './CharacterModel';
-import { addCameraOrbit, CAMERA_DISTANCE, consumeCameraRecenterRequest, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
+import { addCameraOrbit, consumeCameraRecenterRequest, getCameraInput, getCameraProfile, recenterCamera, stepCameraInput } from './cameraInput';
 import { isGameplayBlocked } from './gameplayGate';
 import { PLAYER_RADIUS, TRICYCLE_RADIUS, resolveCameraPosition, resolveMovement, trackPlayerPosition } from './world';
 
@@ -15,7 +15,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   useImperativeHandle(ref, () => localRef.current as THREE.Group);
 
   const [, getKeys] = useKeyboardControls<Controls>();
-  const { camera, gl } = useThree();
+  const { camera, gl, size } = useThree();
   const isImaginationMode = useGameStore((s) => s.isImaginationMode);
   const isRiding = useGameStore((s) => s.isRiding);
   const tricycleColorIndex = useGameStore((s) => s.tricycleColorIndex);
@@ -37,6 +37,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const idealCameraPosition = useRef(new THREE.Vector3());
   const cameraFocus = useRef(new THREE.Vector3());
   const cameraLookTarget = useRef(new THREE.Vector3());
+  const cameraLookAhead = useRef(new THREE.Vector3());
   const cameraSafePosition = useRef(new THREE.Vector3());
   const cameraCurrentSafePosition = useRef(new THREE.Vector3());
   const cameraBaseHeading = useRef(0);
@@ -48,6 +49,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const lastTeleport = useRef(teleportTrigger);
   const positionSaveAccumulator = useRef(0);
   gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning });
+  const cameraProfile = getCameraProfile(size.width, size.height);
   
   const colors = ["#d62828", "#3a86ff", "#ff006e", "#06d6a0"];
   
@@ -85,6 +87,12 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [gl]);
+
+  useEffect(() => {
+    if (!(camera instanceof THREE.PerspectiveCamera)) return;
+    camera.fov = cameraProfile.fov;
+    camera.updateProjectionMatrix();
+  }, [camera, cameraProfile.fov]);
 
   useFrame((state, delta) => {
     if (!localRef.current) return;
@@ -221,13 +229,21 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     // Locomotion turns the character, not the camera. Only a deliberate
     // recenter changes the camera's world-facing baseline.
     const heading = cameraBaseHeading.current + orbit.yaw;
-    const horizontalDistance = CAMERA_DISTANCE * Math.cos(orbit.pitch);
+    cameraLookAhead.current.copy(velocity.current).setY(0);
+    if (cameraLookAhead.current.lengthSq() > 0.01) {
+      const speedBlend = THREE.MathUtils.clamp(cameraLookAhead.current.length() / 4, 0, 1);
+      cameraLookAhead.current.normalize().multiplyScalar(cameraProfile.lookAhead * speedBlend);
+    } else {
+      cameraLookAhead.current.set(0, 0, 0);
+    }
+    const desiredFocus = localRef.current.position.clone().add(cameraLookAhead.current);
+    cameraFocus.current.lerp(desiredFocus, 1 - Math.exp(-8 * delta));
+    const horizontalDistance = cameraProfile.distance * Math.cos(orbit.pitch);
     idealCameraPosition.current.set(
-      localRef.current.position.x + Math.sin(heading) * horizontalDistance,
-      localRef.current.position.y + 3.8 + Math.sin(orbit.pitch) * CAMERA_DISTANCE * 0.54,
-      localRef.current.position.z + Math.cos(heading) * horizontalDistance,
+      cameraFocus.current.x + Math.sin(heading) * horizontalDistance,
+      localRef.current.position.y + cameraProfile.height + Math.sin(orbit.pitch) * cameraProfile.distance * 0.54,
+      cameraFocus.current.z + Math.cos(heading) * horizontalDistance,
     );
-    cameraFocus.current.lerp(localRef.current.position, 1 - Math.exp(-10 * delta));
     cameraLookTarget.current.copy(cameraFocus.current);
     cameraLookTarget.current.y += isCrouching ? 0.78 : 1.0;
     cameraSafePosition.current.copy(

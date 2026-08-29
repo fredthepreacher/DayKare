@@ -23,6 +23,7 @@ import { TouchControls } from './TouchControls';
 import { HUB_ROUTES, isRouteUnlocked, requirementLabel, requirementProgressLabel } from './progression';
 import { getActiveQuest, getCurrentObjective, objectiveIsActive, QUEST_DEFINITIONS } from './quests';
 import { playGameSound, unlockGameAudio } from './audio';
+import { dialogueDismissLabel } from './dialogueActions';
 
 export function UI() {
   const {
@@ -43,6 +44,7 @@ export function UI() {
     juiceStock,
     crackerStock,
     waitingCustomers,
+    juiceClubServedCustomer,
     juiceUpgrades,
     toggleJournal,
     toggleImagination,
@@ -57,6 +59,7 @@ export function UI() {
     buyStock,
     buyUpgrade,
     serveCustomer,
+    clearJuiceClubServedCustomer,
     addWaitingCustomer,
     setIsRiding,
     isRiding,
@@ -80,6 +83,7 @@ export function UI() {
 
   const [subscribe] = useKeyboardControls<Controls>();
   const interactRef = useRef<() => void>(() => undefined);
+  const queueCursor = useRef(0);
 
   useEffect(() => {
     const handleAudioUnlock = () => unlockGameAudio();
@@ -108,17 +112,26 @@ export function UI() {
 
   // Juice Club Customers Simulation
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (schedule === 'juice-club' && zone === 'hub') {
-      // Add a customer every 10 seconds if none waiting
-      interval = setInterval(() => {
-        const potentialCustomers = ['Max', 'Noah', 'Zoe'];
-        const randomCustomer = potentialCustomers[Math.floor(Math.random() * potentialCustomers.length)];
-        useGameStore.getState().addWaitingCustomer(randomCustomer);
-      }, 10000);
-    }
-    return () => clearInterval(interval);
+    if (schedule !== 'juice-club' || zone !== 'hub') return;
+    const potentialCustomers = ['Max', 'Noah', 'Zoe'];
+    const inviteNext = () => {
+      const name = potentialCustomers[queueCursor.current % potentialCustomers.length];
+      queueCursor.current += 1;
+      useGameStore.getState().addWaitingCustomer(name);
+    };
+    const first = window.setTimeout(inviteNext, 1400);
+    const interval = window.setInterval(inviteNext, 8000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(interval);
+    };
   }, [schedule, zone]);
+
+  useEffect(() => {
+    if (!juiceClubServedCustomer) return;
+    const timer = window.setTimeout(clearJuiceClubServedCustomer, 3200);
+    return () => window.clearTimeout(timer);
+  }, [juiceClubServedCustomer, clearJuiceClubServedCustomer]);
 
   useEffect(() => {
     const runInteraction = () => {
@@ -235,6 +248,15 @@ export function UI() {
               text: 'The bed is ready for another planting round whenever you are.',
             });
           }
+        } else if (activeInteractable.startsWith('garden-npc-')) {
+          const name = activeInteractable.replace('garden-npc-', '');
+          const gardenDialogue: Record<string, string> = {
+            Lily: 'I am watering the west bed, then meeting Finn in the gazebo to compare leaves.',
+            Finn: 'The pond is full of tiny ripples. After I watch them, I am joining the garden ball game.',
+            Zoe: 'I checked the tall flowers and carried the watering can back along the path.',
+            'Ms. Harper': 'I am supervising the planting beds, pond edge, and gazebo path. Everyone has a clear route.',
+          };
+          setActiveDialogue({ name, text: gardenDialogue[name] ?? 'The Garden has something new to notice at every stop.' });
         } else if (activeInteractable.startsWith('route-')) {
           const routeId = activeInteractable.replace('route-', '');
           const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
@@ -382,6 +404,7 @@ export function UI() {
       if (gardenActivityStep < 3) return `Tend Seedlings · ${gardenActivityStep}/3`;
       return 'Plant Another Bed';
     }
+    if (activeInteractable.startsWith('garden-npc-')) return `Talk to ${activeInteractable.replace('garden-npc-', '')}`;
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Check Route';
@@ -400,6 +423,7 @@ export function UI() {
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
     if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
+    if (activeInteractable.startsWith('garden-npc-')) return 'Garden routine';
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Future access point';
@@ -476,10 +500,17 @@ export function UI() {
           </button>
         </div>
         {activeQuest && activeObjective && (
-          <div className="max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-3 rounded-xl shadow-lg">
-            <div className="text-[10px] uppercase tracking-[0.18em] font-black text-amber-700">{activeQuest.title}</div>
-            <div className="font-bold text-card-foreground mt-1">{activeObjective.label}</div>
-            <div className="text-xs text-muted-foreground mt-1">{activeObjective.guidance}</div>
+          <div className="max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-3 rounded-xl shadow-lg flex gap-3 items-start">
+            <img
+              src={`${import.meta.env.BASE_URL}daykare-assets/13_ui_quest_icons.png`}
+              alt=""
+              className="w-12 h-12 rounded-lg object-cover border border-amber-300/50"
+            />
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.18em] font-black text-amber-700">{activeQuest.title}</div>
+              <div className="font-bold text-card-foreground mt-1">{activeObjective.label}</div>
+              <div className="text-xs text-muted-foreground mt-1">{activeObjective.guidance}</div>
+            </div>
           </div>
         )}
       </div>
@@ -540,17 +571,15 @@ export function UI() {
       {activeDialogue && (
         <div
           className="daykare-dialogue absolute bottom-12 left-1/2 -translate-x-1/2 w-full max-w-2xl bg-card border-4 border-primary p-6 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-8 pointer-events-auto z-20"
-          onClick={() => {
-            if (!activeDialogue.options) setActiveDialogue(null);
-          }}
           role="dialog"
+          aria-modal="true"
           aria-label={`${activeDialogue.name} dialogue`}
         >
           <div className="font-serif font-bold text-2xl text-primary mb-2">{activeDialogue.name}</div>
           <div className="text-lg text-card-foreground mb-4">{activeDialogue.text}</div>
           
           {activeDialogue.options ? (
-            <div className="flex gap-4">
+            <div className="daykare-dialogue-actions flex gap-4">
               {activeDialogue.options.map((opt, i) => (
                 <button 
                   key={i}
@@ -560,20 +589,25 @@ export function UI() {
                   {opt.label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setActiveDialogue(null)}
+                className="daykare-dialogue-cancel bg-muted/70 hover:bg-muted text-card-foreground font-bold py-2 px-4 rounded-lg transition-colors border border-border"
+                aria-label="Cancel choice and leave dialogue"
+              >
+                {dialogueDismissLabel(true)}
+              </button>
             </div>
           ) : (
             <button
               type="button"
-              className="daykare-dialogue-close text-sm text-muted-foreground animate-pulse mt-4 flex items-center gap-2"
-              onClick={(event) => {
-                event.stopPropagation();
-                setActiveDialogue(null);
-              }}
+              className="daykare-dialogue-close text-sm text-muted-foreground mt-4 flex items-center gap-2"
+              onClick={() => setActiveDialogue(null)}
               aria-label="Continue and close dialogue"
             >
               <span className="bg-muted px-2 py-1 rounded">E</span>
               <span className="daykare-dialogue-close-copy">
-                <strong>Continue</strong>
+                <strong>{dialogueDismissLabel(false)}</strong>
                 <small>Tap here or press E to close</small>
               </span>
             </button>

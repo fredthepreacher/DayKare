@@ -76,6 +76,7 @@ export interface GameState {
   juiceClubSatisfaction: number;
   juiceUpgrades: string[];
   waitingCustomers: string[];
+  juiceClubServedCustomer: string | null;
   
   // Interaction & UI
   activeInteractable: string | null;
@@ -118,6 +119,7 @@ export interface GameState {
   addWaitingCustomer: (id: string) => void;
   removeWaitingCustomer: (id: string) => void;
   serveCustomer: () => void;
+  clearJuiceClubServedCustomer: () => void;
   
   setActiveInteractable: (id: string | null) => void;
   setActiveDialogue: (dialogue: GameState['activeDialogue']) => void;
@@ -194,6 +196,7 @@ const initialState = {
   juiceClubSatisfaction: 100,
   juiceUpgrades: [],
   waitingCustomers: [],
+  juiceClubServedCustomer: null,
   
   activeInteractable: null,
   activeDialogue: null,
@@ -591,6 +594,7 @@ export const useGameStore = create<GameState>()(
             juiceClubCash: state.juiceClubCash + cashEarned,
             juiceClubCustomersServed: state.juiceClubCustomersServed + 1,
             waitingCustomers: state.waitingCustomers.slice(1),
+            juiceClubServedCustomer: servedId,
             progression,
             friends: {
               ...state.friends,
@@ -604,6 +608,7 @@ export const useGameStore = create<GameState>()(
         }
         return state;
       }),
+      clearJuiceClubServedCustomer: () => set({ juiceClubServedCustomer: null }),
       
       setActiveInteractable: (id) => set((state) => ({
         activeInteractable: state.activeDialogue || state.journalOpen || state.zoneTransitioning ? null : id,
@@ -611,6 +616,7 @@ export const useGameStore = create<GameState>()(
       setActiveDialogue: (dialogue) => set({
         activeDialogue: dialogue,
         activeInteractable: null,
+        ambientMessage: null,
       }),
       toggleJournal: () => set((state) => {
         const journalOpen = !state.journalOpen;
@@ -666,7 +672,7 @@ export const useGameStore = create<GameState>()(
       },
       resetGardenActivity: () => set({ gardenActivityStep: 0 }),
       setAmbientMessage: (ambientMessage) => set((state) => (
-        state.activeDialogue || state.journalOpen || state.zoneTransitioning
+        state.zone !== 'hub' || state.activeDialogue || state.journalOpen || state.zoneTransitioning
           ? { ambientMessage: null }
           : { ambientMessage }
       )),
@@ -717,6 +723,7 @@ export const useGameStore = create<GameState>()(
             gardenPosition: GARDEN_SPAWN,
             activeInteractable: null,
             activeDialogue: null,
+            ambientMessage: null,
           };
         });
         return changed;
@@ -733,6 +740,7 @@ export const useGameStore = create<GameState>()(
             gardenPosition: position,
             activeInteractable: null,
             activeDialogue: null,
+            ambientMessage: null,
           };
         });
         return changed;
