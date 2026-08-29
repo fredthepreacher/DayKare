@@ -52,7 +52,11 @@ export function unlockGameAudio() {
   audioUnlocked = true;
   const context = getAudioContext();
   if (!context || context.state === 'running') return;
-  void context.resume().catch(() => undefined);
+  try {
+    void context.resume().catch(() => undefined);
+  } catch {
+    // Some browser implementations can reject synchronously as well.
+  }
 }
 
 function shouldPlay(context: AudioContext, priority: SoundPriority) {
