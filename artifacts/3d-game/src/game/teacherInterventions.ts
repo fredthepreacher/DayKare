@@ -22,6 +22,18 @@ export interface ChildBehaviorSnapshot {
   updatedAt: number;
 }
 
+export interface TeacherScanProfile {
+  scanRadius: number;
+  crowdRadius: number;
+  disruptionWeight: number;
+}
+
+export interface TeacherSupervisionTarget {
+  position: THREE.Vector3;
+  reason: 'disruption' | 'crowd' | 'wandering';
+  childNames: string[];
+}
+
 export interface TeacherInterventionState {
   id: string;
   phase: TeacherInterventionPhase;
@@ -121,6 +133,57 @@ function chooseTarget(id: string, now: number) {
     .sort((a, b) => a.name.localeCompare(b.name));
   if (available.length === 0) return null;
   return available[hash(`${id}:${Math.floor(now / 5)}`) % available.length];
+}
+
+export function getTeacherSupervisionTarget(
+  id: string,
+  now: number,
+  origin: THREE.Vector3,
+  profile: TeacherScanProfile,
+  zone: 'hub' | 'garden' = 'hub',
+): TeacherSupervisionTarget | null {
+  const visible = [...childBehaviors.values()].filter((child) => (
+    !child.questPriority
+    && now - child.updatedAt < 1.2
+    && child.position.distanceTo(origin) <= profile.scanRadius
+  ));
+  if (visible.length === 0) return null;
+
+  const options = visible.map((child) => {
+    const group = visible.filter((other) => (
+      other.name !== child.name
+      && other.position.distanceTo(child.position) <= profile.crowdRadius
+    ));
+    const wandering = child.activity === 'walking' || child.activity === 'following';
+    const score = (child.disruptive ? profile.disruptionWeight : 0)
+      + group.length * 2
+      + (wandering ? 2.5 : 0)
+      - child.position.distanceTo(origin) * 0.12;
+    return { child, group, score, wandering };
+  }).sort((a, b) => b.score - a.score || a.child.name.localeCompare(b.child.name));
+  const best = options[0];
+  if (!best || (best.score < 2.5 && best.group.length === 0)) return null;
+
+  const members = [best.child, ...best.group];
+  const center = members.reduce(
+    (sum, child) => sum.add(child.position),
+    new THREE.Vector3(),
+  ).multiplyScalar(1 / members.length);
+  center.x = Math.round(center.x * 2) / 2;
+  center.y = 0;
+  center.z = Math.round(center.z * 2) / 2;
+  const position = isWalkable(center, 0.34, [], zone)
+    ? center
+    : best.child.position.clone();
+  return {
+    position,
+    reason: best.child.disruptive
+      ? 'disruption'
+      : best.group.length > 0
+        ? 'crowd'
+        : 'wandering',
+    childNames: members.map((child) => child.name),
+  };
 }
 
 function phaseAfter(phase: TeacherInterventionPhase): TeacherInterventionPhase {

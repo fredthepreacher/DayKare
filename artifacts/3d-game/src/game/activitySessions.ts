@@ -44,8 +44,15 @@ export function activitySessionIsInterrupted(input: {
   return Boolean(input.activeDialogue) || input.journalOpen || input.zoneTransitioning || Boolean(input.questPriority);
 }
 
-type SessionProgress = { index: number; arrivals: Set<string>; startsAt: number | null; endsAt: number | null };
+type SessionProgress = {
+  index: number;
+  arrivals: Set<string>;
+  gatheringStartedAt: number;
+  startsAt: number | null;
+  endsAt: number | null;
+};
 const progressBySchedule = new Map<string, SessionProgress>();
+const GATHERING_TIMEOUT_SECONDS = 10;
 
 function sessionKey(zone: 'hub' | 'garden', schedule: string) {
   return `${zone}:${schedule}`;
@@ -94,10 +101,19 @@ export function getSharedActivitySession(
   const source = sourceFor(zone, schedule);
   if (!source) return null;
   const key = sessionKey(zone, schedule);
-  const progress = progressBySchedule.get(key) ?? { index: 0, arrivals: new Set<string>(), startsAt: null, endsAt: null };
-  if (progress.endsAt !== null && elapsedTime >= progress.endsAt) {
+  const progress = progressBySchedule.get(key) ?? {
+    index: 0,
+    arrivals: new Set<string>(),
+    gatheringStartedAt: elapsedTime,
+    startsAt: null,
+    endsAt: null,
+  };
+  const gatheringExpired = progress.endsAt === null
+    && elapsedTime - progress.gatheringStartedAt >= GATHERING_TIMEOUT_SECONDS;
+  if ((progress.endsAt !== null && elapsedTime >= progress.endsAt) || gatheringExpired) {
     progress.index += 1;
     progress.arrivals.clear();
+    progress.gatheringStartedAt = elapsedTime;
     progress.startsAt = null;
     progress.endsAt = null;
   }
@@ -131,6 +147,15 @@ export function resetActivitySessions() {
 
 export function sessionParticipant(session: SharedActivitySession | null, name: string) {
   return session?.participants.find((participant) => participant.name === name) ?? null;
+}
+
+export function shouldUseSessionSlot(
+  session: SharedActivitySession | null,
+  participant: SharedActivityParticipant | null,
+  fallbackSessionId: string | null,
+) {
+  if (!session || !participant) return false;
+  return session.phase === 'active' || fallbackSessionId !== session.id;
 }
 
 export function sessionSlotVector(participant: SharedActivityParticipant) {

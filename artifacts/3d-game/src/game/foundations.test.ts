@@ -59,18 +59,19 @@ import {
 } from './store';
 import { HUB_ROUTES, MAX_TOKENS, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
-import { KID_CAST, facingAngleForDirection, kidActivityMode, kidDestination, resolveNpcMovement, stepNpc, teacherPatrolSpots } from './NPCs';
+import { KID_CAST, facingAngleForDirection, kidActivityMode, kidDestination, resolveNpcMovement, stepNpc, teacherPatrolProfile, teacherPatrolSpots } from './NPCs';
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
 import { GARDEN_CAST, gardenNpcDestination } from './Garden';
 import { artworkBackingSize, validateArtworkSurfaceAnchor, type ArtworkSurfaceAnchor } from './Artwork';
 import { dialogueDismissLabel } from './dialogueActions';
 import { getSharedActivitySession, reportSessionArrival, resetActivitySessions } from './activitySessions';
-import { activitySessionIsInterrupted, sessionParticipant } from './activitySessions';
+import { activitySessionIsInterrupted, sessionParticipant, shouldUseSessionSlot } from './activitySessions';
 import { FramePerformanceTelemetry } from './performanceTelemetry';
 import {
   acknowledgeTeacherCall,
   getChildIntervention,
+  getTeacherSupervisionTarget,
   getTeacherIntervention,
   getTeacherInterventionSnapshot,
   interventionIsActive,
@@ -78,6 +79,7 @@ import {
   teacherInterventionDestination,
   updateChildBehavior,
 } from './teacherInterventions';
+import { activityIsSocial, getChildActivityPlan } from './npcActivities';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -889,11 +891,38 @@ for (const teacher of [
 
 for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
   assert.ok(
-    ['standing', 'sitting', 'playing', 'gathering', 'coloring', 'toy-play', 'conversation', 'intervening']
+    ['standing', 'walking', 'sitting', 'playing', 'gathering', 'coloring', 'toy-play', 'conversation', 'reading', 'singing', 'dancing', 'pretend-play', 'circle-time', 'snacking', 'following', 'reacting', 'intervening']
       .includes(kidActivityMode(scheduleName, false, 4.2)),
     `kid activity mode is defined for ${scheduleName}`,
   );
 }
+
+const authoredActivityKinds = new Set<string>();
+for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+  for (const rainy of [false, true]) {
+    const firstCyclePositions = new Set<string>();
+    for (const [index, kid] of KID_CAST.entries()) {
+      for (let cycle = 0; cycle < 3; cycle += 1) {
+        const plan = getChildActivityPlan(kid.name, scheduleName, rainy, cycle, index * 0.37);
+        authoredActivityKinds.add(plan.activity);
+        assert.equal(
+          isWalkable(new THREE.Vector3(...plan.position), 0.34),
+          true,
+          `${kid.name} ${scheduleName} ${rainy ? 'rainy' : 'dry'} activity ${plan.activity} must be reachable`,
+        );
+        assert.ok(plan.duration >= 2.5 && plan.duration < 4.5, 'authored toddler activities stay short and bounded');
+        assert.equal(plan.soloFallback, true, 'every authored activity can continue without a missing partner');
+        if (cycle === 0) firstCyclePositions.add(plan.position.join(','));
+      }
+    }
+    assert.ok(firstCyclePositions.size >= 4, `${scheduleName} spreads the cast across multiple first-cycle stations`);
+  }
+}
+for (const requiredActivity of ['picture-books', 'singing', 'dancing', 'pretend-play', 'circle-time', 'snacking', 'following', 'reacting']) {
+  assert.equal(authoredActivityKinds.has(requiredActivity), true, `${requiredActivity} appears in the rotating authored routine`);
+}
+assert.equal(activityIsSocial('following'), true);
+assert.equal(activityIsSocial('coloring'), false);
 
 for (const [index, name] of ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max'].entries()) {
   const destination = kidDestination(name, 'art-time', false, [0, 0, 0], index * 0.37, 0, []);
@@ -1023,6 +1052,39 @@ assert.equal(getSharedActivitySession('hub', 'morning-play', 13)?.id, gatheringS
 const nextGatheringSession = getSharedActivitySession('hub', 'morning-play', 14);
 assert.equal(nextGatheringSession?.phase, 'gathering');
 assert.notEqual(nextGatheringSession?.id, gatheringSession.id, 'only a completed active phase rotates the assignment');
+
+resetActivitySessions();
+const abandonedGathering = getSharedActivitySession('hub', 'morning-play', 0);
+assert.ok(abandonedGathering);
+const abandonedParticipant = abandonedGathering.participants[0];
+assert.equal(
+  shouldUseSessionSlot(abandonedGathering, abandonedParticipant, null),
+  true,
+  'a child initially approaches the shared activity slot',
+);
+assert.equal(
+  shouldUseSessionSlot(abandonedGathering, abandonedParticipant, abandonedGathering.id),
+  false,
+  'a timed-out child leaves the gathering slot for a visible solo activity',
+);
+reportSessionArrival('hub', 'morning-play', abandonedGathering.id, abandonedGathering.participants[0].name, 1);
+assert.equal(getSharedActivitySession('hub', 'morning-play', 9)?.id, abandonedGathering.id);
+assert.notEqual(
+  getSharedActivitySession('hub', 'morning-play', 10)?.id,
+  abandonedGathering.id,
+  'a missing shared-activity partner cannot leave the gathering barrier stale forever',
+);
+resetActivitySessions();
+const reclaimableSession = getSharedActivitySession('hub', 'morning-play', 0);
+assert.ok(reclaimableSession);
+reportSessionArrival('hub', 'morning-play', reclaimableSession.id, reclaimableSession.participants[0].name, 1);
+const reclaimableActive = reportSessionArrival('hub', 'morning-play', reclaimableSession.id, reclaimableSession.participants[1].name, 1);
+assert.equal(
+  shouldUseSessionSlot(reclaimableActive, reclaimableActive?.participants[0] ?? null, reclaimableSession.id),
+  true,
+  'an active shared session reclaims a child that previously selected solo fallback',
+);
+assert.equal(shouldUseSessionSlot(null, abandonedParticipant, abandonedGathering.id), false, 'an interrupted session releases its slot');
 
 for (const definition of GARDEN_CAST) {
   for (let cycle = 0; cycle < definition.route.length; cycle += 1) {
@@ -1164,6 +1226,52 @@ assert.equal(
   'oversized artwork is rejected instead of silently floating beyond its support',
 );
 
+resetTeacherInterventions();
+assert.notDeepEqual(
+  teacherPatrolProfile('Ms. Harper'),
+  teacherPatrolProfile('Mr. Davis'),
+  'teachers keep visibly different supervision styles',
+);
+updateChildBehavior({
+  name: 'Quiet Reader',
+  position: new THREE.Vector3(1, 0, 1),
+  activity: 'picture-books',
+  disruptive: false,
+  questPriority: false,
+  updatedAt: 5,
+});
+updateChildBehavior({
+  name: 'Nearby Friend',
+  position: new THREE.Vector3(1.8, 0, 1.2),
+  activity: 'conversation',
+  disruptive: false,
+  questPriority: false,
+  updatedAt: 5,
+});
+const crowdedSupervision = getTeacherSupervisionTarget(
+  'hub:Ms. Harper',
+  5,
+  new THREE.Vector3(-2, 0, 2),
+  teacherPatrolProfile('Ms. Harper'),
+);
+assert.equal(crowdedSupervision?.reason, 'crowd', 'teachers scan clustered activity groups between interventions');
+assert.equal(isWalkable(crowdedSupervision!.position, 0.34), true, 'teacher scan target remains navigable');
+resetTeacherInterventions();
+updateChildBehavior({
+  name: 'Wandering Friend',
+  position: new THREE.Vector3(2, 0, 1),
+  activity: 'following',
+  disruptive: true,
+  questPriority: false,
+  updatedAt: 5,
+});
+const problemSupervision = getTeacherSupervisionTarget(
+  'hub:Ms. Harper',
+  5,
+  new THREE.Vector3(-2, 0, 2),
+  teacherPatrolProfile('Ms. Harper'),
+);
+assert.equal(problemSupervision?.reason, 'disruption', 'problem behavior outranks a routine patrol scan');
 resetTeacherInterventions();
 updateChildBehavior({
   name: 'Quest Friend',

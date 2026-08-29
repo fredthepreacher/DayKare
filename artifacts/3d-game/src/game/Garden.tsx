@@ -7,7 +7,7 @@ import { getWorldSolidTransform, isWalkable, WORLD_SOLIDS } from './world';
 import { CharacterModel, type CharacterModelProps } from './CharacterModel';
 import { SuppliedArtwork } from './Artwork';
 import { clearNpcNavigation, registerNpcPosition } from './navigation';
-import { facingAngleForDirection, stepNpc } from './NPCs';
+import { facingAngleForDirection, stepNpc, teacherPatrolProfile } from './NPCs';
 import {
   activitySessionIsInterrupted,
   getSharedActivitySession,
@@ -16,6 +16,7 @@ import {
   sessionSlotVector,
   type SharedActivityParticipant,
 } from './activitySessions';
+import { getTeacherSupervisionTarget, updateChildBehavior } from './teacherInterventions';
 
 const FLOWERS = [
   [-15, -15, '#e8613c'], [-12.5, -14.2, '#ffd166'], [-9.8, -15, '#8a63c7'],
@@ -28,7 +29,7 @@ const TREES = [
   [-14.5, -1], [-7, 11.8], [6.4, 11.5], [14.2, -8.5], [2, -13.8],
 ] as const;
 
-type GardenActivity = 'water' | 'inspect' | 'pond-watch' | 'gazebo-talk' | 'play' | 'supervise' | 'social-walk';
+type GardenActivity = 'water' | 'inspect' | 'pond-watch' | 'gazebo-talk' | 'play' | 'supervise' | 'social-walk' | 'sing' | 'pretend' | 'snack' | 'circle';
 
 interface GardenNpcDefinition {
   name: string;
@@ -55,6 +56,8 @@ export const GARDEN_CAST: GardenNpcDefinition[] = [
       { position: [-8.05, 0, 2.8], activity: 'inspect' },
       { position: [-1.4, 0, 6.2], activity: 'gazebo-talk' },
       { position: [-4.2, 0, -3.1], activity: 'social-walk' },
+      { position: [-3, 0, 8], activity: 'sing' },
+      { position: [-5.6, 0, -3.1], activity: 'pretend' },
     ],
   },
   {
@@ -70,6 +73,8 @@ export const GARDEN_CAST: GardenNpcDefinition[] = [
       { position: [1.4, 0, 6.2], activity: 'gazebo-talk' },
       { position: [4.6, 0, -3.1], activity: 'play' },
       { position: [0, 0, -7.2], activity: 'social-walk' },
+      { position: [3, 0, 8], activity: 'snack' },
+      { position: [-1.3, 0, 5.2], activity: 'circle' },
     ],
   },
   {
@@ -85,6 +90,8 @@ export const GARDEN_CAST: GardenNpcDefinition[] = [
       { position: [8.05, 0, 9.8], activity: 'inspect' },
       { position: [5.4, 0, 5.9], activity: 'play' },
       { position: [4.8, 0, -3.1], activity: 'social-walk' },
+      { position: [1.3, 0, 5.2], activity: 'circle' },
+      { position: [7.2, 0, -3.1], activity: 'pretend' },
     ],
   },
   {
@@ -100,6 +107,8 @@ export const GARDEN_CAST: GardenNpcDefinition[] = [
       { position: [5.9, 0, 2.9], activity: 'pond-watch' },
       { position: [0, 0, 10.1], activity: 'supervise' },
       { position: [0, 0, -3.1], activity: 'social-walk' },
+      { position: [-10.2, 0, 7], activity: 'supervise' },
+      { position: [10.2, 0, 6.8], activity: 'supervise' },
     ],
   },
 ];
@@ -150,8 +159,13 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
     index: 0,
     dwellUntil: 0,
     stuckFor: 0,
+    nextScanAt: 0,
+    scanUntil: 0,
+    scanTarget: null as THREE.Vector3 | null,
+    fallbackSessionId: null as string | null,
     lastPosition: new THREE.Vector3(...firstStop.position),
   });
+  const teacherProfile = teacherPatrolProfile(definition.name);
   const [settledActivity, setSettledActivity] = useState<GardenActivity | null>(null);
   const [sharedParticipant, setSharedParticipant] = useState<SharedActivityParticipant | null>(null);
   const sharedParticipantRef = useRef<SharedActivityParticipant | null>(null);
@@ -184,19 +198,56 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
     );
     const participant = sessionParticipant(session, definition.name);
     const visibleParticipant = session?.phase === 'active' ? participant : null;
+    if (visibleParticipant) routeState.current.fallbackSessionId = null;
+    const gatheringParticipant = participant
+      && session?.phase === 'gathering'
+      && routeState.current.fallbackSessionId !== session.id
+      ? participant
+      : null;
+    const movementParticipant = visibleParticipant ?? gatheringParticipant;
     if (visibleParticipant?.activity !== sharedParticipantRef.current?.activity || visibleParticipant?.role !== sharedParticipantRef.current?.role || (!visibleParticipant && sharedParticipantRef.current)) {
       sharedParticipantRef.current = visibleParticipant;
       setSharedParticipant(visibleParticipant);
     }
-    if (participant) destination.copy(sessionSlotVector(participant));
+    if (
+      definition.role === 'teacher'
+      && !movementParticipant
+      && state.clock.elapsedTime >= routeState.current.nextScanAt
+    ) {
+      const scan = getTeacherSupervisionTarget(
+        'garden:Ms. Harper',
+        state.clock.elapsedTime,
+        ref.current.position,
+        teacherProfile,
+        'garden',
+      );
+      routeState.current.scanTarget = scan?.position.clone() ?? null;
+      routeState.current.scanUntil = scan
+        ? state.clock.elapsedTime + teacherProfile.scanHold
+        : state.clock.elapsedTime + teacherProfile.scanInterval;
+      routeState.current.nextScanAt = state.clock.elapsedTime + teacherProfile.scanInterval;
+    }
+    const scanTarget = definition.role === 'teacher'
+      && !movementParticipant
+      && routeState.current.scanTarget
+      && state.clock.elapsedTime < routeState.current.scanUntil
+      ? routeState.current.scanTarget
+      : null;
+    if (movementParticipant) destination.copy(sessionSlotVector(movementParticipant));
+    else if (scanTarget) destination.copy(scanTarget);
     else destination.set(...stop.position);
     const distance = ref.current.position.distanceTo(destination);
     const arrived = distance < 0.5;
     if (arrived && routeState.current.dwellUntil === 0) {
-      routeState.current.dwellUntil = session
-        ? session.endsAt ?? Number.POSITIVE_INFINITY
-        : state.clock.elapsedTime + 5.5 + (definition.name.length % 3);
-    } else if (!participant && arrived && state.clock.elapsedTime >= routeState.current.dwellUntil) {
+      routeState.current.dwellUntil = visibleParticipant
+        ? session?.endsAt ?? state.clock.elapsedTime + 3
+        : state.clock.elapsedTime + (movementParticipant
+          ? 2.5
+          : definition.role === 'teacher'
+            ? teacherProfile.patrolDwell
+            : 2.8 + (definition.name.length % 3) * 0.2);
+    } else if (!visibleParticipant && !scanTarget && arrived && state.clock.elapsedTime >= routeState.current.dwellUntil) {
+      if (gatheringParticipant && session) routeState.current.fallbackSessionId = session.id;
       routeState.current.index = (routeState.current.index + 1) % route.length;
       routeState.current.dwellUntil = 0;
     }
@@ -211,27 +262,44 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
         destination,
         null,
         delta,
-        definition.role === 'teacher' ? 1.18 : 1.08,
+        definition.role === 'teacher' ? teacherProfile.speed : 1.08,
         'garden',
       );
       const moved = ref.current.position.distanceTo(routeState.current.lastPosition);
       routeState.current.stuckFor = moved < 0.002 ? routeState.current.stuckFor + delta : 0;
       if (routeState.current.stuckFor > 2.6) {
         clearNpcNavigation(`garden-npc-${definition.name}`);
-        if (!participant) routeState.current.index = (routeState.current.index + 1) % route.length;
+        if (!movementParticipant) routeState.current.index = (routeState.current.index + 1) % route.length;
         routeState.current.dwellUntil = 0;
         routeState.current.stuckFor = 0;
       }
     } else {
-      turnToward(ref.current, participant ? new THREE.Vector3(...participant.focus) : gardenActivityFocus(stop.activity, destination), delta);
-      if (participant && session?.phase === 'gathering') {
+      turnToward(ref.current, movementParticipant ? new THREE.Vector3(...movementParticipant.focus) : gardenActivityFocus(stop.activity, destination), delta);
+      if (gatheringParticipant && session?.phase === 'gathering') {
         reportSessionArrival('garden', 'garden-routine', session.id, definition.name, state.clock.elapsedTime);
       }
     }
 
-    const nextActivity = participant && session?.phase === 'active' && arrived
-      ? gardenSessionActivity(participant)
-      : arrived && routeState.current.dwellUntil > state.clock.elapsedTime ? stop.activity : null;
+    const nextActivity = visibleParticipant && arrived
+      ? gardenSessionActivity(visibleParticipant)
+      : arrived && scanTarget
+        ? 'supervise'
+        : arrived && routeState.current.dwellUntil > state.clock.elapsedTime ? stop.activity : null;
+    if (definition.role === 'kid') {
+      const disruptionWindow = (Math.floor(state.clock.elapsedTime / 6) + definition.name.length) % 5 === 0;
+      updateChildBehavior({
+        name: definition.name,
+        position: ref.current.position,
+        activity: nextActivity ?? 'walking',
+        disruptive: Boolean(
+          nextActivity
+          && disruptionWindow
+          && (nextActivity === 'play' || nextActivity === 'social-walk'),
+        ),
+        questPriority: false,
+        updatedAt: state.clock.elapsedTime,
+      });
+    }
     if (nextActivity !== settledRef.current) {
       settledRef.current = nextActivity;
       setSettledActivity(nextActivity);
@@ -252,7 +320,10 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
           skinColor={definition.skinColor}
           mood="happy"
           isTeacher={definition.role === 'teacher'}
-          isTalking={activeDialogue?.name === definition.name || Boolean(settledActivity && sharedParticipant?.activity === 'conversation')}
+          isTalking={activeDialogue?.name === definition.name || Boolean(
+            settledActivity
+            && (sharedParticipant?.activity === 'conversation' || settledActivity === 'sing' || settledActivity === 'supervise'),
+          )}
           imaginationMode={imagination}
           activityMode={gardenActivityMode(settledActivity)}
           motionSeed={definition.name.length * 0.71}
@@ -297,8 +368,15 @@ function gardenActivityFocus(activity: GardenActivity, position: THREE.Vector3) 
 
 function gardenActivityMode(activity: GardenActivity | null): NonNullable<CharacterModelProps['activityMode']> {
   if (activity === 'play') return 'playing';
-  if (activity === 'pond-watch' || activity === 'gazebo-talk') return 'gathering';
-  return activity ? 'standing' : 'standing';
+  if (activity === 'pond-watch') return 'reacting';
+  if (activity === 'gazebo-talk') return 'conversation';
+  if (activity === 'water' || activity === 'inspect' || activity === 'pretend') return 'pretend-play';
+  if (activity === 'sing') return 'singing';
+  if (activity === 'snack') return 'snacking';
+  if (activity === 'circle') return 'circle-time';
+  if (activity === 'social-walk') return 'following';
+  if (activity === 'supervise') return 'gathering';
+  return 'walking';
 }
 
 function GardenActivityProp({ activity, role }: { activity: GardenActivity; role: GardenNpcDefinition['role'] }) {
@@ -318,6 +396,33 @@ function GardenActivityProp({ activity, role }: { activity: GardenActivity; role
   }
   if (activity === 'play') {
     return <mesh position={[0.5, 0.2, -0.4]}><sphereGeometry args={[0.18, 10, 8]} /><meshStandardMaterial color="#e8613c" /></mesh>;
+  }
+  if (activity === 'sing') {
+    return (
+      <group position={[0.42, 1.08, -0.3]}>
+        <mesh><sphereGeometry args={[0.08, 8, 6]} /><meshStandardMaterial color="#e76f8c" /></mesh>
+        <mesh position={[0.04, 0.16, 0]}><cylinderGeometry args={[0.018, 0.018, 0.28, 5]} /><meshStandardMaterial color="#e76f8c" /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'snack') {
+    return (
+      <group position={[0.36, 0.78, -0.3]}>
+        <mesh><cylinderGeometry args={[0.1, 0.08, 0.26, 8]} /><meshStandardMaterial color="#f2b85b" /></mesh>
+        <mesh position={[0.22, -0.08, 0]}><boxGeometry args={[0.18, 0.08, 0.14]} /><meshStandardMaterial color="#dfb976" /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'pretend') {
+    return (
+      <group position={[0.42, 0.82, -0.3]}>
+        <mesh><coneGeometry args={[0.14, 0.32, 8]} /><meshStandardMaterial color="#55b89b" /></mesh>
+        <mesh position={[0, 0.22, 0]}><sphereGeometry args={[0.11, 8, 6]} /><meshStandardMaterial color="#fff0b8" /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'circle') {
+    return <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.38, 18]} /><meshStandardMaterial color="#8fd0c5" transparent opacity={0.72} /></mesh>;
   }
   if (role === 'teacher' && activity === 'supervise') {
     return <mesh position={[0.4, 0.9, -0.3]}><boxGeometry args={[0.24, 0.34, 0.06]} /><meshStandardMaterial color="#68a9a7" /></mesh>;

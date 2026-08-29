@@ -5,7 +5,7 @@ import * as THREE from 'three';
 type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
 type Accessory = 'none' | 'backpack' | 'badge';
-type ActivityMode = 'standing' | 'sitting' | 'playing' | 'gathering' | 'coloring' | 'toy-play' | 'conversation' | 'intervening';
+type ActivityMode = 'standing' | 'walking' | 'sitting' | 'playing' | 'gathering' | 'coloring' | 'toy-play' | 'conversation' | 'reading' | 'singing' | 'dancing' | 'pretend-play' | 'circle-time' | 'snacking' | 'following' | 'reacting' | 'intervening';
 type SocialReaction = 'smile' | 'wave' | 'cheer' | 'listen';
 type IdleVariant = 'sway' | 'fidget' | 'look-around' | 'bounce';
 
@@ -94,11 +94,27 @@ export function CharacterModel({
     const talkGesture = isTalking ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.14 : 0;
     const activityGesture = activityMode === 'coloring'
       ? 0.24 + Math.sin(state.clock.elapsedTime * 2.8 + motionSeed) * 0.08
-      : activityMode === 'toy-play'
+      : activityMode === 'toy-play' || activityMode === 'playing'
         ? -0.16 + Math.sin(state.clock.elapsedTime * 4 + motionSeed) * 0.12
-        : activityMode === 'intervening'
-          ? -0.34
-          : 0;
+        : activityMode === 'reading'
+          ? 0.28 + Math.sin(state.clock.elapsedTime * 2.4 + motionSeed) * 0.06
+          : activityMode === 'singing'
+            ? -0.04 + Math.sin(state.clock.elapsedTime * 4.8 + motionSeed) * 0.28
+            : activityMode === 'dancing'
+              ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.52
+              : activityMode === 'pretend-play'
+                ? 0.12 + Math.sin(state.clock.elapsedTime * 3.3 + motionSeed) * 0.2
+                : activityMode === 'circle-time'
+                  ? 0.2 + Math.sin(state.clock.elapsedTime * 2.1 + motionSeed) * 0.08
+                  : activityMode === 'snacking'
+                    ? 0.32 + Math.sin(state.clock.elapsedTime * 2.7 + motionSeed) * 0.06
+                    : activityMode === 'following'
+                      ? Math.sin(state.clock.elapsedTime * 3.6 + motionSeed) * 0.14
+                      : activityMode === 'reacting'
+                        ? Math.sin(state.clock.elapsedTime * 5.5 + motionSeed) * 0.34
+                        : activityMode === 'intervening'
+                          ? -0.34
+                          : 0;
     const blink = Math.pow(Math.max(0, Math.sin(state.clock.elapsedTime * 0.62 + motionSeed * 0.7)), 30);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
@@ -134,9 +150,14 @@ export function CharacterModel({
     }
 
     if (rig.current) {
+      const lowActivity = activityMode === 'sitting'
+        || activityMode === 'coloring'
+        || activityMode === 'reading'
+        || activityMode === 'circle-time'
+        || activityMode === 'snacking';
       const targetY = isCrouching
         ? 0.72
-        : activityMode === 'sitting' || activityMode === 'coloring'
+        : lowActivity
           ? 0.8
           : 1;
       rig.current.scale.y = THREE.MathUtils.lerp(rig.current.scale.y, targetY, delta * 9);
@@ -145,7 +166,7 @@ export function CharacterModel({
         : 0;
       const targetRootY = isCrouching
         ? 0.14
-        : activityMode === 'sitting'
+        : lowActivity
           ? -0.02
           : 0.2 + idle + activityBounce;
       rig.current.position.y = THREE.MathUtils.lerp(rig.current.position.y, targetRootY, 1 - Math.exp(-12 * delta));

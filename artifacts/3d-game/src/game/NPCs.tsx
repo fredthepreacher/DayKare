@@ -14,18 +14,26 @@ import {
   reportSessionArrival,
   sessionParticipant,
   sessionSlotVector,
+  shouldUseSessionSlot,
   type SharedActivityParticipant,
 } from './activitySessions';
 import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 import {
   getChildIntervention,
   getTeacherIntervention,
+  getTeacherSupervisionTarget,
   interventionIsActive,
   resetTeacherInterventions,
   teacherInterventionDestination,
   updateChildBehavior,
+  type TeacherScanProfile,
   type TeacherInterventionState,
 } from './teacherInterventions';
+import {
+  childActivityPosition,
+  getChildActivityPlan,
+  type ChildActivityPlan,
+} from './npcActivities';
 
 type KidDefinition = {
   name: string;
@@ -52,6 +60,38 @@ export const KID_CAST: KidDefinition[] = [
 
 function namePhase(name: string) {
   return [...name].reduce((total, character) => total + character.charCodeAt(0), 0) * 0.37;
+}
+
+export interface TeacherPatrolProfile extends TeacherScanProfile {
+  speed: number;
+  patrolDwell: number;
+  scanHold: number;
+  scanInterval: number;
+}
+
+const TEACHER_PATROL_PROFILES: Record<string, TeacherPatrolProfile> = {
+  'Ms. Harper': {
+    scanRadius: 8.5,
+    crowdRadius: 2.4,
+    disruptionWeight: 10,
+    speed: 1.38,
+    patrolDwell: 2.4,
+    scanHold: 2.8,
+    scanInterval: 1.15,
+  },
+  'Mr. Davis': {
+    scanRadius: 10.5,
+    crowdRadius: 2.8,
+    disruptionWeight: 7,
+    speed: 1.2,
+    patrolDwell: 1.7,
+    scanHold: 3.4,
+    scanInterval: 1.75,
+  },
+};
+
+export function teacherPatrolProfile(name: string): TeacherPatrolProfile {
+  return TEACHER_PATROL_PROFILES[name] ?? TEACHER_PATROL_PROFILES['Mr. Davis'];
 }
 
 let nextGreetingAt = 0;
@@ -204,7 +244,15 @@ function Teacher({
   }), [mirror, name]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   const destination = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
-  const patrol = useRef({ key: '', index: 0, dwellUntil: 0 });
+  const profile = teacherPatrolProfile(name);
+  const patrol = useRef<{
+    key: string;
+    index: number;
+    dwellUntil: number;
+    nextScanAt: number;
+    scanUntil: number;
+    scanTarget: THREE.Vector3 | null;
+  }>({ key: '', index: 0, dwellUntil: 0, nextScanAt: 0, scanUntil: 0, scanTarget: null });
   const lastPosition = useRef(new THREE.Vector3(...defaultPos));
   const stuckFor = useRef(0);
   const [isSupervising, setIsSupervising] = useState(false);
@@ -252,20 +300,39 @@ function Teacher({
     const key = `${schedule}:${isRainy}`;
     const spots = teacherPatrolSpots(name, schedule, isRainy, defaultPos);
     if (patrol.current.key !== key) {
-      patrol.current = { key, index: 0, dwellUntil: 0 };
+      patrol.current = { key, index: 0, dwellUntil: 0, nextScanAt: state.clock.elapsedTime, scanUntil: 0, scanTarget: null };
       stuckFor.current = 0;
     }
     const interventionTarget = teacherInterventionDestination(liveIntervention, ref.current.position);
+    if (!interventionTarget && state.clock.elapsedTime >= patrol.current.nextScanAt) {
+      const scan = getTeacherSupervisionTarget(
+        `hub:${name}`,
+        state.clock.elapsedTime,
+        ref.current.position,
+        profile,
+      );
+      patrol.current.scanTarget = scan?.position.clone() ?? null;
+      patrol.current.scanUntil = scan
+        ? state.clock.elapsedTime + profile.scanHold
+        : state.clock.elapsedTime + profile.scanInterval;
+      patrol.current.nextScanAt = state.clock.elapsedTime + profile.scanInterval;
+    }
+    const scanTarget = !interventionTarget && patrol.current.scanTarget
+      && state.clock.elapsedTime < patrol.current.scanUntil
+      ? patrol.current.scanTarget
+      : null;
     if (interventionTarget) destination.copy(interventionTarget);
+    else if (scanTarget) destination.copy(scanTarget);
     else destination.set(...spots[patrol.current.index % spots.length]);
     const arrived = ref.current.position.distanceTo(destination) < 0.48;
-    if (!interventionTarget && arrived && patrol.current.dwellUntil === 0) {
-      patrol.current.dwellUntil = state.clock.elapsedTime + 4.5 + (namePhase(name) % 2.5);
-    } else if (!interventionTarget && arrived && state.clock.elapsedTime >= patrol.current.dwellUntil) {
+    if (!interventionTarget && !scanTarget && arrived && patrol.current.dwellUntil === 0) {
+      patrol.current.dwellUntil = state.clock.elapsedTime + profile.patrolDwell + (namePhase(name) % 0.8);
+    } else if (!interventionTarget && !scanTarget && arrived && state.clock.elapsedTime >= patrol.current.dwellUntil) {
       patrol.current.index = (patrol.current.index + 1) % spots.length;
       patrol.current.dwellUntil = 0;
     }
     const supervising = interventionIsActive(liveIntervention)
+      || Boolean(scanTarget)
       || arrived && patrol.current.dwellUntil > state.clock.elapsedTime;
     if (supervising !== supervisingRef.current) {
       if (supervising) {
@@ -279,7 +346,7 @@ function Teacher({
     if (active && playerRef.current) {
       smoothTurn(ref.current, playerRef.current.position, delta);
     } else if (!arrived) {
-      stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, name === 'Mr. Davis' ? 1.25 : 1.35);
+      stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, profile.speed);
       const moved = ref.current.position.distanceTo(lastPosition.current);
       stuckFor.current = moved < 0.002 ? stuckFor.current + delta : 0;
       if (stuckFor.current > 2.8) {
@@ -335,12 +402,12 @@ function Teacher({
           skinColor={skinColor}
           mood="curious"
           isTeacher
-          isTalking={activeDialogue?.name === name || intervention.phase === 'warning' || intervention.phase === 'calling-player'}
+          isTalking={activeDialogue?.name === name || intervention.phase === 'warning' || intervention.phase === 'calling-player' || Boolean(isSupervising && !interventionIsActive(intervention))}
           imaginationMode={imagination}
           motionSeed={namePhase(name)}
           idleEnergy={0.55}
           idleVariant={interventionIsActive(intervention) ? 'fidget' : name === 'Mr. Davis' ? 'look-around' : 'sway'}
-          activityMode={interventionIsActive(intervention) ? 'intervening' : isSupervising ? 'gathering' : 'standing'}
+           activityMode={interventionIsActive(intervention) ? 'intervening' : isSupervising ? 'gathering' : 'standing'}
         />
       </group>
       {isSupervising && (
@@ -407,6 +474,7 @@ function Kid({
     cycle: 0,
     stuckFor: 0,
     replanAttempts: 0,
+    fallbackSessionId: null as string | null,
     lastPosition: new THREE.Vector3(...defaultPos),
   });
   const candidate = useMemo(() => ({
@@ -426,6 +494,7 @@ function Kid({
   useFrame((state, delta) => {
     if (!ref.current) return;
     const questRequired = questPriorityForKid(name, quests);
+    const currentPlan = getChildActivityPlan(name, schedule, isRainy, activityState.current.cycle, phase);
     const liveChildIntervention = getChildIntervention(name, state.clock.elapsedTime);
     const sharedSession = getSharedActivitySession(
       'hub',
@@ -435,6 +504,11 @@ function Kid({
     );
     const participant = sessionParticipant(sharedSession, name);
     const visibleParticipant = sharedSession?.phase === 'active' ? participant : null;
+    const movementParticipant = shouldUseSessionSlot(
+      sharedSession,
+      participant,
+      activityState.current.fallbackSessionId,
+    ) ? participant : null;
     if (
       visibleParticipant?.activity !== sessionVisualRef.current?.activity
       || visibleParticipant?.reaction !== sessionVisualRef.current?.reaction
@@ -451,10 +525,15 @@ function Kid({
       activityState.current.cycle = 0;
       activityState.current.stuckFor = 0;
       activityState.current.replanAttempts = 0;
+      activityState.current.fallbackSessionId = null;
       activityTarget.copy(
         questRequired
           ? new THREE.Vector3(...defaultPos)
-          : participant ? sessionSlotVector(participant) : kidDestination(name, schedule, isRainy, defaultPos, phase, 0, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer),
+          : movementParticipant
+            ? sessionSlotVector(movementParticipant)
+            : schedule === 'juice-club'
+              ? kidDestination(name, schedule, isRainy, defaultPos, phase, 0, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer)
+              : childActivityPosition(getChildActivityPlan(name, schedule, isRainy, 0, phase)),
       );
     }
     let distanceToActivity = ref.current.position.distanceTo(activityTarget);
@@ -479,9 +558,9 @@ function Kid({
       activityState.current.arrived = true;
       activityState.current.dwellUntil = questRequired
         ? Number.POSITIVE_INFINITY
-        : sharedSession
-          ? sharedSession.endsAt ?? Number.POSITIVE_INFINITY
-          : state.clock.elapsedTime + 3.5 + (phase % 3);
+        : visibleParticipant
+          ? sharedSession?.endsAt ?? state.clock.elapsedTime + currentPlan.duration
+          : state.clock.elapsedTime + (movementParticipant ? Math.min(currentPlan.duration, 2.5) : currentPlan.duration);
     }
     if (active && playerRef.current) {
       smoothTurn(ref.current, playerRef.current.position, delta);
@@ -496,22 +575,33 @@ function Kid({
         clearNpcNavigation(`kid-${name}`);
         activityState.current.replanAttempts += 1;
         activityState.current.stuckFor = 0;
-        if (participant) {
-          activityTarget.copy(sessionSlotVector(participant));
+        if (movementParticipant) {
+          activityTarget.copy(sessionSlotVector(movementParticipant));
         } else if (activityState.current.replanAttempts >= 2) {
           activityState.current.cycle += 1;
           activityState.current.replanAttempts = 0;
-          activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer));
+          activityTarget.copy(
+            schedule === 'juice-club'
+              ? kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer)
+              : childActivityPosition(getChildActivityPlan(name, schedule, isRainy, activityState.current.cycle, phase)),
+          );
         }
       }
-    } else if (!participant && state.clock.elapsedTime >= activityState.current.dwellUntil) {
+    } else if (!visibleParticipant && state.clock.elapsedTime >= activityState.current.dwellUntil) {
+      if (movementParticipant && sharedSession?.phase === 'gathering') {
+        activityState.current.fallbackSessionId = sharedSession.id;
+      }
       activityState.current.cycle += 1;
       activityState.current.arrived = false;
       activityState.current.dwellUntil = 0;
-        activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer));
+      activityTarget.copy(
+        schedule === 'juice-club'
+          ? kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers, servedCustomer, juiceClubPhase, activeJuiceClubCustomer)
+          : childActivityPosition(getChildActivityPlan(name, schedule, isRainy, activityState.current.cycle, phase)),
+      );
     }
-    if (participant && distanceToActivity < 0.48 && !active) {
-      smoothTurn(ref.current, new THREE.Vector3(...participant.focus), delta);
+    if (movementParticipant && distanceToActivity < 0.48 && !active) {
+      smoothTurn(ref.current, new THREE.Vector3(...movementParticipant.focus), delta);
       if (sharedSession?.phase === 'gathering') {
         reportSessionArrival('hub', schedule, sharedSession.id, name, state.clock.elapsedTime);
       }
@@ -528,7 +618,7 @@ function Kid({
       && state.clock.elapsedTime < activityState.current.dwellUntil
       && distanceToActivity < 0.48;
     const behaviorActivity = visibleParticipant?.activity
-      ?? (settled ? kidActivityMode(schedule, isRainy, phase) : 'walking');
+      ?? (settled ? currentPlan.activity : 'walking');
     const disruptionWindow = (
       Math.floor(state.clock.elapsedTime / 5)
       + Math.floor(phase)
@@ -541,7 +631,7 @@ function Kid({
         && !questRequired
         && !liveChildIntervention
         && disruptionWindow
-        && (behaviorActivity === 'toy-play' || behaviorActivity === 'playing'),
+        && (behaviorActivity === 'toy-play' || behaviorActivity === 'blocks' || behaviorActivity === 'following'),
       questPriority: questRequired,
       updatedAt: state.clock.elapsedTime,
     });
@@ -556,11 +646,13 @@ function Kid({
       if (settled) {
         const game = useGameStore.getState();
         if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning) {
-          const activitySound = schedule === 'art-time'
+          const activitySound = currentPlan.activity === 'drawing' || currentPlan.activity === 'coloring'
             ? 'drawing'
-            : schedule === 'morning-play' || schedule === 'outdoor-play'
-              ? 'play'
-              : 'arrival';
+            : currentPlan.activity === 'singing' || currentPlan.activity === 'conversation'
+              ? 'greeting'
+              : currentPlan.activity === 'toy-play' || currentPlan.activity === 'blocks'
+                ? 'play'
+                : 'arrival';
           playGameSound(activitySound);
         }
       }
@@ -598,6 +690,13 @@ function Kid({
     });
   });
 
+  const renderedPlan: ChildActivityPlan = getChildActivityPlan(
+    name,
+    schedule,
+    isRainy,
+    activityState.current.cycle,
+    phase,
+  );
   return (
     <group ref={ref} position={defaultPos}>
       <CharacterModel
@@ -611,7 +710,11 @@ function Kid({
           : settled && sessionVisual?.reaction === 'cheer'
             ? 'excited'
             : mood}
-        isTalking={activeDialogue?.name === name || Boolean(settled && sessionVisual?.activity === 'conversation')}
+        isTalking={activeDialogue?.name === name || Boolean(
+          settled && (sessionVisual?.activity === 'conversation'
+            || renderedPlan.activity === 'conversation'
+            || renderedPlan.activity === 'singing'),
+        )}
         imaginationMode={imagination}
         motionSeed={phase}
         idleEnergy={0.8 + (phase % 0.5)}
@@ -628,14 +731,18 @@ function Kid({
           : settled && sessionVisual
             ? sessionActivityMode(sessionVisual)
             : settled
-              ? kidActivityMode(schedule, isRainy, phase)
-              : 'standing'}
+              ? renderedPlan.mode
+              : 'walking'}
         socialReaction={childIntervention?.reaction === 'sad'
           ? undefined
-          : childIntervention?.reaction ?? (settled ? sessionVisual?.reaction : undefined)}
+          : childIntervention?.reaction ?? (settled
+            ? sessionVisual?.reaction ?? childActivityReaction(renderedPlan)
+            : undefined)}
       />
       {!childIntervention && settled && sessionVisual && <SessionProp participant={sessionVisual} />}
-      {!childIntervention && settled && !sessionVisual && !questPriorityForKid(name, quests) && <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />}
+      {!childIntervention && settled && !sessionVisual && !questPriorityForKid(name, quests) && (
+        <ActivityProp activity={renderedPlan.activity} phase={phase} />
+      )}
       {!childIntervention && settled && !questPriorityForKid(name, quests) && <SocialGameMarker schedule={schedule} phase={phase} cycle={activityState.current.cycle} />}
     </group>
   );
@@ -724,12 +831,16 @@ export function kidActivityMode(
   rainy: boolean,
   phase: number,
 ): NonNullable<CharacterModelProps['activityMode']> {
-  if (schedule === 'art-time') return 'coloring';
-  if (schedule === 'juice-club') return 'gathering';
-  if (schedule === 'outdoor-play' && rainy) return Math.floor(phase) % 2 === 0 ? 'sitting' : 'playing';
-  if (schedule === 'outdoor-play') return 'toy-play';
-  if (schedule === 'pickup') return 'gathering';
-  return Math.floor(phase) % 2 === 0 ? 'toy-play' : 'conversation';
+  return getChildActivityPlan('Leo', schedule, rainy, 0, phase).mode;
+}
+
+function childActivityReaction(
+  plan: ChildActivityPlan,
+): NonNullable<CharacterModelProps['socialReaction']> {
+  if (plan.activity === 'dancing' || plan.activity === 'singing' || plan.activity === 'reacting') return 'cheer';
+  if (plan.activity === 'following' || plan.activity === 'pretend-play') return 'wave';
+  if (plan.activity === 'conversation' || plan.activity === 'picture-books' || plan.activity === 'circle-time') return 'listen';
+  return 'smile';
 }
 
 function JuiceClubQueue() {
@@ -887,7 +998,13 @@ function AmbientSocialMoments() {
   return null;
 }
 
-function ActivityProp({ schedule, rainy, phase }: { schedule: string; rainy: boolean; phase: number }) {
+function ActivityProp({
+  activity,
+  phase,
+}: {
+  activity: ChildActivityPlan['activity'];
+  phase: number;
+}) {
   const prop = useRef<THREE.Group>(null);
   const lastAnimationAt = useRef(0);
   useFrame((state) => {
@@ -896,7 +1013,7 @@ function ActivityProp({ schedule, rainy, phase }: { schedule: string; rainy: boo
     prop.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.8 + phase) * 0.18;
   });
 
-  if (schedule === 'art-time') {
+  if (activity === 'drawing' || activity === 'coloring') {
     return (
       <group ref={prop} position={[0.42, 0.75, -0.32]} rotation={[0, 0, -0.35]}>
         <mesh><cylinderGeometry args={[0.025, 0.025, 0.58, 6]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
@@ -904,7 +1021,7 @@ function ActivityProp({ schedule, rainy, phase }: { schedule: string; rainy: boo
       </group>
     );
   }
-  if (schedule === 'outdoor-play' && rainy) {
+  if (activity === 'picture-books') {
     return (
       <group ref={prop} position={[0, 0.75, -0.42]} rotation={[0.18, 0, 0]}>
         <mesh position={[-0.18, 0, 0]}><boxGeometry args={[0.34, 0.04, 0.42]} /><meshStandardMaterial color="#4c82d4" /></mesh>
@@ -912,27 +1029,63 @@ function ActivityProp({ schedule, rainy, phase }: { schedule: string; rainy: boo
       </group>
     );
   }
-  if (schedule === 'juice-club') {
+  if (activity === 'snacking') {
     return (
       <group ref={prop} position={[0.34, 0.75, -0.3]}>
         <mesh><cylinderGeometry args={[0.11, 0.09, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.88} /></mesh>
         <mesh position={[0.02, 0.19, 0]} rotation={[0, 0, -0.18]}><cylinderGeometry args={[0.012, 0.012, 0.25, 5]} /><meshBasicMaterial color="#d76f78" /></mesh>
+        <mesh position={[0.24, -0.08, 0]}><boxGeometry args={[0.18, 0.08, 0.14]} /><meshStandardMaterial color="#dfb976" /></mesh>
       </group>
     );
   }
-  if (schedule === 'outdoor-play') {
+  if (activity === 'toy-play' || activity === 'parallel-play') {
     return (
-      <mesh ref={prop} position={[0.42, 0.75, -0.32]}>
-        <sphereGeometry args={[0.2, 10, 8]} />
-        <meshStandardMaterial color="#e8613c" roughness={0.8} />
-      </mesh>
+      <group ref={prop} position={[0.42, 0.75, -0.32]}>
+        <mesh><sphereGeometry args={[0.2, 10, 8]} /><meshStandardMaterial color="#e8613c" roughness={0.8} /></mesh>
+        <mesh position={[-0.2, -0.5, 0.12]}><boxGeometry args={[0.18, 0.18, 0.18]} /><meshStandardMaterial color="#71d4b4" /></mesh>
+      </group>
     );
   }
-  if (schedule === 'pickup') {
+  if (activity === 'pretend-play') {
     return (
       <group ref={prop} position={[0.38, 0.75, -0.28]}>
-        <mesh><boxGeometry args={[0.3, 0.32, 0.18]} /><meshStandardMaterial color="#55b89b" /></mesh>
-        <mesh position={[0, 0.2, 0]}><torusGeometry args={[0.11, 0.025, 6, 10]} /><meshStandardMaterial color="#fff0b8" /></mesh>
+        <mesh><coneGeometry args={[0.15, 0.34, 8]} /><meshStandardMaterial color="#55b89b" /></mesh>
+        <mesh position={[0, 0.23, 0]}><sphereGeometry args={[0.12, 8, 6]} /><meshStandardMaterial color="#fff0b8" /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'singing') {
+    return (
+      <group ref={prop} position={[0.42, 1.08, -0.3]}>
+        <mesh><sphereGeometry args={[0.08, 8, 6]} /><meshStandardMaterial color="#e76f8c" /></mesh>
+        <mesh position={[0.05, 0.16, 0]}><cylinderGeometry args={[0.018, 0.018, 0.28, 5]} /><meshStandardMaterial color="#e76f8c" /></mesh>
+        <mesh position={[0.18, 0.25, 0]}><sphereGeometry args={[0.06, 8, 6]} /><meshStandardMaterial color="#4c82d4" /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'dancing' || activity === 'reacting') {
+    return (
+      <group ref={prop} position={[0, 0.12, -0.5]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}><torusGeometry args={[0.32, 0.035, 8, 20]} /><meshBasicMaterial color="#ffd166" transparent opacity={0.82} /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'circle-time') {
+    return (
+      <group ref={prop} position={[0, 0.04, 0]}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.38, 18]} /><meshStandardMaterial color="#8fd0c5" transparent opacity={0.72} /></mesh>
+      </group>
+    );
+  }
+  if (activity === 'conversation' || activity === 'following') {
+    return (
+      <group ref={prop} position={[0.4, 1.2, -0.28]}>
+        {[0, 0.13, 0.25].map((x, index) => (
+          <mesh key={x} position={[x, index % 2 === 0 ? 0 : 0.06, 0]}>
+            <sphereGeometry args={[0.05 + index * 0.01, 7, 5]} />
+            <meshStandardMaterial color="#fff1cf" />
+          </mesh>
+        ))}
       </group>
     );
   }
