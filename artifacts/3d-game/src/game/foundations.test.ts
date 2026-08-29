@@ -40,8 +40,14 @@ import {
   trackPlayerPosition,
 } from './world';
 import { CameraRig, advanceCameraPosition, isSweptSphereClear } from './cameraRig';
-import { normalizeSavedItems, normalizeTidyItems, restoreZoneState, serializeGameState } from './store';
-import { HUB_ROUTES, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
+import {
+  normalizePersistedGameState,
+  normalizeSavedItems,
+  normalizeTidyItems,
+  restoreZoneState,
+  serializeGameState,
+} from './store';
+import { HUB_ROUTES, MAX_TOKENS, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
 import { facingAngleForDirection, kidActivityMode, kidDestination, resolveNpcMovement, stepNpc, teacherPatrolSpots } from './NPCs';
 import { isGameplayBlocked } from './gameplayGate';
@@ -430,6 +436,30 @@ const forgedGardenUnlock = normalizeProgression({
 });
 assert.equal(forgedGardenUnlock.routeUnlocks.includes('garden-district'), false);
 assert.equal(isRouteUnlocked(HUB_ROUTES[0], forgedGardenUnlock), false, 'Garden requirement stays authoritative over saved unlock flags');
+const malformedProgression = normalizeProgression({
+  reputation: Number.POSITIVE_INFINITY,
+  tokens: Number.MAX_VALUE,
+  activityRuns: {
+    'garden-planting': 2,
+    'forged-activity': 500,
+    'juice-club-service': -1,
+  },
+  activityRewards: {
+    'garden-planting': 999,
+    'forged-activity': 500,
+    'juice-club-service': Number.NaN,
+  },
+  collectibleProgress: { 'Shiny Rock': 3, 'forged-item': 90 },
+  vehicleProgress: { tricycleRides: 4, flying: 100 },
+  hubUpgrades: ['storage-organizer', 'forged-upgrade'],
+});
+assert.equal(malformedProgression.reputation, 0);
+assert.equal(malformedProgression.tokens, MAX_TOKENS);
+assert.deepEqual(malformedProgression.activityRuns, { 'garden-planting': 2 });
+assert.deepEqual(malformedProgression.activityRewards, { 'garden-planting': 4 });
+assert.deepEqual(malformedProgression.collectibleProgress, { 'Shiny Rock': 3 });
+assert.deepEqual(malformedProgression.vehicleProgress, { tricycleRides: 4 });
+assert.deepEqual(malformedProgression.hubUpgrades, ['storage-organizer']);
 assert.equal(
   restoreZoneState(
     { zone: 'garden', playerPosition: [0, 0, 12], hubPosition: [1, 0, 1], gardenPosition: [0, 0, 12] },
@@ -450,6 +480,181 @@ assert.equal(
   requirementProgressLabel(HUB_ROUTES[0], normalizeProgression({ reputation: 7 })),
   '7/10 hub reputation',
 );
+
+const validSaveSource = {
+  ...serializeGameState(useGameStore.getState()),
+  quality: 'low' as const,
+  timeOfDay: 12.25,
+  schedule: 'juice-club' as const,
+  isRainy: true,
+  inventory: ['blue-block'],
+  collectibles: [],
+  friends: {
+    ...useGameStore.getState().friends,
+    Leo: { mood: 'happy' as const, friendship: 72, recentMemory: 'Got Binky back!' },
+  },
+  juiceStock: 17,
+  crackerStock: 14,
+  juiceClubCash: 22,
+  juiceClubCustomersServed: 9,
+  juiceClubSatisfaction: 88,
+  juiceUpgrades: ['premium-cups'],
+  waitingCustomers: ['Max', 'Noah'],
+  juiceClubActiveCustomer: 'Max',
+  juiceClubServedCustomer: null,
+  juiceClubCustomerPhase: 'ordering' as const,
+  progression: normalizeProgression({
+    reputation: 10,
+    tokens: 12,
+    activityRuns: { 'garden-planting': 2, 'juice-club-service': 9 },
+    activityRewards: { 'garden-planting': 4, 'juice-club-service': 9 },
+    hubUpgrades: ['storage-organizer'],
+    trustedHelperPass: true,
+  }),
+  zone: 'garden' as const,
+  playerPosition: [1, 0, 12] as [number, number, number],
+  gardenPosition: [1, 0, 12] as [number, number, number],
+  hubPosition: [12, 0, -10.4] as [number, number, number],
+};
+const validSave = normalizePersistedGameState(validSaveSource);
+assert.equal(validSave.quality, 'low');
+assert.equal(validSave.timeOfDay, 12.25);
+assert.equal(validSave.schedule, 'juice-club');
+assert.equal(validSave.isRainy, true);
+assert.deepEqual(validSave.inventory, ['blue-block']);
+assert.equal(validSave.friends.Leo.friendship, 72);
+assert.equal(validSave.friends.Leo.recentMemory, 'Got Binky back!');
+assert.equal(validSave.juiceClubCash, 22);
+assert.deepEqual(validSave.waitingCustomers, ['Max', 'Noah']);
+assert.equal(validSave.juiceClubActiveCustomer, 'Max');
+assert.equal(validSave.juiceClubCustomerPhase, 'ordering');
+assert.deepEqual(validSave.progression, validSaveSource.progression);
+assert.equal(validSave.zone, 'garden');
+assert.deepEqual(validSave.playerPosition, [1, 0, 12]);
+
+const corruptSave = normalizePersistedGameState({
+  quality: 'ultra',
+  timeOfDay: Number.POSITIVE_INFINITY,
+  schedule: 'juice-club',
+  isRainy: 'yes',
+  inventory: ['forged-item', null],
+  collectibles: ['Shiny Rock', 'forged-collectible', 'Shiny Rock'],
+  friends: {
+    Leo: { mood: 'furious', friendship: Number.NaN, recentMemory: 'forged memory' },
+    Ghost: { mood: 'happy', friendship: 100, recentMemory: 'boo' },
+  },
+  teacherSuspicion: -50,
+  quests: { 'forged-quest': { status: 'complete' } },
+  binkyStatus: 'forged',
+  droppedItems: [
+    { item: 'forged-item', position: [0, 0, 0], zone: 'hub' },
+    { item: 'red-block', position: [0, 0, 3], zone: 'moon' },
+  ],
+  tidyPlacedItems: ['red-block', 'forged-item'],
+  juiceStock: -4,
+  crackerStock: Number.NaN,
+  juiceClubCash: Number.POSITIVE_INFINITY,
+  juiceClubCustomersServed: Number.MAX_VALUE,
+  juiceClubSatisfaction: 400,
+  juiceUpgrades: ['forged-upgrade'],
+  waitingCustomers: ['Ghost'],
+  juiceClubActiveCustomer: 'Ghost',
+  juiceClubServedCustomer: 'Ghost',
+  juiceClubCustomerPhase: 'ordering',
+  progression: {
+    reputation: 0,
+    routeUnlocks: ['garden-district'],
+    activityRuns: { forged: 100 },
+    activityRewards: { forged: 100 },
+  },
+  zone: 'garden',
+  playerPosition: [Number.NaN, 0, 0],
+  gardenActivityStep: 2,
+  zoneTransitioning: true,
+  pendingZone: 'garden',
+});
+assert.equal(corruptSave.quality, 'high');
+assert.equal(corruptSave.timeOfDay, 9);
+assert.equal(corruptSave.schedule, 'morning-play');
+assert.equal(corruptSave.isRainy, false);
+assert.deepEqual(corruptSave.inventory, []);
+assert.deepEqual(corruptSave.collectibles, ['Shiny Rock']);
+assert.deepEqual(Object.keys(corruptSave.friends), Object.keys(useGameStore.getState().friends));
+assert.equal(corruptSave.friends.Leo.friendship, 10);
+assert.equal(corruptSave.teacherSuspicion, 0);
+assert.deepEqual(corruptSave.droppedItems, []);
+assert.deepEqual(corruptSave.tidyPlacedItems, ['red-block']);
+assert.equal(corruptSave.juiceStock, 0);
+assert.equal(corruptSave.crackerStock, 5);
+assert.equal(corruptSave.juiceClubCash, 0);
+assert.equal(corruptSave.juiceClubCustomersServed, 99_999);
+assert.equal(corruptSave.juiceClubSatisfaction, 100);
+assert.deepEqual(corruptSave.juiceUpgrades, []);
+assert.deepEqual(corruptSave.waitingCustomers, []);
+assert.equal(corruptSave.zone, 'hub');
+assert.equal(corruptSave.gardenActivityStep, 0);
+assert.equal(corruptSave.zoneTransitioning, false);
+assert.equal(corruptSave.pendingZone, null);
+assert.deepEqual(corruptSave.progression.activityRuns, { 'juice-club-service': 99_999 });
+assert.deepEqual(corruptSave.progression.activityRewards, { 'juice-club-service': 99_999 });
+
+const forgedKnownActivity = normalizePersistedGameState({
+  quests: {
+    'rainbow-tidy-up': {
+      status: 'active',
+      currentObjectiveId: 'collect-blue-block',
+      objectiveStates: {},
+      completionCount: 0,
+    },
+  },
+  progression: {
+    reputation: 0,
+    tokens: 0,
+    activityRuns: { 'rainbow-tidy-up': 99_999 },
+    activityRewards: { 'rainbow-tidy-up': 199_998 },
+  },
+});
+assert.equal(
+  forgedKnownActivity.progression.activityRuns['rainbow-tidy-up'],
+  undefined,
+  'current saves reconcile tidy runs against quest completion evidence',
+);
+assert.equal(forgedKnownActivity.progression.trustedHelperPass, false);
+assert.equal(forgedKnownActivity.progression.routeUnlocks.includes('storybook-lane'), false);
+
+const repairedQueue = normalizePersistedGameState({
+  ...serializeGameState(useGameStore.getState()),
+  timeOfDay: 12.25,
+  waitingCustomers: ['Ghost', 'Max', 'Max'],
+  juiceClubActiveCustomer: 'Ghost',
+  juiceClubCustomerPhase: 'ordering',
+});
+assert.deepEqual(repairedQueue.waitingCustomers, ['Max']);
+assert.equal(repairedQueue.juiceClubActiveCustomer, 'Max');
+assert.equal(repairedQueue.juiceClubCustomerPhase, 'ordering');
+
+useGameStore.getState().resetGame();
+useGameStore.setState({
+  schedule: 'juice-club',
+  waitingCustomers: ['Ghost'],
+  juiceClubActiveCustomer: 'Ghost',
+  juiceClubCustomerPhase: 'ordering',
+  juiceStock: 2,
+  crackerStock: 2,
+});
+assert.doesNotThrow(() => useGameStore.getState().serveCustomer());
+assert.equal(useGameStore.getState().juiceClubCustomersServed, 0, 'unknown customers cannot reach friendship or reward handling');
+useGameStore.getState().addWaitingCustomer('Ghost');
+assert.deepEqual(useGameStore.getState().waitingCustomers, ['Ghost'], 'unknown callers cannot add another forged customer');
+
+useGameStore.getState().resetGame();
+useGameStore.setState({ juiceClubCash: 12 });
+useGameStore.getState().buyStock('juice', 0, 99);
+assert.equal(useGameStore.getState().juiceClubCash, 10, 'stock price comes from the authored purchase');
+assert.equal(useGameStore.getState().juiceStock, 10, 'stock amount comes from the authored purchase');
+useGameStore.getState().buyUpgrade('premium-cups', 0);
+assert.equal(useGameStore.getState().juiceClubCash, 0, 'upgrade price cannot be forged by the caller');
+assert.deepEqual(useGameStore.getState().juiceUpgrades, ['premium-cups']);
 
 useGameStore.getState().resetGame();
 useGameStore.setState({
@@ -485,7 +690,7 @@ useGameStore.setState((state) => ({
 }));
 assert.equal(useGameStore.getState().enterGarden(), false, 'a forged route flag cannot bypass the live reputation requirement');
 useGameStore.getState().resetGame();
-useGameStore.getState().completeActivity('test-reputation', 0, 10);
+useGameStore.setState({ progression: normalizeProgression({ reputation: 10 }) });
 assert.equal(useGameStore.getState().progression.routeUnlocks.includes('garden-district'), true);
 trackPlayerPosition(new THREE.Vector3(12, 0, -10.4));
 assert.equal(useGameStore.getState().enterGarden(), true);
@@ -499,9 +704,17 @@ assert.equal(useGameStore.getState().startGardenActivity(), true);
 assert.equal(useGameStore.getState().startGardenActivity(), false, 'Garden activity cannot be started twice');
 assert.equal(useGameStore.getState().advanceGardenActivity(), 2);
 assert.equal(useGameStore.getState().advanceGardenActivity(), 3);
-useGameStore.getState().completeActivity('garden-planting', 2, 1);
+const beforeForgedActivity = useGameStore.getState().progression;
+useGameStore.getState().completeActivity('forged-activity', 1000, 1000);
+assert.equal(useGameStore.getState().progression, beforeForgedActivity, 'unknown activity IDs cannot create progression records');
+useGameStore.getState().completeActivity('garden-planting', 1000, 1000);
 assert.equal(useGameStore.getState().progression.activityRuns['garden-planting'], 1);
 assert.equal(useGameStore.getState().progression.activityRewards['garden-planting'], 2);
+assert.equal(useGameStore.getState().progression.tokens, 2, 'Garden reward tokens come from the authored activity');
+assert.equal(useGameStore.getState().progression.reputation, 11, 'Garden reputation comes from the authored activity');
+const completedGardenProgression = useGameStore.getState().progression;
+useGameStore.getState().completeActivity('garden-planting', 1000, 1000);
+assert.equal(useGameStore.getState().progression, completedGardenProgression, 'a completed Garden step cannot reward twice');
 useGameStore.getState().resetGardenActivity();
 assert.equal(useGameStore.getState().gardenActivityStep, 0, 'Garden activity is repeatable');
 useGameStore.getState().setPlayerPosition([1, 0, 12]);

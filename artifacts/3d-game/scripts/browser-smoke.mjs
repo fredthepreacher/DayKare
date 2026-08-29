@@ -243,6 +243,177 @@ try {
     'local save rehydrates after a real page reload',
   );
 
+  await evaluate(client, `(() => {
+    const store = globalThis.__daykareStore;
+    store.getState().setTimeOfDay(12.25);
+    store.setState({
+      teacherSuspicion: 37,
+      waitingCustomers: ['Max', 'Noah'],
+      juiceClubActiveCustomer: 'Max',
+      juiceClubServedCustomer: null,
+      juiceClubCustomerPhase: 'ordering',
+    });
+    return localStorage.getItem('daykare-save')?.includes('ordering') ?? false;
+  })()`);
+  await client.send('Page.reload', { ignoreCache: true });
+  await waitFor(client, 'document.readyState === "complete"', 'active Juice Club reload');
+  const rehydratedClub = await evaluate(client, `(async () => {
+    const { useGameStore } = await import(${modulePath});
+    globalThis.__daykareStore = useGameStore;
+    const started = performance.now();
+    while (!useGameStore.persist.hasHydrated() && performance.now() - started < 5000) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const state = useGameStore.getState();
+    return {
+      timeOfDay: state.timeOfDay,
+      schedule: state.schedule,
+      teacherSuspicion: state.teacherSuspicion,
+      waitingCustomers: state.waitingCustomers,
+      activeCustomer: state.juiceClubActiveCustomer,
+      servedCustomer: state.juiceClubServedCustomer,
+      phase: state.juiceClubCustomerPhase,
+    };
+  })()`);
+  assert.deepEqual(rehydratedClub, {
+    timeOfDay: 12.25,
+    schedule: 'juice-club',
+    teacherSuspicion: 37,
+    waitingCustomers: ['Max', 'Noah'],
+    activeCustomer: 'Max',
+    servedCustomer: null,
+    phase: 'ordering',
+  }, 'a valid in-progress Juice Club save keeps its exact lifecycle state');
+
+  await evaluate(client, `(() => {
+    globalThis.__daykareStore.setState({
+      waitingCustomers: ['Noah'],
+      juiceClubActiveCustomer: 'Max',
+      juiceClubServedCustomer: 'Max',
+      juiceClubCustomerPhase: 'service',
+    });
+    return true;
+  })()`);
+  await client.send('Page.reload', { ignoreCache: true });
+  await waitFor(client, 'document.readyState === "complete"', 'served Juice Club reload');
+  assert.deepEqual(
+    await evaluate(client, `(async () => {
+      const { useGameStore } = await import(${modulePath});
+      globalThis.__daykareStore = useGameStore;
+      const started = performance.now();
+      while (!useGameStore.persist.hasHydrated() && performance.now() - started < 5000) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const state = useGameStore.getState();
+      return {
+        waitingCustomers: state.waitingCustomers,
+        activeCustomer: state.juiceClubActiveCustomer,
+        servedCustomer: state.juiceClubServedCustomer,
+        phase: state.juiceClubCustomerPhase,
+      };
+    })()`),
+    {
+      waitingCustomers: ['Noah'],
+      activeCustomer: 'Max',
+      servedCustomer: 'Max',
+      phase: 'service',
+    },
+    'a served Juice Club customer resumes the drink-and-depart lifecycle safely',
+  );
+
+  await evaluate(client, `(() => {
+    localStorage.setItem('daykare-save', JSON.stringify({
+      version: 3,
+      state: {
+        quality: 'ultra',
+        timeOfDay: 'noon',
+        schedule: 'juice-club',
+        inventory: ['forged-item'],
+        friends: {
+          Leo: { mood: 'furious', friendship: null, recentMemory: 'forged memory' },
+          Ghost: { mood: 'happy', friendship: 100, recentMemory: 'boo' },
+        },
+        waitingCustomers: ['Ghost'],
+        juiceClubActiveCustomer: 'Ghost',
+        juiceClubServedCustomer: 'Ghost',
+        juiceClubCustomerPhase: 'ordering',
+        progression: {
+          reputation: 0,
+          tokens: -500,
+          routeUnlocks: ['garden-district'],
+          activityRuns: { forged: 99, 'garden-planting': 2 },
+          activityRewards: { forged: 99, 'garden-planting': 999 },
+        },
+        zone: 'garden',
+        playerPosition: [null, 0, 0],
+        gardenActivityStep: 2,
+        zoneTransitioning: true,
+        pendingZone: 'garden',
+      },
+    }));
+    return true;
+  })()`);
+  const reloadAndReadRepairedSave = async () => {
+    await client.send('Page.reload', { ignoreCache: true });
+    await waitFor(client, 'document.readyState === "complete"', 'corrupt-save reload');
+    return evaluate(client, `(async () => {
+      const { useGameStore } = await import(${modulePath});
+      globalThis.__daykareStore = useGameStore;
+      const started = performance.now();
+      while (!useGameStore.persist.hasHydrated() && performance.now() - started < 5000) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const state = useGameStore.getState();
+      return {
+        quality: state.quality,
+        timeOfDay: state.timeOfDay,
+        schedule: state.schedule,
+        inventory: state.inventory,
+        friendNames: Object.keys(state.friends),
+        leo: state.friends.Leo,
+        waitingCustomers: state.waitingCustomers,
+        activeCustomer: state.juiceClubActiveCustomer,
+        progression: state.progression,
+        zone: state.zone,
+        gardenActivityStep: state.gardenActivityStep,
+        zoneTransitioning: state.zoneTransitioning,
+        pendingZone: state.pendingZone,
+      };
+    })()`);
+  };
+  const repairedSave = await reloadAndReadRepairedSave();
+  assert.deepEqual(repairedSave, {
+    quality: 'high',
+    timeOfDay: 9,
+    schedule: 'morning-play',
+    inventory: [],
+    friendNames: ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max'],
+    leo: { mood: 'sad', friendship: 10, recentMemory: 'Lost his favorite toy.' },
+    waitingCustomers: [],
+    activeCustomer: null,
+    progression: {
+      version: 3,
+      reputation: 0,
+      tokens: 0,
+      routeUnlocks: [],
+      activityRuns: { 'garden-planting': 2 },
+      activityRewards: { 'garden-planting': 4 },
+      collectibleProgress: {},
+      vehicleProgress: {},
+      hubUpgrades: [],
+      trustedHelperPass: false,
+    },
+    zone: 'hub',
+    gardenActivityStep: 0,
+    zoneTransitioning: false,
+    pendingZone: null,
+  }, 'a malformed browser save is rebuilt only from authored fields');
+  assert.deepEqual(
+    await reloadAndReadRepairedSave(),
+    repairedSave,
+    'repeated hydration of the same corrupt payload stays deterministic',
+  );
+
   const waitForResource = async (fragment, message, timeoutMs = 8000) => {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {

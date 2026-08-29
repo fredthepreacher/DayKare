@@ -198,7 +198,7 @@ function validObjectiveStates(definition: QuestDefinition, state: unknown): Ques
     ? candidate.currentObjectiveId
     : null;
   const completionCount = typeof candidate.completionCount === 'number' && Number.isFinite(candidate.completionCount)
-    ? Math.max(0, Math.floor(candidate.completionCount))
+    ? Math.min(99_999, Math.max(0, Math.floor(candidate.completionCount)))
     : 0;
   const firstIncomplete = definition.objectives.find((objective) => objectiveStates[objective.id] !== 'complete');
   if (status === 'complete' && firstIncomplete) status = 'active';

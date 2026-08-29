@@ -27,6 +27,18 @@ export interface ProgressionState {
 }
 
 export const PROGRESSION_VERSION = 3;
+export const MAX_TOKENS = 999_999;
+export const MAX_ACTIVITY_RUNS = 99_999;
+
+export const ACTIVITY_DEFINITIONS = {
+  'rainbow-tidy-up': { tokenReward: 2, reputationReward: 2 },
+  'juice-club-service': { tokenReward: 1, reputationReward: 1 },
+  'garden-planting': { tokenReward: 2, reputationReward: 1 },
+} as const;
+
+export type ActivityId = keyof typeof ACTIVITY_DEFINITIONS;
+
+export const HUB_UPGRADE_IDS = ['storage-organizer'] as const;
 
 export const HUB_ROUTES: RouteDefinition[] = [
   {
@@ -77,12 +89,19 @@ function safeCount(value: unknown, fallback = 0, maximum = Number.MAX_SAFE_INTEG
     : fallback;
 }
 
-function safeCountRecord(value: unknown): Record<string, number> {
+function safeCountRecord(
+  value: unknown,
+  knownKeys?: ReadonlySet<string>,
+  maximum = Number.MAX_SAFE_INTEGER,
+): Record<string, number> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(
     Object.entries(value)
       .map(([key, count]) => [key, safeCount(count)] as const)
-      .filter(([, count]) => count > 0),
+      .filter(([key, count]) => (
+        count > 0 && (!knownKeys || knownKeys.has(key))
+      ))
+      .map(([key, count]) => [key, Math.min(maximum, count)] as const),
   );
 }
 
@@ -92,6 +111,9 @@ export function normalizeProgression(value: unknown): ProgressionState {
 
   const candidate = value as Partial<ProgressionState>;
   const knownRouteIds = new Set(HUB_ROUTES.map((route) => route.id));
+  const knownActivityIds = new Set<ActivityId>(Object.keys(ACTIVITY_DEFINITIONS) as ActivityId[]);
+  const knownCollectibleIds = new Set(['Shiny Rock']);
+  const knownVehicleProgressIds = new Set(['tricycleRides']);
   const routeUnlocks = Array.isArray(candidate.routeUnlocks)
     ? Array.from(new Set(
         candidate.routeUnlocks.filter(
@@ -103,19 +125,30 @@ export function normalizeProgression(value: unknown): ProgressionState {
   const normalized: ProgressionState = {
     version: PROGRESSION_VERSION,
     reputation: safeCount(candidate.reputation, 0, 100),
-    tokens: safeCount(candidate.tokens),
+    tokens: safeCount(candidate.tokens, 0, MAX_TOKENS),
     routeUnlocks,
-    activityRuns: safeCountRecord(candidate.activityRuns),
-    activityRewards: safeCountRecord(candidate.activityRewards),
-    collectibleProgress: safeCountRecord(candidate.collectibleProgress),
-    vehicleProgress: safeCountRecord(candidate.vehicleProgress),
+    activityRuns: safeCountRecord(candidate.activityRuns, knownActivityIds, MAX_ACTIVITY_RUNS),
+    activityRewards: safeCountRecord(candidate.activityRewards, knownActivityIds, MAX_TOKENS),
+    collectibleProgress: safeCountRecord(candidate.collectibleProgress, knownCollectibleIds, MAX_ACTIVITY_RUNS),
+    vehicleProgress: safeCountRecord(candidate.vehicleProgress, knownVehicleProgressIds, MAX_ACTIVITY_RUNS),
     hubUpgrades: Array.isArray(candidate.hubUpgrades)
-      ? Array.from(new Set(candidate.hubUpgrades.filter((id): id is string => typeof id === 'string')))
+      ? Array.from(new Set(candidate.hubUpgrades.filter(
+          (id): id is typeof HUB_UPGRADE_IDS[number] => (
+            typeof id === 'string' && (HUB_UPGRADE_IDS as readonly string[]).includes(id)
+          ),
+        )))
       : [],
     trustedHelperPass: candidate.trustedHelperPass === true
       || safeCount(candidate.reputation) >= 8
       || safeCountRecord(candidate.activityRuns)['rainbow-tidy-up'] >= 1,
   };
+
+  normalized.activityRewards = Object.fromEntries(
+    Object.entries(normalized.activityRuns).map(([activityId, runs]) => [
+      activityId,
+      Math.min(MAX_TOKENS, runs * ACTIVITY_DEFINITIONS[activityId as ActivityId].tokenReward),
+    ]),
+  );
 
   return {
     ...normalized,

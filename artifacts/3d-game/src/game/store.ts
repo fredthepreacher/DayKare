@@ -2,8 +2,12 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as THREE from 'three';
 import {
+  ACTIVITY_DEFINITIONS,
+  HUB_UPGRADE_IDS,
   createInitialProgression,
   getUnlockedRoutes,
+  MAX_ACTIVITY_RUNS,
+  MAX_TOKENS,
   normalizeProgression,
   PROGRESSION_VERSION,
   type ProgressionState,
@@ -226,6 +230,35 @@ const BINKY_STATUSES = new Set<BinkyStatus>([
   'not-started', 'talked-to-owner', 'found-clue', 'traded-info', 'found', 'returned-good', 'returned-bad',
 ]);
 const TIDY_ITEMS = new Set(['blue-block', 'red-block', 'yellow-block']);
+const AUTHORED_ITEMS = new Set(['binky', ...TIDY_ITEMS]);
+const AUTHORED_COLLECTIBLES = new Set(['Shiny Rock']);
+const JUICE_CLUB_CUSTOMERS = new Set(['Max', 'Noah', 'Zoe']);
+const JUICE_CLUB_PHASES = new Set<JuiceClubCustomerPhase>([
+  'idle', 'entry', 'queue', 'ordering', 'service', 'drink', 'reaction', 'departure',
+]);
+const AUTHORED_FRIEND_NAMES = new Set(Object.keys(initialFriends));
+const AUTHORED_FRIEND_MEMORIES = new Set([
+  ...Object.values(initialFriends).map((friend) => friend.recentMemory),
+  'Loved the juice!',
+  'Got Binky back!',
+]);
+const MAX_INVENTORY_ITEMS = 4;
+const MAX_DROPPED_ITEMS = 4;
+const MAX_STOCK = 99;
+const MAX_CUSTOMERS_SERVED = 99_999;
+const MAX_CASH = MAX_TOKENS;
+const MAX_CLUES = 8;
+const MAX_RECENT_MEMORY_LENGTH = 80;
+
+function safeNumber(value: unknown, fallback: number, minimum: number, maximum: number) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(maximum, Math.max(minimum, value))
+    : fallback;
+}
+
+function safeInteger(value: unknown, fallback: number, minimum: number, maximum: number) {
+  return Math.floor(safeNumber(value, fallback, minimum, maximum));
+}
 
 function nextJuiceClubCustomerState(waitingCustomers: string[]) {
   const customer = waitingCustomers[0] ?? null;
@@ -253,6 +286,35 @@ export function normalizeTidyItems(value: unknown) {
   return safeStringArray(value).filter((item) => TIDY_ITEMS.has(item)).slice(-3);
 }
 
+function normalizeKnownStrings(value: unknown, known: ReadonlySet<string>, maximum: number) {
+  return safeStringArray(value).filter((item) => known.has(item)).slice(0, maximum);
+}
+
+function normalizeFriends(value: unknown): Record<string, FriendState> {
+  const candidate = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return Object.fromEntries(
+    Object.entries(initialFriends).map(([name, fallback]) => {
+      const saved = candidate[name];
+      const record = saved && typeof saved === 'object' && !Array.isArray(saved)
+        ? saved as Partial<FriendState>
+        : {};
+      return [name, {
+        mood: ['happy', 'sad', 'curious', 'grumpy', 'excited'].includes(record.mood as string)
+          ? record.mood as FriendState['mood']
+          : fallback.mood,
+        friendship: safeInteger(record.friendship, fallback.friendship, 0, 100),
+        recentMemory: typeof record.recentMemory === 'string'
+          && AUTHORED_FRIEND_MEMORIES.has(record.recentMemory)
+          && record.recentMemory.length <= MAX_RECENT_MEMORY_LENGTH
+          ? record.recentMemory
+          : fallback.recentMemory,
+      }];
+    }),
+  );
+}
+
 function safePosition(value: unknown, fallback: [number, number, number], zone: GameZone) {
   if (
     Array.isArray(value)
@@ -272,8 +334,11 @@ function safeDroppedItems(value: unknown): DroppedWorldItem[] {
     if (!candidate || typeof candidate !== 'object') return;
     const item = (candidate as Partial<DroppedWorldItem>).item;
     const position = (candidate as Partial<DroppedWorldItem>).position;
-    const zone = (candidate as Partial<DroppedWorldItem>).zone === 'garden' ? 'garden' : 'hub';
+    const savedZone = (candidate as Partial<DroppedWorldItem>).zone;
+    if (savedZone !== undefined && savedZone !== 'hub' && savedZone !== 'garden') return;
+    const zone: GameZone = savedZone ?? 'hub';
     if (typeof item !== 'string' || !Array.isArray(position) || position.length !== 3) return;
+    if (!AUTHORED_ITEMS.has(item)) return;
     if (!position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))) return;
     if ((item === 'binky' || TIDY_ITEMS.has(item)) && zone !== 'hub') return;
     if (!isWalkable(new THREE.Vector3(...position), 0.25, [], zone)) return;
@@ -284,11 +349,11 @@ function safeDroppedItems(value: unknown): DroppedWorldItem[] {
       zone,
     });
   });
-  return [...byItem.values()];
+  return [...byItem.values()].slice(0, MAX_DROPPED_ITEMS);
 }
 
 export function normalizeSavedItems(inventoryValue: unknown, droppedValue: unknown) {
-  const inventory = safeStringArray(inventoryValue);
+  const inventory = normalizeKnownStrings(inventoryValue, AUTHORED_ITEMS, MAX_INVENTORY_ITEMS);
   return {
     inventory,
     droppedItems: safeDroppedItems(droppedValue).filter((item) => !inventory.includes(item.item)),
@@ -322,6 +387,188 @@ export function restoreZoneState(persisted: Partial<GameState>, progression: Pro
   return { zone, playerPosition, hubPosition, gardenPosition };
 }
 
+function reconcilePersistedProgression(
+  persisted: Partial<GameState>,
+  progression: ProgressionState,
+  quests: QuestStates,
+  juiceClubCustomersServed: number,
+) {
+  const activityRuns = { ...progression.activityRuns };
+  const persistedQuests = persisted.quests && typeof persisted.quests === 'object' && !Array.isArray(persisted.quests)
+    ? persisted.quests as Record<string, unknown>
+    : null;
+  if (persistedQuests && Object.hasOwn(persistedQuests, 'rainbow-tidy-up')) {
+    const tidyRuns = quests['rainbow-tidy-up'].completionCount;
+    if (tidyRuns > 0) activityRuns['rainbow-tidy-up'] = tidyRuns;
+    else delete activityRuns['rainbow-tidy-up'];
+  }
+  if (Object.hasOwn(persisted, 'juiceClubCustomersServed')) {
+    if (juiceClubCustomersServed > 0) activityRuns['juice-club-service'] = juiceClubCustomersServed;
+    else delete activityRuns['juice-club-service'];
+  }
+  const rawProgression = persisted.progression && typeof persisted.progression === 'object'
+    ? persisted.progression as Partial<ProgressionState>
+    : {};
+  return normalizeProgression({
+    ...progression,
+    routeUnlocks: [],
+    activityRuns,
+    activityRewards: {},
+    trustedHelperPass: rawProgression.trustedHelperPass === true,
+  });
+}
+
+function normalizeJuiceClubState(
+  value: unknown,
+  schedule: ScheduleState,
+): Pick<
+  GameState,
+  | 'waitingCustomers'
+  | 'juiceClubServedCustomer'
+  | 'juiceClubCustomerPhase'
+  | 'juiceClubActiveCustomer'
+> {
+  if (schedule !== 'juice-club') return resetJuiceClubCustomerState({ waitingCustomers: [] });
+  const candidate = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const waitingCustomers = normalizeKnownStrings(candidate.waitingCustomers, JUICE_CLUB_CUSTOMERS, 3);
+  const savedActive = typeof candidate.juiceClubActiveCustomer === 'string'
+    && JUICE_CLUB_CUSTOMERS.has(candidate.juiceClubActiveCustomer)
+    ? candidate.juiceClubActiveCustomer
+    : null;
+  const savedServed = typeof candidate.juiceClubServedCustomer === 'string'
+    && JUICE_CLUB_CUSTOMERS.has(candidate.juiceClubServedCustomer)
+    ? candidate.juiceClubServedCustomer
+    : null;
+  const phase = typeof candidate.juiceClubCustomerPhase === 'string'
+    && JUICE_CLUB_PHASES.has(candidate.juiceClubCustomerPhase as JuiceClubCustomerPhase)
+    ? candidate.juiceClubCustomerPhase as JuiceClubCustomerPhase
+    : 'idle';
+
+  if (phase === 'idle') {
+    return waitingCustomers.length > 0
+      ? {
+          waitingCustomers,
+          juiceClubServedCustomer: null,
+          ...nextJuiceClubCustomerState(waitingCustomers),
+        }
+      : resetJuiceClubCustomerState({ waitingCustomers: [] });
+  }
+  if (phase === 'entry' || phase === 'queue' || phase === 'ordering') {
+    const active = waitingCustomers[0];
+    return active
+      ? {
+          waitingCustomers,
+          juiceClubServedCustomer: null,
+          juiceClubActiveCustomer: active,
+          juiceClubCustomerPhase: phase,
+        }
+      : resetJuiceClubCustomerState({ waitingCustomers: [] });
+  }
+  if (phase === 'service' || phase === 'drink' || phase === 'reaction') {
+    const active = savedActive ?? savedServed;
+    if (!active || (savedServed && savedServed !== active)) {
+      return resetJuiceClubCustomerState({ waitingCustomers: [] });
+    }
+    return {
+      waitingCustomers: waitingCustomers.filter((customer) => customer !== active),
+      juiceClubServedCustomer: active,
+      juiceClubActiveCustomer: active,
+      juiceClubCustomerPhase: phase,
+    };
+  }
+  if (phase === 'departure' && savedActive) {
+    return {
+      waitingCustomers: waitingCustomers.filter((customer) => customer !== savedActive),
+      juiceClubServedCustomer: null,
+      juiceClubActiveCustomer: savedActive,
+      juiceClubCustomerPhase: phase,
+    };
+  }
+  return resetJuiceClubCustomerState({ waitingCustomers: [] });
+}
+
+export function normalizePersistedGameState(value: unknown) {
+  const persisted = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Partial<GameState>
+    : {};
+  const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
+  const inventory = savedItems.inventory;
+  const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory);
+  const juiceClubCustomersServed = safeInteger(
+    persisted.juiceClubCustomersServed,
+    initialState.juiceClubCustomersServed,
+    0,
+    MAX_CUSTOMERS_SERVED,
+  );
+  const progression = reconcilePersistedProgression(
+    persisted,
+    normalizeProgression(persisted.progression),
+    quests,
+    juiceClubCustomersServed,
+  );
+  const binkyStatus = safeBinkyStatus(persisted.binkyStatus, quests);
+  const needsBinkyRecovery = (
+    (binkyStatus === 'found' || quests['where-binky'].currentObjectiveId === 'return-binky')
+    && !inventory.includes('binky')
+    && !savedItems.droppedItems.some((item) => item.item === 'binky')
+  );
+  const timeOfDay = safeNumber(persisted.timeOfDay, initialState.timeOfDay, 9, 17);
+  const schedule = getScheduleForTime(timeOfDay);
+  const restoredZone = restoreZoneState(persisted, progression);
+  const clubState = normalizeJuiceClubState(persisted, schedule);
+  const droppedItems = needsBinkyRecovery
+    ? [
+        ...savedItems.droppedItems,
+        {
+          id: 'recovered-binky',
+          item: 'binky',
+          position: [-14, 0.2, 14] as [number, number, number],
+          zone: 'hub' as GameZone,
+        },
+      ]
+    : savedItems.droppedItems;
+
+  return {
+    quality: persisted.quality === 'low' || persisted.quality === 'high' ? persisted.quality : initialState.quality,
+    timeOfDay,
+    schedule,
+    isRainy: persisted.isRainy === true,
+    isImaginationMode: false,
+    inventory,
+    collectibles: normalizeKnownStrings(persisted.collectibles, AUTHORED_COLLECTIBLES, 8),
+    isRiding: false,
+    friends: normalizeFriends(persisted.friends),
+    teacherSuspicion: safeNumber(persisted.teacherSuspicion, 0, 0, 100),
+    binkyStatus,
+    binkyClues: safeStringArray(persisted.binkyClues)
+      .filter((clue) => clue.length <= 120)
+      .slice(0, MAX_CLUES),
+    quests,
+    droppedItems,
+    tidyPlacedItems: normalizeTidyItems(persisted.tidyPlacedItems),
+    juiceStock: safeInteger(persisted.juiceStock, initialState.juiceStock, 0, MAX_STOCK),
+    crackerStock: safeInteger(persisted.crackerStock, initialState.crackerStock, 0, MAX_STOCK),
+    juiceClubCash: safeInteger(persisted.juiceClubCash, initialState.juiceClubCash, 0, MAX_CASH),
+    juiceClubCustomersServed,
+    juiceClubSatisfaction: safeNumber(persisted.juiceClubSatisfaction, initialState.juiceClubSatisfaction, 0, 100),
+    juiceUpgrades: normalizeKnownStrings(persisted.juiceUpgrades, new Set(['premium-cups']), 2),
+    ...clubState,
+    activeInteractable: null,
+    activeDialogue: null,
+    journalOpen: false,
+    tricycleColorIndex: safeInteger(persisted.tricycleColorIndex, 0, 0, 3),
+    teleportTrigger: 0,
+    progression,
+    ...restoredZone,
+    zoneTransitioning: false,
+    pendingZone: null,
+    gardenActivityStep: 0,
+    ambientMessage: null,
+  };
+}
+
 export function serializeGameState(state: GameState) {
   return {
     quality: state.quality,
@@ -331,6 +578,7 @@ export function serializeGameState(state: GameState) {
     inventory: state.inventory,
     collectibles: state.collectibles,
     friends: state.friends,
+    teacherSuspicion: state.teacherSuspicion,
     binkyStatus: state.binkyStatus,
     binkyClues: state.binkyClues,
     quests: state.quests,
@@ -342,6 +590,10 @@ export function serializeGameState(state: GameState) {
     juiceClubCustomersServed: state.juiceClubCustomersServed,
     juiceClubSatisfaction: state.juiceClubSatisfaction,
     juiceUpgrades: state.juiceUpgrades,
+    waitingCustomers: state.waitingCustomers,
+    juiceClubServedCustomer: state.juiceClubServedCustomer,
+    juiceClubCustomerPhase: state.juiceClubCustomerPhase,
+    juiceClubActiveCustomer: state.juiceClubActiveCustomer,
     tricycleColorIndex: state.tricycleColorIndex,
     progression: state.progression,
     zone: state.zone,
@@ -356,14 +608,17 @@ export const useGameStore = create<GameState>()(
     (set) => ({
       ...initialState,
       
-      setQuality: (quality) => set({ quality }),
+      setQuality: (quality) => set({
+        quality: quality === 'low' || quality === 'high' ? quality : initialState.quality,
+      }),
       setTimeOfDay: (time) => set((state) => {
-        const schedule = getScheduleForTime(time);
-        return { timeOfDay: time, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
+        const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 17);
+        const schedule = getScheduleForTime(timeOfDay);
+        return { timeOfDay, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
       }),
       
       advanceSchedule: () => set((state) => {
-        let nextTime = state.timeOfDay + 1.5;
+        let nextTime = safeNumber(state.timeOfDay, initialState.timeOfDay, 9, 17) + 1.5;
         if (nextTime > 17.0) nextTime = 9.0;
         const schedule = getScheduleForTime(nextTime);
         return { timeOfDay: nextTime, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
@@ -373,7 +628,7 @@ export const useGameStore = create<GameState>()(
       toggleRain: () => set((state) => ({ isRainy: !state.isRainy })),
       
       pickUp: (item) => set((state) => {
-        if (state.inventory.includes(item)) return state;
+        if (!AUTHORED_ITEMS.has(item) || state.inventory.includes(item)) return state;
         const dropped = state.droppedItems.filter((droppedItem) => droppedItem.item !== item);
         return {
           inventory: [...state.inventory, item],
@@ -382,14 +637,17 @@ export const useGameStore = create<GameState>()(
             ...state.progression,
             collectibleProgress: {
               ...state.progression.collectibleProgress,
-              [item]: (state.progression.collectibleProgress[item] ?? 0) + 1,
+              [item]: Math.min(
+                MAX_ACTIVITY_RUNS,
+                (state.progression.collectibleProgress[item] ?? 0) + 1,
+              ),
             },
           },
         };
       }),
       
       drop: (item) => set((state) => {
-        if (!state.inventory.includes(item)) return state;
+        if (!AUTHORED_ITEMS.has(item) || !state.inventory.includes(item)) return state;
         const protectedItem = item === 'binky' || item.endsWith('-block');
         if (protectedItem && state.zone !== 'hub') return state;
         const position: [number, number, number] = protectedItem
@@ -415,7 +673,13 @@ export const useGameStore = create<GameState>()(
         };
       }),
       dropAt: (item, position) => set((state) => {
-        if (!state.inventory.includes(item)) return state;
+        if (
+          !AUTHORED_ITEMS.has(item)
+          || !state.inventory.includes(item)
+          || !Array.isArray(position)
+          || position.length !== 3
+          || !position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+        ) return state;
         if ((item === 'binky' || item.endsWith('-block')) && state.zone !== 'hub') return state;
         if (!isWalkable(new THREE.Vector3(...position), 0.25, [], state.zone)) return state;
         return {
@@ -449,27 +713,45 @@ export const useGameStore = create<GameState>()(
               ...state.progression,
               vehicleProgress: {
                 ...state.progression.vehicleProgress,
-                tricycleRides: (state.progression.vehicleProgress.tricycleRides ?? 0) + 1,
+                tricycleRides: Math.min(
+                  MAX_ACTIVITY_RUNS,
+                  (state.progression.vehicleProgress.tricycleRides ?? 0) + 1,
+                ),
               },
             }
           : state.progression,
       })),
       
-      updateFriend: (name, updates) => set((state) => ({
-        friends: {
-          ...state.friends,
-          [name]: { ...state.friends[name], ...updates }
+      updateFriend: (name, updates) => set((state) => {
+        if (!AUTHORED_FRIEND_NAMES.has(name) || !state.friends[name] || !updates || typeof updates !== 'object') {
+          return state;
         }
-      })),
+        const current = state.friends[name];
+        const next = {
+          ...current,
+          ...(updates.mood && ['happy', 'sad', 'curious', 'grumpy', 'excited'].includes(updates.mood)
+            ? { mood: updates.mood }
+            : {}),
+          ...(updates.friendship !== undefined
+            ? { friendship: safeInteger(updates.friendship, current.friendship, 0, 100) }
+            : {}),
+          ...(typeof updates.recentMemory === 'string' && AUTHORED_FRIEND_MEMORIES.has(updates.recentMemory)
+            ? { recentMemory: updates.recentMemory }
+            : {}),
+        };
+        return { friends: { ...state.friends, [name]: next } };
+      }),
 
       setTeacherSuspicion: (s) => set((state) => {
-        const teacherSuspicion = typeof s === 'function' ? s(state.teacherSuspicion) : s;
+        const requested = typeof s === 'function' ? s(state.teacherSuspicion) : s;
+        const teacherSuspicion = safeNumber(requested, state.teacherSuspicion, 0, 100);
         return teacherSuspicion === state.teacherSuspicion ? state : { teacherSuspicion };
       }),
       
       updateBinkyStatus: (status) => {
         let changed = false;
         set((state) => {
+          if (!BINKY_STATUSES.has(status)) return state;
           if (status !== 'returned-good') {
             changed = status !== state.binkyStatus;
             return changed ? { binkyStatus: status } : state;
@@ -488,7 +770,7 @@ export const useGameStore = create<GameState>()(
           const progression = withQualifiedRoutes({
             ...state.progression,
             reputation: Math.min(100, state.progression.reputation + 8),
-            tokens: state.progression.tokens + 5,
+            tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
             trustedHelperPass: true,
           });
           changed = true;
@@ -504,8 +786,8 @@ export const useGameStore = create<GameState>()(
       },
       
       addClue: (clue) => set((state) => {
-        if (!state.binkyClues.includes(clue)) {
-          return { binkyClues: [...state.binkyClues, clue] };
+        if (typeof clue === 'string' && clue.length <= 120 && !state.binkyClues.includes(clue)) {
+          return { binkyClues: [...state.binkyClues, clue].slice(0, MAX_CLUES) };
         }
         return state;
       }),
@@ -541,16 +823,22 @@ export const useGameStore = create<GameState>()(
           const nextProgression = completedRound
             ? withQualifiedRoutes({
                 ...state.progression,
-                tokens: state.progression.tokens + 2,
+                tokens: Math.min(MAX_TOKENS, state.progression.tokens + 2),
                 reputation: Math.min(100, state.progression.reputation + 2),
                 trustedHelperPass: true,
                 activityRuns: {
                   ...state.progression.activityRuns,
-                  'rainbow-tidy-up': (state.progression.activityRuns['rainbow-tidy-up'] ?? 0) + 1,
+                  'rainbow-tidy-up': Math.min(
+                    MAX_ACTIVITY_RUNS,
+                    (state.progression.activityRuns['rainbow-tidy-up'] ?? 0) + 1,
+                  ),
                 },
                 activityRewards: {
                   ...state.progression.activityRewards,
-                  'rainbow-tidy-up': (state.progression.activityRewards['rainbow-tidy-up'] ?? 0) + 2,
+                  'rainbow-tidy-up': Math.min(
+                    MAX_TOKENS,
+                    (state.progression.activityRewards['rainbow-tidy-up'] ?? 0) + 2,
+                  ),
                 },
               })
             : state.progression;
@@ -564,19 +852,29 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
-      buyStock: (type, cost, amount) => set((state) => {
-        if (state.juiceClubCash >= cost) {
+      buyStock: (type) => set((state) => {
+        const purchase = type === 'juice'
+          ? { cost: 2, amount: 5 }
+          : type === 'cracker'
+            ? { cost: 2, amount: 5 }
+            : null;
+        if (purchase && state.juiceClubCash >= purchase.cost) {
           return {
-            juiceClubCash: state.juiceClubCash - cost,
-            juiceStock: type === 'juice' ? state.juiceStock + amount : state.juiceStock,
-            crackerStock: type === 'cracker' ? state.crackerStock + amount : state.crackerStock,
+            juiceClubCash: state.juiceClubCash - purchase.cost,
+            juiceStock: type === 'juice'
+              ? Math.min(MAX_STOCK, state.juiceStock + purchase.amount)
+              : state.juiceStock,
+            crackerStock: type === 'cracker'
+              ? Math.min(MAX_STOCK, state.crackerStock + purchase.amount)
+              : state.crackerStock,
           };
         }
         return state;
       }),
 
-      buyUpgrade: (id, cost) => set((state) => {
-        if (state.juiceClubCash >= cost && !state.juiceUpgrades.includes(id)) {
+      buyUpgrade: (id) => set((state) => {
+        const cost = id === 'premium-cups' ? 10 : null;
+        if (cost !== null && state.juiceClubCash >= cost && !state.juiceUpgrades.includes(id)) {
           return {
             juiceClubCash: state.juiceClubCash - cost,
             juiceUpgrades: [...state.juiceUpgrades, id]
@@ -586,7 +884,14 @@ export const useGameStore = create<GameState>()(
       }),
 
       addWaitingCustomer: (id) => set((state) => {
-        if (!state.waitingCustomers.includes(id)) {
+        if (
+          state.schedule === 'juice-club'
+          && state.zone === 'hub'
+          && JUICE_CLUB_CUSTOMERS.has(id)
+          && !state.waitingCustomers.includes(id)
+          && state.juiceClubServedCustomer !== id
+          && state.juiceClubActiveCustomer !== id
+        ) {
           const waitingCustomers = [...state.waitingCustomers, id];
           return state.juiceClubCustomerPhase === 'idle'
             ? { waitingCustomers, juiceClubActiveCustomer: id, juiceClubCustomerPhase: 'entry' }
@@ -596,6 +901,7 @@ export const useGameStore = create<GameState>()(
       }),
 
       removeWaitingCustomer: (id) => set((state) => {
+        if (!JUICE_CLUB_CUSTOMERS.has(id)) return state;
         const waitingCustomers = state.waitingCustomers.filter((customer) => customer !== id);
         return state.juiceClubActiveCustomer === id
           ? { waitingCustomers, ...nextJuiceClubCustomerState(waitingCustomers) }
@@ -605,7 +911,9 @@ export const useGameStore = create<GameState>()(
       serveCustomer: () => set((state) => {
         // Need 1 juice and 1 cracker minimum, and a waiting customer
         if (
-          state.juiceStock > 0
+          state.schedule === 'juice-club'
+          && state.zone === 'hub'
+          && state.juiceStock > 0
           && state.crackerStock > 0
           && state.waitingCustomers.length > 0
           && state.juiceClubActiveCustomer === state.waitingCustomers[0]
@@ -614,25 +922,37 @@ export const useGameStore = create<GameState>()(
           const premiumMultiplier = state.juiceUpgrades.includes('premium-cups') ? 2 : 1;
           const cashEarned = 2 * premiumMultiplier;
           const servedId = state.waitingCustomers[0];
+          const friend = state.friends[servedId];
+          if (!JUICE_CLUB_CUSTOMERS.has(servedId) || !friend) return state;
+          const reward = ACTIVITY_DEFINITIONS['juice-club-service'];
           const progression = withQualifiedRoutes({
             ...state.progression,
-            reputation: Math.min(100, state.progression.reputation + 1),
-            tokens: state.progression.tokens + 1,
+            reputation: Math.min(100, state.progression.reputation + reward.reputationReward),
+            tokens: Math.min(MAX_TOKENS, state.progression.tokens + reward.tokenReward),
             activityRuns: {
               ...state.progression.activityRuns,
-              'juice-club-service': (state.progression.activityRuns['juice-club-service'] ?? 0) + 1,
+              'juice-club-service': Math.min(
+                MAX_ACTIVITY_RUNS,
+                (state.progression.activityRuns['juice-club-service'] ?? 0) + 1,
+              ),
             },
             activityRewards: {
               ...state.progression.activityRewards,
-              'juice-club-service': (state.progression.activityRewards['juice-club-service'] ?? 0) + 1,
+              'juice-club-service': Math.min(
+                MAX_TOKENS,
+                (state.progression.activityRewards['juice-club-service'] ?? 0) + reward.tokenReward,
+              ),
             },
           });
           
           return {
             juiceStock: state.juiceStock - 1,
             crackerStock: state.crackerStock - 1,
-            juiceClubCash: state.juiceClubCash + cashEarned,
-            juiceClubCustomersServed: state.juiceClubCustomersServed + 1,
+            juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + cashEarned),
+            juiceClubCustomersServed: Math.min(
+              MAX_CUSTOMERS_SERVED,
+              state.juiceClubCustomersServed + 1,
+            ),
             waitingCustomers: state.waitingCustomers.slice(1),
             juiceClubServedCustomer: servedId,
             juiceClubActiveCustomer: servedId,
@@ -641,8 +961,8 @@ export const useGameStore = create<GameState>()(
             friends: {
               ...state.friends,
               [servedId]: {
-                ...state.friends[servedId],
-                friendship: Math.min(100, state.friends[servedId].friendship + 5),
+                ...friend,
+                friendship: Math.min(100, friend.friendship + 5),
                 recentMemory: 'Loved the juice!'
               }
             }
@@ -661,7 +981,12 @@ export const useGameStore = create<GameState>()(
         return state;
       }),
       reportJuiceClubArrival: (customer, phase) => set((state) => {
-        if (state.juiceClubActiveCustomer !== customer || state.juiceClubCustomerPhase !== phase) return state;
+        if (
+          !JUICE_CLUB_CUSTOMERS.has(customer)
+          || !JUICE_CLUB_PHASES.has(phase)
+          || state.juiceClubActiveCustomer !== customer
+          || state.juiceClubCustomerPhase !== phase
+        ) return state;
         if (phase === 'entry') return { juiceClubCustomerPhase: 'queue' };
         if (phase === 'queue') return { juiceClubCustomerPhase: 'ordering' };
         if (phase === 'service') return { juiceClubCustomerPhase: 'drink' };
@@ -690,24 +1015,41 @@ export const useGameStore = create<GameState>()(
         hubPosition: state.zone === 'hub' ? [0, 0, 0] : state.hubPosition,
         gardenPosition: state.zone === 'garden' ? GARDEN_SPAWN : state.gardenPosition,
       })),
-      completeActivity: (activityId, tokenReward, reputationReward) => set((state) => {
+      completeActivity: (activityId) => set((state) => {
+        const definition = ACTIVITY_DEFINITIONS[activityId as keyof typeof ACTIVITY_DEFINITIONS];
+        if (
+          !definition
+          || activityId !== 'garden-planting'
+          || state.zone !== 'garden'
+          || state.zoneTransitioning
+          || state.gardenActivityStep !== 3
+        ) return state;
         const nextRuns = {
           ...state.progression.activityRuns,
-          [activityId]: (state.progression.activityRuns[activityId] ?? 0) + 1,
+          [activityId]: Math.min(
+            MAX_ACTIVITY_RUNS,
+            (state.progression.activityRuns[activityId] ?? 0) + 1,
+          ),
         };
         const nextRewards = {
           ...state.progression.activityRewards,
-          [activityId]: (state.progression.activityRewards[activityId] ?? 0) + tokenReward,
+          [activityId]: Math.min(
+            MAX_TOKENS,
+            (state.progression.activityRewards[activityId] ?? 0) + definition.tokenReward,
+          ),
         };
         const nextProgression: ProgressionState = {
           ...state.progression,
           version: PROGRESSION_VERSION,
-          tokens: state.progression.tokens + tokenReward,
-          reputation: Math.min(100, state.progression.reputation + reputationReward),
+          tokens: Math.min(MAX_TOKENS, state.progression.tokens + definition.tokenReward),
+          reputation: Math.min(100, state.progression.reputation + definition.reputationReward),
           activityRuns: nextRuns,
           activityRewards: nextRewards,
         };
-        return { progression: withQualifiedRoutes(nextProgression) };
+        return {
+          progression: withQualifiedRoutes(nextProgression),
+          gardenActivityStep: 4,
+        };
       }),
       startGardenActivity: () => {
         let changed = false;
@@ -737,16 +1079,24 @@ export const useGameStore = create<GameState>()(
           : { ambientMessage }
       )),
       addProgressionTokens: (amount) => set((state) => {
+        if (typeof amount !== 'number' || !Number.isFinite(amount)) return state;
         const progression = withQualifiedRoutes({
           ...state.progression,
-          tokens: Math.max(0, state.progression.tokens + amount),
+          tokens: Math.min(MAX_TOKENS, Math.max(0, state.progression.tokens + Math.floor(amount))),
         });
         return { progression };
       }),
-      buyHubUpgrade: (id, cost) => {
+      buyHubUpgrade: (id) => {
         let changed = false;
         set((state) => {
-          if (!state.progression.trustedHelperPass || state.progression.tokens < cost || state.progression.hubUpgrades.includes(id)) return state;
+          const cost = id === 'storage-organizer' ? 6 : null;
+          if (
+            cost === null
+            || !(HUB_UPGRADE_IDS as readonly string[]).includes(id)
+            || !state.progression.trustedHelperPass
+            || state.progression.tokens < cost
+            || state.progression.hubUpgrades.includes(id)
+          ) return state;
           changed = true;
           return {
             progression: withQualifiedRoutes({
@@ -762,9 +1112,15 @@ export const useGameStore = create<GameState>()(
         progression: { ...state.progression, trustedHelperPass: true },
       })),
       setPlayerPosition: (position) => set((state) => ({
-        playerPosition: position,
-        hubPosition: state.zone === 'hub' ? position : state.hubPosition,
-        gardenPosition: state.zone === 'garden' ? position : state.gardenPosition,
+        ...(Array.isArray(position)
+          && position.length === 3
+          && position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+          ? {
+              playerPosition: position,
+              hubPosition: state.zone === 'hub' ? position : state.hubPosition,
+              gardenPosition: state.zone === 'garden' ? position : state.gardenPosition,
+            }
+          : {}),
       })),
       enterGarden: () => {
         let changed = false;
@@ -828,83 +1184,17 @@ export const useGameStore = create<GameState>()(
       partialize: serializeGameState,
       version: PROGRESSION_VERSION,
       migrate: (persistedState, storedVersion) => {
-        const persisted = persistedState as Partial<GameState>;
-        const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
-        const inventory = savedItems.inventory;
-        const collectibles = safeStringArray(persisted.collectibles);
-        const droppedItems = savedItems.droppedItems;
-        const tidyPlacedItems = normalizeTidyItems(persisted.tidyPlacedItems);
         if (storedVersion > PROGRESSION_VERSION) {
           console.warn(
-            `DayKare save version ${storedVersion} is newer than supported version ${PROGRESSION_VERSION}; keeping legacy game fields and resetting only progression.`,
+            `DayKare save version ${storedVersion} is newer than supported version ${PROGRESSION_VERSION}; restoring only recognized fields.`,
           );
-          const progression = normalizeProgression(persisted.progression);
-          const restoredZone = restoreZoneState(persisted, progression);
-          return {
-            ...initialState,
-            ...persisted,
-            inventory,
-            collectibles,
-            droppedItems,
-            tidyPlacedItems,
-            quests: normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory),
-            progression,
-            ...restoredZone,
-          };
         }
-         const migratedQuests = normalizeQuestStates(
-           persisted.quests,
-           persisted.binkyStatus,
-           inventory,
-         );
-         const migratedBinkyStatus = safeBinkyStatus(persisted.binkyStatus, migratedQuests);
-         const needsBinkyRecovery = migratedBinkyStatus === 'found'
-           && !inventory.includes('binky')
-           && !droppedItems.some((item) => item.item === 'binky');
-         const progression = normalizeProgression(persisted.progression);
-         const restoredZone = restoreZoneState(persisted, progression);
-         return {
-          ...initialState,
-          ...persisted,
-           inventory,
-           collectibles,
-           binkyStatus: migratedBinkyStatus,
-           quests: migratedQuests,
-           droppedItems: needsBinkyRecovery
-             ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number], zone: 'hub' as GameZone }]
-             : droppedItems,
-           tidyPlacedItems,
-           progression,
-           ...restoredZone,
-        };
+        return normalizePersistedGameState(persistedState);
       },
       merge: (persistedState, currentState) => {
-        const persisted = persistedState as Partial<GameState>;
-        const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
-        const inventory = savedItems.inventory;
-        const collectibles = safeStringArray(persisted.collectibles);
-        const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory);
-        const droppedItems = savedItems.droppedItems;
-        const needsBinkyRecovery = quests['where-binky'].currentObjectiveId === 'return-binky'
-          && !inventory.includes('binky')
-          && !droppedItems.some((item) => item.item === 'binky');
-        const progression = normalizeProgression(persisted.progression);
-        const restoredZone = restoreZoneState(persisted, progression);
         return {
           ...currentState,
-          ...persisted,
-          inventory,
-          collectibles,
-          binkyStatus: safeBinkyStatus(persisted.binkyStatus, quests),
-          quests,
-          droppedItems: needsBinkyRecovery
-            ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number], zone: 'hub' as GameZone }]
-            : droppedItems,
-          tidyPlacedItems: normalizeTidyItems(persisted.tidyPlacedItems),
-          progression,
-          ...restoredZone,
-          zoneTransitioning: false,
-          pendingZone: null,
+          ...normalizePersistedGameState(persistedState),
         };
       },
     }
