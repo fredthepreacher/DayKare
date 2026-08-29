@@ -61,7 +61,7 @@ export function Environment() {
       </mesh>
 
       {/* Visible walls are derived from the same bounds used by collision. */}
-      {WORLD_SOLIDS.filter((solid) => solid.kind === 'wall' || solid.kind === 'boundary').map((solid) => {
+      {WORLD_SOLIDS.filter((solid) => solid.zone === 'hub' && (solid.kind === 'wall' || solid.kind === 'boundary')).map((solid) => {
         const transform = getWorldSolidTransform(solid.id, 3);
         return <Wall key={solid.id} position={transform.position} size={transform.size} color={wallColor} />;
       })}

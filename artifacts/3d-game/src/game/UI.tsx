@@ -282,13 +282,12 @@ export function UI() {
         setActiveDialogue({ name: 'Leo', text: "I lost Binky! He's pink and round. I think Mia saw something." });
       } else if (objectiveIsActive(quests, 'where-binky', 'return-binky')) {
         if (inventory.includes('binky')) {
-          drop('binky');
-          useGameStore.setState((state) => ({
-            droppedItems: state.droppedItems.filter((item) => item.item !== 'binky'),
-          }));
-          updateBinkyStatus('returned-good');
-          updateFriend('Leo', { friendship: 100, mood: 'happy', recentMemory: 'Got Binky back!' });
-          setActiveDialogue({ name: 'Leo', text: "BINKY! Thank you! Ms. Harper has a real helper job next: carry the misplaced blocks to the Rainbow Tidy-Up station." });
+          if (updateBinkyStatus('returned-good')) {
+            updateFriend('Leo', { friendship: 100, mood: 'happy', recentMemory: 'Got Binky back!' });
+            setActiveDialogue({ name: 'Leo', text: "BINKY! Thank you! Ms. Harper has a real helper job next: carry the misplaced blocks to the Rainbow Tidy-Up station." });
+          } else {
+            setActiveDialogue({ name: 'Leo', text: "Let's make sure Binky is really here before we finish the helper job." });
+          }
         } else {
           setActiveDialogue({ name: 'Leo', text: "You found Binky, but you're not carrying him. Pick him up from where you dropped him or check Lost & Found." });
         }

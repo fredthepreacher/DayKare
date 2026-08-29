@@ -19,18 +19,20 @@ import { getNavigationTarget, getPortalWaypoints } from './navigation';
 import { clearTouchMove, getTouchInput, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
 import {
   GARDEN_SPAWN,
+  MIN_CAMERA_DISTANCE,
   PLAYER_RADIUS,
   PLAY_SLIDE_RAMP,
+  WORLD_SOLIDS,
   getWorldSolidTransform,
   isWalkable,
   resolveCameraPosition,
   resolveMovement,
   trackPlayerPosition,
 } from './world';
-import { normalizeSavedItems, normalizeTidyItems, serializeGameState } from './store';
+import { normalizeSavedItems, normalizeTidyItems, restoreZoneState, serializeGameState } from './store';
 import { HUB_ROUTES, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
-import { kidActivityMode, teacherPatrolSpots } from './NPCs';
+import { kidActivityMode, kidDestination, teacherPatrolSpots } from './NPCs';
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
 
@@ -138,16 +140,41 @@ const doorwayStart = new THREE.Vector3(7.1, 0, 0);
 const doorwayResult = resolveMovement(doorwayStart, new THREE.Vector3(9, 0, 0), PLAYER_RADIUS);
 assert.ok(doorwayResult.x > 8.5, 'authored doorway remains traversable');
 assert.ok(isWalkable(doorwayResult, PLAYER_RADIUS));
+const doorwayEdgeResult = resolveMovement(
+  new THREE.Vector3(7.1, 0, 1.66),
+  new THREE.Vector3(9, 0, 1.66),
+  PLAYER_RADIUS,
+);
+assert.ok(doorwayEdgeResult.x > 8.5, 'doorway clearance includes a conservative edge margin');
+const solidWallResult = resolveMovement(
+  new THREE.Vector3(7.1, 0, 4),
+  new THREE.Vector3(12, 0, 4),
+  PLAYER_RADIUS,
+);
+assert.ok(solidWallResult.x < 7.4, 'sub-stepping cannot tunnel through a visible divider panel');
 
 const closeWallTarget = new THREE.Vector3(0, 1, -6.5);
 const closeWallCamera = resolveCameraPosition(closeWallTarget, new THREE.Vector3(0, 1, -9));
-assert.ok(closeWallCamera.distanceTo(closeWallTarget) < 1.8, 'nearby blockers override framing minimums');
-assert.ok(closeWallCamera.z > -7.5, 'camera remains on the target-facing side of the wall');
+assert.ok(
+  closeWallCamera.distanceTo(closeWallTarget) >= MIN_CAMERA_DISTANCE,
+  'nearby walls use a safe side angle instead of collapsing the camera',
+);
+assert.ok(closeWallCamera.z > -7.5, 'camera remains on the playable side of the wall');
+const lowPropCameraTarget = new THREE.Vector3(3, 1, -1);
+const lowPropDesiredCamera = new THREE.Vector3(3, 1, -5);
+assert.deepEqual(
+  resolveCameraPosition(lowPropCameraTarget, lowPropDesiredCamera).toArray(),
+  lowPropDesiredCamera.toArray(),
+  'low counters do not obstruct a camera ray above them',
+);
 const routeGateCamera = resolveCameraPosition(
   new THREE.Vector3(12, 1, -13),
   new THREE.Vector3(16, 1, -13),
 );
-assert.ok(routeGateCamera.x < 13, 'route gate blocks the camera before it clips through the arch');
+assert.ok(
+  routeGateCamera.distanceTo(new THREE.Vector3(12, 1, -13)) >= MIN_CAMERA_DISTANCE,
+  'route gate obstruction preserves a nonzero framing distance',
+);
 
 const route = getPortalWaypoints(new THREE.Vector3(0, 0, 0), new THREE.Vector3(12, 0, 5));
 assert.equal(route[0].x, 7.1);
@@ -166,9 +193,40 @@ assert.ok(PLAY_SLIDE_RAMP.solid.maxZ >= PLAY_SLIDE_RAMP.position[2] + 1);
 const upperStorageBox = getWorldSolidTransform('storage-box-upper', 0.8, 1.4);
 assert.deepEqual(upperStorageBox.position, [-14, 1.4, 10]);
 assert.deepEqual(upperStorageBox.size, [0.8000000000000007, 0.8, 0.8000000000000007]);
+assert.equal(
+  WORLD_SOLIDS.find((solid) => solid.id === 'storage-box-upper')?.collision,
+  false,
+  'the elevated storage box does not add a redundant ground-level collider',
+);
 
 assert.equal(isWalkable(new THREE.Vector3(10, 0, 0), PLAYER_RADIUS, [], 'hub'), true);
 assert.equal(isWalkable(new THREE.Vector3(10, 0, 0), PLAYER_RADIUS, [], 'garden'), false, 'Garden pond owns Garden-only collision');
+assert.equal(
+  isWalkable(new THREE.Vector3(7.35, 0, 2.45), PLAYER_RADIUS, [], 'garden'),
+  true,
+  'round pond collision does not block visibly grassy corners',
+);
+assert.equal(
+  isWalkable(new THREE.Vector3(0, 0, 6.1), PLAYER_RADIUS, [], 'garden'),
+  true,
+  'the open gazebo center is traversable',
+);
+assert.equal(
+  isWalkable(new THREE.Vector3(-2.7, 0, 3.4), PLAYER_RADIUS, [], 'garden'),
+  false,
+  'visible gazebo posts have matching collision',
+);
+const diagonalPondResult = resolveMovement(
+  new THREE.Vector3(6.8, 0, -3.4),
+  new THREE.Vector3(8.4, 0, -1.8),
+  PLAYER_RADIUS,
+  0.2,
+  'garden',
+);
+assert.ok(
+  Math.hypot(diagonalPondResult.x - 10, diagonalPondResult.z + 0.2) >= 2.72 + PLAYER_RADIUS,
+  'round pond contacts resolve radially outside the visible shoreline',
+);
 const gardenEdge = resolveMovement(
   new THREE.Vector3(0, 0, 14),
   new THREE.Vector3(0, 0, 22),
@@ -188,6 +246,22 @@ const forgedGardenUnlock = normalizeProgression({
 });
 assert.equal(forgedGardenUnlock.routeUnlocks.includes('garden-district'), false);
 assert.equal(isRouteUnlocked(HUB_ROUTES[0], forgedGardenUnlock), false, 'Garden requirement stays authoritative over saved unlock flags');
+assert.equal(
+  restoreZoneState(
+    { zone: 'garden', playerPosition: [0, 0, 12], hubPosition: [1, 0, 1], gardenPosition: [0, 0, 12] },
+    forgedGardenUnlock,
+  ).zone,
+  'hub',
+  'an unauthorized saved Garden zone restores safely to the Hub',
+);
+assert.equal(
+  restoreZoneState(
+    { zone: 'garden', playerPosition: [0, 0, 12], hubPosition: [1, 0, 1], gardenPosition: [0, 0, 12] },
+    normalizeProgression({ reputation: 10 }),
+  ).zone,
+  'garden',
+  'an authorized Garden save remains in the Garden',
+);
 assert.equal(
   requirementProgressLabel(HUB_ROUTES[0], normalizeProgression({ reputation: 7 })),
   '7/10 hub reputation',
@@ -230,6 +304,22 @@ assert.equal(useGameStore.getState().zone, 'hub');
 assert.deepEqual(useGameStore.getState().playerPosition, [12, 0, -10.4], 'return restores the saved hub-side gate position');
 
 useGameStore.getState().resetGame();
+useGameStore.setState({
+  quests: normalizeQuestStates(undefined, 'found', []),
+  binkyStatus: 'found',
+  inventory: [],
+});
+assert.equal(useGameStore.getState().updateBinkyStatus('returned-good'), false, 'Binky cannot be delivered without carrying it');
+assert.equal(useGameStore.getState().progression.reputation, 0);
+useGameStore.setState({ inventory: ['binky'] });
+assert.equal(useGameStore.getState().updateBinkyStatus('returned-good'), true, 'a proven Binky delivery completes once');
+assert.equal(useGameStore.getState().inventory.includes('binky'), false, 'delivery consumes Binky atomically');
+assert.equal(useGameStore.getState().progression.reputation, 8);
+assert.equal(useGameStore.getState().progression.tokens, 5);
+assert.equal(useGameStore.getState().updateBinkyStatus('returned-good'), false, 'Binky delivery rewards cannot be duplicated');
+assert.equal(useGameStore.getState().progression.reputation, 8);
+
+useGameStore.getState().resetGame();
 useGameStore.setState({ inventory: ['binky'] });
 useGameStore.getState().dropAt('binky', [3, 0, -3]);
 assert.deepEqual(useGameStore.getState().inventory, ['binky'], 'solid-overlapping drops are rejected');
@@ -268,6 +358,17 @@ for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-p
   );
 }
 
+for (const [index, name] of ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max'].entries()) {
+  const destination = kidDestination(name, 'art-time', false, [0, 0, 0], index * 0.37, 0, []);
+  assert.equal(
+    isWalkable(destination, 0.34),
+    true,
+    `${name} art-time social destination must be reachable`,
+  );
+}
+const promotedQueueDestination = kidDestination('Max', 'juice-club', false, [0, 0, 0], 0, 0, ['Max']);
+assert.equal(isWalkable(promotedQueueDestination, 0.34), true, 'front Juice Club customer can reach the live queue marker');
+
 recenterCamera();
 assert.equal(consumeCameraRecenterRequest(), true);
 addCameraOrbit(100, -20);
@@ -275,7 +376,7 @@ const directYaw = getCameraInput().yaw;
 stepCameraInput(1 / 30);
 stepCameraInput(1 / 120);
 assert.equal(getCameraInput().yaw, directYaw, 'camera drag does not accumulate frame-dependent inertia');
-assert.equal(CAMERA_DISTANCE, 8.8, 'desktop and touch use one stable camera frame');
+assert.equal(CAMERA_DISTANCE, 9.8, 'desktop and touch use one naturally wider stable camera frame');
 assert.equal(isGameplayBlocked({ journalOpen: true, activeDialogue: null, zoneTransitioning: false }), true);
 assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: { text: 'pause' }, zoneTransitioning: false }), true);
 assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: null, zoneTransitioning: true }), true);

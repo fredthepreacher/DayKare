@@ -108,7 +108,7 @@ export interface GameState {
   updateFriend: (name: string, updates: Partial<FriendState>) => void;
   setTeacherSuspicion: (s: number | ((prev: number) => number)) => void;
 
-  updateBinkyStatus: (status: BinkyStatus) => void;
+  updateBinkyStatus: (status: BinkyStatus) => boolean;
   addClue: (clue: string) => void;
   advanceQuestObjective: (questId: string, objectiveId: string) => boolean;
   completeTidyToy: (item: string) => boolean;
@@ -279,6 +279,22 @@ function safeBinkyStatus(value: unknown, quests: QuestStates): BinkyStatus {
     : legacyStatusForQuest(quests) as BinkyStatus;
 }
 
+export function restoreZoneState(persisted: Partial<GameState>, progression: ProgressionState) {
+  const hubPosition = safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub');
+  const gardenPosition = safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden');
+  const gardenAuthorized = getUnlockedRoutes(progression).includes('garden-district');
+  const requestedZone: GameZone = persisted.zone === 'garden' ? 'garden' : 'hub';
+  const zone: GameZone = requestedZone === 'garden' && gardenAuthorized ? 'garden' : 'hub';
+  const playerPosition = requestedZone === zone
+    ? safePosition(
+        persisted.playerPosition,
+        zone === 'garden' ? gardenPosition : hubPosition,
+        zone,
+      )
+    : hubPosition;
+  return { zone, playerPosition, hubPosition, gardenPosition };
+}
+
 export function serializeGameState(state: GameState) {
   return {
     quality: state.quality,
@@ -420,21 +436,41 @@ export const useGameStore = create<GameState>()(
         return teacherSuspicion === state.teacherSuspicion ? state : { teacherSuspicion };
       }),
       
-      updateBinkyStatus: (status) => set((state) => {
-        const quests = status === 'returned-good'
-          ? activateQuest(advanceObjective(state.quests, 'where-binky', 'return-binky'), 'rainbow-tidy-up')
-          : state.quests;
-        if (status === 'returned-good' && state.binkyStatus !== 'returned-good') {
+      updateBinkyStatus: (status) => {
+        let changed = false;
+        set((state) => {
+          if (status !== 'returned-good') {
+            changed = status !== state.binkyStatus;
+            return changed ? { binkyStatus: status } : state;
+          }
+          const quest = state.quests['where-binky'];
+          if (
+            state.binkyStatus === 'returned-good'
+            || quest?.status === 'complete'
+            || quest?.currentObjectiveId !== 'return-binky'
+            || !state.inventory.includes('binky')
+          ) return state;
+          const quests = activateQuest(
+            advanceObjective(state.quests, 'where-binky', 'return-binky'),
+            'rainbow-tidy-up',
+          );
           const progression = withQualifiedRoutes({
             ...state.progression,
             reputation: Math.min(100, state.progression.reputation + 8),
             tokens: state.progression.tokens + 5,
             trustedHelperPass: true,
           });
-          return { binkyStatus: status, quests, progression };
-        }
-        return { binkyStatus: status, quests };
-      }),
+          changed = true;
+          return {
+            binkyStatus: status,
+            quests,
+            progression,
+            inventory: state.inventory.filter((item) => item !== 'binky'),
+            droppedItems: state.droppedItems.filter((item) => item.item !== 'binky'),
+          };
+        });
+        return changed;
+      },
       
       addClue: (clue) => set((state) => {
         if (!state.binkyClues.includes(clue)) {
@@ -732,6 +768,8 @@ export const useGameStore = create<GameState>()(
           console.warn(
             `DayKare save version ${storedVersion} is newer than supported version ${PROGRESSION_VERSION}; keeping legacy game fields and resetting only progression.`,
           );
+          const progression = normalizeProgression(persisted.progression);
+          const restoredZone = restoreZoneState(persisted, progression);
           return {
             ...initialState,
             ...persisted,
@@ -740,15 +778,8 @@ export const useGameStore = create<GameState>()(
             droppedItems,
             tidyPlacedItems,
             quests: normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory),
-            progression: normalizeProgression(persisted.progression),
-            zone: (persisted.zone === 'garden' ? 'garden' : 'hub') as GameZone,
-            playerPosition: safePosition(
-              persisted.playerPosition,
-              persisted.zone === 'garden' ? GARDEN_SPAWN : [0, 0, 0],
-              persisted.zone === 'garden' ? 'garden' : 'hub',
-            ),
-            hubPosition: safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub'),
-            gardenPosition: safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden'),
+            progression,
+            ...restoredZone,
           };
         }
          const migratedQuests = normalizeQuestStates(
@@ -760,6 +791,8 @@ export const useGameStore = create<GameState>()(
          const needsBinkyRecovery = migratedBinkyStatus === 'found'
            && !inventory.includes('binky')
            && !droppedItems.some((item) => item.item === 'binky');
+         const progression = normalizeProgression(persisted.progression);
+         const restoredZone = restoreZoneState(persisted, progression);
          return {
           ...initialState,
           ...persisted,
@@ -771,15 +804,8 @@ export const useGameStore = create<GameState>()(
              ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number], zone: 'hub' as GameZone }]
              : droppedItems,
            tidyPlacedItems,
-           progression: normalizeProgression(persisted.progression),
-           zone: (persisted.zone === 'garden' ? 'garden' : 'hub') as GameZone,
-           playerPosition: safePosition(
-             persisted.playerPosition,
-             persisted.zone === 'garden' ? GARDEN_SPAWN : [0, 0, 0],
-             persisted.zone === 'garden' ? 'garden' : 'hub',
-           ),
-           hubPosition: safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub'),
-           gardenPosition: safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden'),
+           progression,
+           ...restoredZone,
         };
       },
       merge: (persistedState, currentState) => {
@@ -792,6 +818,8 @@ export const useGameStore = create<GameState>()(
         const needsBinkyRecovery = quests['where-binky'].currentObjectiveId === 'return-binky'
           && !inventory.includes('binky')
           && !droppedItems.some((item) => item.item === 'binky');
+        const progression = normalizeProgression(persisted.progression);
+        const restoredZone = restoreZoneState(persisted, progression);
         return {
           ...currentState,
           ...persisted,
@@ -803,15 +831,8 @@ export const useGameStore = create<GameState>()(
             ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number], zone: 'hub' as GameZone }]
             : droppedItems,
           tidyPlacedItems: normalizeTidyItems(persisted.tidyPlacedItems),
-          progression: normalizeProgression(persisted.progression),
-          zone: (persisted.zone === 'garden' ? 'garden' : 'hub') as GameZone,
-          playerPosition: safePosition(
-            persisted.playerPosition,
-            persisted.zone === 'garden' ? GARDEN_SPAWN : [0, 0, 0],
-            persisted.zone === 'garden' ? 'garden' : 'hub',
-          ),
-          hubPosition: safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub'),
-          gardenPosition: safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden'),
+          progression,
+          ...restoredZone,
           zoneTransitioning: false,
           pendingZone: null,
         };

@@ -23,6 +23,12 @@ export interface WorldSolid {
   maxX: number;
   minZ: number;
   maxZ: number;
+  shape?: 'box' | 'circle';
+  radius?: number;
+  collision?: boolean;
+  cameraRole?: 'structural' | 'substantial' | 'none';
+  minY?: number;
+  maxY?: number;
 }
 
 export interface WorldPortal {
@@ -53,19 +59,63 @@ export interface WorldSolidTransform {
   size: [number, number, number];
 }
 
-const box = (id: string, kind: SolidKind, minX: number, maxX: number, minZ: number, maxZ: number): WorldSolid => ({
+const defaultCameraRole = (kind: SolidKind): WorldSolid['cameraRole'] => (
+  kind === 'wall' || kind === 'boundary' || kind === 'route-gate' ? 'structural' : 'none'
+);
+
+const box = (
+  id: string,
+  kind: SolidKind,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number,
+  options: Partial<WorldSolid> = {},
+): WorldSolid => ({
   id, kind, zone: 'hub', minX, maxX, minZ, maxZ,
+  shape: 'box',
+  collision: true,
+  cameraRole: defaultCameraRole(kind),
+  minY: 0,
+  maxY: kind === 'boundary' || kind === 'wall' || kind === 'route-gate' ? 3 : 1.5,
+  ...options,
 });
 
-const gardenBox = (id: string, kind: SolidKind, minX: number, maxX: number, minZ: number, maxZ: number): WorldSolid => ({
-  id, kind, zone: 'garden', minX, maxX, minZ, maxZ,
-});
+const gardenBox = (
+  id: string,
+  kind: SolidKind,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number,
+  options: Partial<WorldSolid> = {},
+): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'garden', ...options });
+
+const gardenCircle = (
+  id: string,
+  kind: SolidKind,
+  x: number,
+  z: number,
+  radius: number,
+  options: Partial<WorldSolid> = {},
+): WorldSolid => gardenBox(
+  id,
+  kind,
+  x - radius,
+  x + radius,
+  z - radius,
+  z + radius,
+  { shape: 'circle', radius, ...options },
+);
 
 export const PLAY_SLIDE_RAMP = {
   position: [12, 0.5, -3.5] as [number, number, number],
   size: [1, 3, 0.2] as [number, number, number],
   rotation: [-Math.PI / 4, 0, 0] as [number, number, number],
-  solid: box('play-slide-ramp', 'playground', 11.4, 12.6, -4.7, -2.3),
+  solid: box('play-slide-ramp', 'playground', 11.4, 12.6, -4.7, -2.3, {
+    cameraRole: 'none',
+    maxY: 1.7,
+  }),
 };
 
 export const WORLD_SOLIDS: WorldSolid[] = [
@@ -75,19 +125,27 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('east-boundary', 'boundary', 15.7, 16.3, -16, 16),
   box('main-north-wall', 'wall', -8, 8, -8.3, -7.7),
   box('main-south-wall', 'wall', -8, 8, 7.7, 8.3),
-  box('playground-divider-north', 'wall', 7.7, 8.3, -8, -2),
-  box('playground-divider-south', 'wall', 7.7, 8.3, 2, 8),
-  box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2),
-  box('hall-divider-south', 'wall', -8.3, -7.7, 2, 8),
+  box('playground-divider-north', 'wall', 7.7, 8.3, -8, -2.15),
+  box('playground-divider-south', 'wall', 7.7, 8.3, 2.15, 8),
+  box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2.15),
+  box('hall-divider-south', 'wall', -8.3, -7.7, 2.15, 8),
   box('juice-stand', 'counter', 2, 4, -3.6, -2.4),
   box('art-table', 'table', -13.7, -10.3, -13.7, -10.3),
   box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8),
   box('cubbies', 'cubby', -7.6, -3.8, -7.1, -6.3),
   box('reading-nook', 'furniture', 4.6, 6.6, -7.4, -5.8),
   box('storage-box-a', 'box', -14.7, -13.3, 9.3, 10.7),
-  box('storage-box-upper', 'box', -14.4, -13.6, 9.6, 10.4),
+  box('storage-box-upper', 'box', -14.4, -13.6, 9.6, 10.4, {
+    collision: false,
+    cameraRole: 'none',
+    minY: 1,
+    maxY: 1.8,
+  }),
   box('storage-box-b', 'box', -11.8, -10.2, 13.1, 14.9),
-  box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8),
+  box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8, {
+    cameraRole: 'substantial',
+    maxY: 2,
+  }),
   PLAY_SLIDE_RAMP.solid,
   box('sandbox', 'playground', 10, 14, 3, 7),
   box('route-garden-district', 'route-gate', 13, 15.4, -14.3, -12.3),
@@ -101,10 +159,19 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   gardenBox('garden-greenhouse-west', 'wall', -14.8, -8.8, -11.8, -11.2),
   gardenBox('garden-greenhouse-east', 'wall', -14.8, -8.8, -5.8, -5.2),
   gardenBox('garden-greenhouse-north', 'wall', -14.8, -14.2, -11.8, -5.2),
-  gardenBox('garden-pond', 'playground', 7.2, 12.8, -3.2, 2.8),
-  gardenBox('garden-gazebo', 'furniture', -3.2, 3.2, 5.8, 6.4),
+  gardenCircle('garden-pond', 'playground', 10, -0.2, 2.72, { maxY: 0.12 }),
+  gardenCircle('garden-gazebo-nw-post', 'furniture', -2.7, 3.4, 0.16, { maxY: 2.5 }),
+  gardenCircle('garden-gazebo-ne-post', 'furniture', 2.7, 3.4, 0.16, { maxY: 2.5 }),
+  gardenCircle('garden-gazebo-sw-post', 'furniture', -2.7, 8.8, 0.16, { maxY: 2.5 }),
+  gardenCircle('garden-gazebo-se-post', 'furniture', 2.7, 8.8, 0.16, { maxY: 2.5 }),
   gardenBox('garden-bed-west', 'activity-station', -12.8, -8.8, 1.2, 4.4),
   gardenBox('garden-bed-east', 'activity-station', 8.8, 12.8, 8.2, 11.4),
+  gardenCircle('garden-tree-a', 'furniture', -14.5, -1, 0.3, { maxY: 2.5 }),
+  gardenCircle('garden-tree-b', 'furniture', -7, 11.8, 0.3, { maxY: 2.5 }),
+  gardenCircle('garden-tree-c', 'furniture', 6.4, 11.5, 0.3, { maxY: 2.5 }),
+  gardenCircle('garden-tree-d', 'furniture', 14.2, -8.5, 0.3, { maxY: 2.5 }),
+  gardenCircle('garden-tree-e', 'furniture', 2, -13.8, 0.3, { maxY: 2.5 }),
+  gardenBox('garden-sign', 'furniture', -2.15, 2.15, -15.82, -15.58, { maxY: 1.9 }),
 ];
 
 export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {
@@ -117,8 +184,8 @@ export function getWorldSolidTransform(id: string, height: number, centerY = hei
 }
 
 export const WORLD_PORTALS: WorldPortal[] = [
-  { id: 'main-hall-west', axis: 'x', position: [-8, 0, 0], width: 4, connects: ['classroom', 'hallway'] },
-  { id: 'main-play-east', axis: 'x', position: [8, 0, 0], width: 4, connects: ['classroom', 'playground'] },
+  { id: 'main-hall-west', axis: 'x', position: [-8, 0, 0], width: 4.3, connects: ['classroom', 'hallway'] },
+  { id: 'main-play-east', axis: 'x', position: [8, 0, 0], width: 4.3, connects: ['classroom', 'playground'] },
   { id: 'hall-art-north', axis: 'z', position: [-12, 0, -8], width: 4, connects: ['hallway', 'art-room'] },
   { id: 'hall-storage-south', axis: 'z', position: [-12, 0, 8], width: 4, connects: ['hallway', 'storage'] },
 ];
@@ -154,20 +221,13 @@ export const WORLD_INTERACTION_TARGETS = [
 ];
 
 export const CAMERA_BLOCKERS = WORLD_SOLIDS.filter((solid) => (
-  solid.kind === 'wall'
-  || solid.kind === 'boundary'
-  || solid.kind === 'furniture'
-  || solid.kind === 'counter'
-  || solid.kind === 'cubby'
-  || solid.kind === 'table'
-  || solid.kind === 'box'
-  || solid.kind === 'playground'
-  || solid.kind === 'activity-station'
-  || solid.kind === 'route-gate'
+  solid.cameraRole === 'structural' || solid.cameraRole === 'substantial'
 ));
 
 export const PLAYER_RADIUS = 0.42;
 export const TRICYCLE_RADIUS = 0.7;
+export const MIN_CAMERA_DISTANCE = 1.65;
+const EMERGENCY_CAMERA_DISTANCE = 0.45;
 const trackedPlayerPosition: [number, number, number] = [0, 0, 0];
 
 export function trackPlayerPosition(position: THREE.Vector3) {
@@ -181,6 +241,11 @@ export function getTrackedPlayerPosition(): [number, number, number] {
 }
 
 function distanceToSolid(point: THREE.Vector3, solid: WorldSolid) {
+  if (solid.shape === 'circle' && solid.radius !== undefined) {
+    const centerX = (solid.minX + solid.maxX) / 2;
+    const centerZ = (solid.minZ + solid.maxZ) / 2;
+    return Math.max(0, Math.hypot(point.x - centerX, point.z - centerZ) - solid.radius);
+  }
   const dx = Math.max(solid.minX - point.x, 0, point.x - solid.maxX);
   const dz = Math.max(solid.minZ - point.z, 0, point.z - solid.maxZ);
   return Math.hypot(dx, dz);
@@ -188,6 +253,14 @@ function distanceToSolid(point: THREE.Vector3, solid: WorldSolid) {
 
 function overlapsCircle(point: THREE.Vector3, radius: number, solid: WorldSolid) {
   return distanceToSolid(point, solid) < radius;
+}
+
+function blocksCameraAt(point: THREE.Vector3, radius: number, solid: WorldSolid) {
+  const minY = solid.minY ?? 0;
+  const maxY = solid.maxY ?? 3;
+  return point.y + radius >= minY
+    && point.y - radius <= maxY
+    && overlapsCircle(point, radius, solid);
 }
 
 export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_RADIUS, zone: GameZone = 'hub') {
@@ -218,6 +291,22 @@ export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_
 function pushOut(point: THREE.Vector3, radius: number, solid: WorldSolid, axis: 'x' | 'z') {
   if (!overlapsCircle(point, radius, solid)) return;
   const clearance = radius + 0.0001;
+  if (solid.shape === 'circle' && solid.radius !== undefined) {
+    const centerX = (solid.minX + solid.maxX) / 2;
+    const centerZ = (solid.minZ + solid.maxZ) / 2;
+    const offsetX = point.x - centerX;
+    const offsetZ = point.z - centerZ;
+    const distance = Math.hypot(offsetX, offsetZ);
+    const requiredDistance = solid.radius + clearance;
+    if (distance < 0.0001) {
+      if (axis === 'x') point.x = centerX + requiredDistance;
+      else point.z = centerZ + requiredDistance;
+      return;
+    }
+    point.x = centerX + (offsetX / distance) * requiredDistance;
+    point.z = centerZ + (offsetZ / distance) * requiredDistance;
+    return;
+  }
   if (axis === 'x') {
     const left = Math.abs(point.x - (solid.minX - clearance));
     const right = Math.abs(point.x - (solid.maxX + clearance));
@@ -237,6 +326,7 @@ export function isWalkable(
 ) {
   return isWithinWalkableBounds(position, radius, zone) && !WORLD_SOLIDS.some((solid) => (
     solid.zone === zone
+    && solid.collision !== false
     && !ignoredKinds.includes(solid.kind)
     && overlapsCircle(position, radius, solid)
   ));
@@ -259,12 +349,12 @@ export function resolveMovement(
     const before = next.clone();
     next.x += stepX;
     for (const solid of WORLD_SOLIDS) {
-      if (solid.zone === zone) pushOut(next, radius, solid, 'x');
+      if (solid.zone === zone && solid.collision !== false) pushOut(next, radius, solid, 'x');
     }
     if (!isWithinWalkableBounds(next, radius, zone)) next.x = before.x;
     next.z += stepZ;
     for (const solid of WORLD_SOLIDS) {
-      if (solid.zone === zone) pushOut(next, radius, solid, 'z');
+      if (solid.zone === zone && solid.collision !== false) pushOut(next, radius, solid, 'z');
     }
     if (!isWithinWalkableBounds(next, radius, zone)) next.z = before.z;
   }
@@ -277,22 +367,48 @@ export function resolveCameraPosition(
   radius = 0.2,
   zone: GameZone = 'hub',
 ) {
-  const direction = desired.clone().sub(target);
-  const distance = direction.length();
+  const desiredOffset = desired.clone().sub(target);
+  const distance = desiredOffset.length();
   if (distance < 0.001) return desired.clone();
-  direction.normalize();
-  let safeDistance = distance;
-  const steps = Math.ceil(distance / 0.2);
-  for (let index = 1; index <= steps; index += 1) {
-    const sample = target.clone().addScaledVector(direction, distance * (index / steps));
-    if (CAMERA_BLOCKERS.some((solid) => solid.zone === zone && overlapsCircle(sample, radius, solid))) {
-      // The last verified-clear sample is authoritative. A forced minimum can
-      // jump past nearby geometry when the player stands close to a wall.
-      safeDistance = distance * ((index - 1) / steps);
-      break;
+  const horizontal = new THREE.Vector2(desiredOffset.x, desiredOffset.z);
+  const vertical = desiredOffset.y;
+  const blockers = CAMERA_BLOCKERS.filter((solid) => solid.zone === zone);
+
+  const trace = (direction: THREE.Vector3) => {
+    const steps = Math.max(1, Math.ceil(distance / 0.16));
+    for (let index = 1; index <= steps; index += 1) {
+      const sampleDistance = distance * (index / steps);
+      const sample = target.clone().addScaledVector(direction, sampleDistance);
+      if (blockers.some((solid) => blocksCameraAt(sample, radius, solid))) {
+        return distance * ((index - 1) / steps);
+      }
+    }
+    return distance;
+  };
+
+  const yawOffsets = [0, Math.PI / 8, -Math.PI / 8, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI];
+  let bestDirection = desiredOffset.clone().normalize();
+  let bestSafeDistance = trace(bestDirection);
+  if (bestSafeDistance >= MIN_CAMERA_DISTANCE) {
+    return target.clone().addScaledVector(bestDirection, Math.min(distance, bestSafeDistance));
+  }
+  for (const yaw of yawOffsets.slice(1)) {
+    const rotated = horizontal.clone().rotateAround(new THREE.Vector2(), yaw);
+    const candidateDirection = new THREE.Vector3(rotated.x, vertical, rotated.y).normalize();
+    const candidateSafeDistance = trace(candidateDirection);
+    if (candidateSafeDistance > bestSafeDistance) {
+      bestSafeDistance = candidateSafeDistance;
+      bestDirection = candidateDirection;
+    }
+    if (candidateSafeDistance >= MIN_CAMERA_DISTANCE) {
+      return target.clone().addScaledVector(candidateDirection, Math.min(distance, candidateSafeDistance));
     }
   }
-  return target.clone().addScaledVector(direction, safeDistance);
+
+  const safeDistance = bestSafeDistance >= MIN_CAMERA_DISTANCE
+    ? bestSafeDistance
+    : Math.max(bestSafeDistance, EMERGENCY_CAMERA_DISTANCE);
+  return target.clone().addScaledVector(bestDirection, Math.min(distance, safeDistance));
 }
 
 export function findApproachPoint(

@@ -8,7 +8,7 @@ export interface CameraInputState {
 
 // One stable frame keeps the hub readable on both desktop and touch devices.
 // Obstruction handling in world.ts can still pull this frame forward safely.
-export const CAMERA_DISTANCE = 8.8;
+export const CAMERA_DISTANCE = 9.8;
 
 const cameraInput: CameraInputState = {
   yaw: 0,

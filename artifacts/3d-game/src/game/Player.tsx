@@ -59,6 +59,9 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     const onPointerUp = () => {
       mouseDragging.current = false;
     };
+    const onPointerCancel = () => {
+      mouseDragging.current = false;
+    };
     const onPointerMove = (event: PointerEvent) => {
       if (!gameplayBlocked.current && mouseDragging.current && event.pointerType === 'mouse') {
         addCameraOrbit(event.movementX, event.movementY);
@@ -69,11 +72,15 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     };
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('blur', onPointerCancel);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('keydown', onKeyDown);
     return () => {
       canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('blur', onPointerCancel);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('keydown', onKeyDown);
     };
@@ -137,14 +144,21 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       desiredVelocity.current.normalize().multiplyScalar(speed);
     }
 
-    const locomotionBlend = 1 - Math.exp(-(desiredVelocity.current.lengthSq() > 0 ? 12 : 16) * delta);
-    velocity.current.lerp(desiredVelocity.current, locomotionBlend);
+    if (blocked) {
+      velocity.current.set(0, 0, 0);
+      desiredVelocity.current.set(0, 0, 0);
+      turnVelocity.current = 0;
+      yVelocity.current = 0;
+    } else {
+      const locomotionBlend = 1 - Math.exp(-(desiredVelocity.current.lengthSq() > 0 ? 12 : 16) * delta);
+      velocity.current.lerp(desiredVelocity.current, locomotionBlend);
+    }
 
     if (velocity.current.length() > 0.08) {
-      
+
       const targetAngle = Math.atan2(-velocity.current.x, -velocity.current.z);
       const currentRotation = localRef.current.rotation.y;
-      
+
       const diff = THREE.MathUtils.euclideanModulo(targetAngle - currentRotation + Math.PI, Math.PI * 2) - Math.PI;
       let wrappedDiff = diff;
       if (wrappedDiff > Math.PI) wrappedDiff -= Math.PI * 2;
@@ -179,19 +193,21 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     }
 
     // Jumping and Gravity
-    const isGrounded = localRef.current.position.y <= 0;
-    
-    if (isGrounded) {
-      localRef.current.position.y = 0;
-      yVelocity.current = 0;
-      if (!blocked && keys.jump && !crouching && !isRiding) {
-        yVelocity.current = 6;
+    if (!blocked) {
+      const isGrounded = localRef.current.position.y <= 0;
+
+      if (isGrounded) {
+        localRef.current.position.y = 0;
+        yVelocity.current = 0;
+        if (keys.jump && !crouching && !isRiding) {
+          yVelocity.current = 6;
+        }
+      } else {
+        yVelocity.current -= 15 * delta; // Gravity
       }
-    } else {
-      yVelocity.current -= 15 * delta; // Gravity
+
+      localRef.current.position.y += yVelocity.current * delta;
     }
-    
-    localRef.current.position.y += yVelocity.current * delta;
 
     if (!cameraReady.current) {
       cameraBaseHeading.current = localRef.current.rotation.y;

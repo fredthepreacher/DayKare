@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { CharacterModel, type CharacterModelProps } from './CharacterModel';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
@@ -33,6 +33,9 @@ const KID_CAST: KidDefinition[] = [
 function namePhase(name: string) {
   return [...name].reduce((total, character) => total + character.charCodeAt(0), 0) * 0.37;
 }
+
+let nextGreetingAt = 0;
+let greetingClearTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function NPCs({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
@@ -154,6 +157,8 @@ function Teacher({
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   const destination = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const patrol = useRef({ key: '', index: 0, dwellUntil: 0 });
+  const [isSupervising, setIsSupervising] = useState(false);
+  const supervisingRef = useRef(false);
 
   useFrame((state, delta) => {
     if (!ref.current) return;
@@ -169,6 +174,11 @@ function Teacher({
     } else if (arrived && state.clock.elapsedTime >= patrol.current.dwellUntil) {
       patrol.current.index = (patrol.current.index + 1) % spots.length;
       patrol.current.dwellUntil = 0;
+    }
+    const supervising = arrived && patrol.current.dwellUntil > state.clock.elapsedTime;
+    if (supervising !== supervisingRef.current) {
+      supervisingRef.current = supervising;
+      setIsSupervising(supervising);
     }
     if (active && playerRef.current) {
       smoothTurn(ref.current, playerRef.current.position, delta);
@@ -205,8 +215,11 @@ function Teacher({
   return (
     <group ref={ref} position={defaultPos}>
       <group scale={1.28}>
-        <CharacterModel bodyColor={color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood="curious" isTeacher isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={namePhase(name)} idleEnergy={0.55} />
+        <CharacterModel bodyColor={color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood="curious" isTeacher isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={namePhase(name)} idleEnergy={0.55} activityMode={isSupervising ? 'gathering' : 'standing'} />
       </group>
+      {isSupervising && (
+        <TeacherProp name={name} schedule={schedule} />
+      )}
     </group>
   );
 }
@@ -241,6 +254,9 @@ function Kid({
   const activeDialogue = useGameStore((state) => state.activeDialogue);
   const active = useGameStore((state) => state.activeInteractable === `kid-${name}`);
   const mood = useGameStore((state) => state.friends[name]?.mood ?? 'happy');
+  const waitingCustomers = useGameStore((state) => state.waitingCustomers);
+  const [settled, setSettled] = useState(false);
+  const settledRef = useRef(false);
   const phase = useMemo(() => namePhase(name), [name]);
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const activityTarget = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
@@ -271,9 +287,18 @@ function Kid({
       activityState.current.arrived = false;
       activityState.current.cycle = 0;
       activityState.current.stuckFor = 0;
-      activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase, 0));
+      activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, 0, waitingCustomers));
     }
-    const distanceToActivity = ref.current.position.distanceTo(activityTarget);
+    let distanceToActivity = ref.current.position.distanceTo(activityTarget);
+    if (schedule === 'juice-club') {
+      const queueTarget = kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers);
+      if (queueTarget.distanceToSquared(activityTarget) > 0.01) {
+        activityTarget.copy(queueTarget);
+        activityState.current.arrived = false;
+        activityState.current.dwellUntil = 0;
+        distanceToActivity = ref.current.position.distanceTo(activityTarget);
+      }
+    }
     if (distanceToActivity < 0.48 && !activityState.current.arrived) {
       activityState.current.arrived = true;
       activityState.current.dwellUntil = state.clock.elapsedTime + 3.5 + (phase % 3);
@@ -290,13 +315,34 @@ function Kid({
       if (activityState.current.stuckFor > 2.8) {
         activityState.current.cycle += 1;
         activityState.current.stuckFor = 0;
-        activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase, activityState.current.cycle));
+        activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers));
       }
     } else if (state.clock.elapsedTime >= activityState.current.dwellUntil) {
       activityState.current.cycle += 1;
       activityState.current.arrived = false;
       activityState.current.dwellUntil = 0;
-      activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase, activityState.current.cycle));
+      activityTarget.copy(kidDestination(name, schedule, isRainy, defaultPos, phase, activityState.current.cycle, waitingCustomers));
+    }
+    const settled = activityState.current.arrived
+      && state.clock.elapsedTime < activityState.current.dwellUntil
+      && distanceToActivity < 0.48;
+    if (settled !== settledRef.current) {
+      settledRef.current = settled;
+      setSettled(settled);
+    }
+    if (
+      settled
+      && playerRef.current
+      && state.clock.elapsedTime >= nextGreetingAt
+      && ref.current.position.distanceTo(playerRef.current.position) < 2.15
+    ) {
+      const game = useGameStore.getState();
+      if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning && !game.activeInteractable) {
+        game.setAmbientMessage(kidGreeting(name, schedule));
+        if (greetingClearTimer) clearTimeout(greetingClearTimer);
+        greetingClearTimer = setTimeout(() => useGameStore.getState().setAmbientMessage(null), 3200);
+        nextGreetingAt = state.clock.elapsedTime + 12 + (phase % 5);
+      }
     }
     activityState.current.lastPosition.copy(ref.current.position);
     mirror.copy(ref.current.position);
@@ -305,10 +351,52 @@ function Kid({
 
   return (
     <group ref={ref} position={defaultPos}>
-      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} activityMode={kidActivityMode(schedule, isRainy, phase)} />
-      <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />
+      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} activityMode={settled ? kidActivityMode(schedule, isRainy, phase) : 'standing'} />
+      {settled && <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />}
+      {settled && <SocialGameMarker schedule={schedule} phase={phase} cycle={activityState.current.cycle} />}
     </group>
   );
+}
+
+export function kidDestination(
+  name: string,
+  schedule: string,
+  rainy: boolean,
+  defaultPos: [number, number, number],
+  phase: number,
+  cycle: number,
+  waitingCustomers: string[],
+) {
+  const queueIndex = schedule === 'juice-club' ? waitingCustomers.indexOf(name) : -1;
+  // Customers are visibly ordered from the counter outward; everyone else still
+  // uses the existing Juice Club gathering destinations.
+  if (queueIndex >= 0) return new THREE.Vector3(2.05 - Math.min(queueIndex, 4) * 0.68, 0, -1.92);
+  // On every third stop, pairs briefly share a recognizable game/table area.
+  // Their individual dwell clocks naturally split the cluster back apart.
+  if (cycle % 3 === 0) {
+    const pair = Math.floor(KID_CAST.findIndex((kid) => kid.name === name) / 2);
+    const groupSpots: Partial<Record<string, [number, number, number][]>> = {
+      'morning-play': [[-2.7, 0, 1.4], [0.5, 0, 3.1], [2.8, 0, 0.5], [-0.2, 0, -1.8], [3.1, 0, 2.6]],
+      'art-time': [[-14.1, 0, -11.5], [-12.6, 0, -9.5], [-9.7, 0, -10.6], [-9.7, 0, -13.5], [-12.2, 0, -14.6]],
+      'outdoor-play': rainy
+        ? [[3.4, 0, -6.2], [1.5, 0, -5.2], [-1.4, 0, -5.5], [2.5, 0, -4.6], [-3.1, 0, -5.5]]
+        : [[10.3, 0, -10.7], [13.6, 0, -8.2], [10.6, 0, -1.6], [14.1, 0, 1.1], [13.6, 0, 8.4]],
+    };
+    const spots = groupSpots[schedule];
+    if (spots) return new THREE.Vector3(...spots[pair % spots.length]);
+  }
+  return scheduleDestination(schedule, rainy, defaultPos, phase, cycle);
+}
+
+function kidGreeting(name: string, schedule: string) {
+  const greetings: Record<string, string> = {
+    'morning-play': `${name} gives you a cheerful wave from the game.`,
+    'art-time': `${name} holds up their work with a proud little grin.`,
+    'juice-club': `${name} waves from the Juice Club line.`,
+    'outdoor-play': `${name} calls, "Want to play?"`,
+    pickup: `${name} gives you a quick goodbye wave.`,
+  };
+  return greetings[schedule] ?? `${name} waves hello.`;
 }
 
 export function kidActivityMode(
@@ -334,17 +422,55 @@ function JuiceClubQueue() {
   if (schedule !== 'juice-club') return null;
   return (
     <group>
-      {[0, 1, 2].map((index) => (
-        <mesh key={index} position={[0.9 - index * 1.25, 0.035, -1.65 + index * 0.08]} rotation={[-Math.PI / 2, 0, 0]}>
+      {[0, 1, 2, 3, 4].map((index) => (
+        <mesh key={index} position={[2.05 - index * 0.68, 0.035, -1.92]} rotation={[-Math.PI / 2, 0, 0]}>
           <torusGeometry args={[0.38, 0.035, 8, 22]} />
           <meshBasicMaterial color={index < waitingCustomers.length ? '#ffd166' : '#fff0c7'} transparent opacity={index < waitingCustomers.length ? 0.82 : 0.22} />
         </mesh>
       ))}
+      <mesh position={[2.05, 0.055, -1.38]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.76, 0.28]} />
+        <meshBasicMaterial color={waitingCustomers.length ? '#77c9b7' : '#d9e8dd'} transparent opacity={0.8} />
+      </mesh>
       <group ref={tray} position={[3, 1.24, -2.32]}>
         <mesh><boxGeometry args={[0.9, 0.06, 0.38]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
-        <mesh position={[-0.22, 0.16, 0]}><cylinderGeometry args={[0.1, 0.08, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.85} /></mesh>
-        <mesh position={[0.22, 0.11, 0]}><boxGeometry args={[0.2, 0.2, 0.2]} /><meshStandardMaterial color="#dfb976" /></mesh>
+        {Array.from({ length: Math.min(waitingCustomers.length, 3) }, (_, index) => (
+          <mesh key={index} position={[-0.26 + index * 0.26, 0.16, 0]}><cylinderGeometry args={[0.1, 0.08, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.85} /></mesh>
+        ))}
+        {waitingCustomers.length > 0 && <mesh position={[0.32, 0.11, 0]}><boxGeometry args={[0.2, 0.2, 0.2]} /><meshStandardMaterial color="#dfb976" /></mesh>}
       </group>
+    </group>
+  );
+}
+
+function TeacherProp({ name, schedule }: { name: string; schedule: string }) {
+  if (schedule === 'art-time') {
+    return (
+      <group position={[0.42, 0.82, -0.22]} rotation={[0, 0.25, -0.2]}>
+        <mesh><boxGeometry args={[0.3, 0.38, 0.035]} /><meshStandardMaterial color="#fff1cf" /></mesh>
+        <mesh position={[0, 0.1, -0.025]}><boxGeometry args={[0.18, 0.025, 0.02]} /><meshBasicMaterial color="#e76f8c" /></mesh>
+      </group>
+    );
+  }
+  if (schedule === 'outdoor-play') {
+    return <mesh position={[0.42, 0.88, -0.25]}><coneGeometry args={[0.12, 0.28, 12]} /><meshStandardMaterial color="#f2b85b" /></mesh>;
+  }
+  if (schedule === 'juice-club' && name === 'Mr. Davis') {
+    return <mesh position={[0.38, 0.78, -0.28]}><cylinderGeometry args={[0.11, 0.09, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.85} /></mesh>;
+  }
+  return <mesh position={[0.4, 0.84, -0.25]}><boxGeometry args={[0.22, 0.3, 0.06]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
+}
+
+function SocialGameMarker({ schedule, phase, cycle }: { schedule: string; phase: number; cycle: number }) {
+  // A few synchronized markers make a temporary game/table cluster legible
+  // without adding per-NPC movement or scene-wide simulation.
+  if ((Math.floor(phase) + cycle) % 3 !== 0 || schedule === 'pickup') return null;
+  const color = schedule === 'art-time' ? '#e76f8c' : schedule === 'juice-club' ? '#f2d16b' : '#71d4b4';
+  return (
+    <group position={[-0.46, 0.04, 0.2]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.12, 10]} /><meshBasicMaterial color={color} transparent opacity={0.8} /></mesh>
+      {schedule === 'outdoor-play' && <mesh position={[0, 0.16, 0]}><sphereGeometry args={[0.1, 8, 6]} /><meshStandardMaterial color="#e8613c" /></mesh>}
+      {schedule === 'morning-play' && <mesh position={[0, 0.1, 0]} rotation={[0.2, 0.3, 0]}><boxGeometry args={[0.18, 0.18, 0.18]} /><meshStandardMaterial color="#4c82d4" /></mesh>}
     </group>
   );
 }
