@@ -14,10 +14,100 @@ export function HubDetails() {
       <Cubbies imaginationMode={isImaginationMode} />
       <ReadingNook />
       <ArtGallery imaginationMode={isImaginationMode} />
+      <RoomFinishing imaginationMode={isImaginationMode} />
       <PlaygroundDetails />
       <CeilingMobile imaginationMode={isImaginationMode} />
       <ScheduleBeacon schedule={schedule} imaginationMode={isImaginationMode} />
       {storageOrganizer && <LostAndFoundOrganizer />}
+    </group>
+  );
+}
+
+function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
+  const accent = imaginationMode ? '#52e7ff' : '#4c82d4';
+  const warm = imaginationMode ? '#ff4da6' : '#e8613c';
+  const sunny = imaginationMode ? '#ffd166' : '#e6ae2f';
+  return (
+    <group>
+      {/* Classroom: low-cost wall dots and a soft story-time mat. */}
+      <mesh position={[-3.8, 0.025, 5.7]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[1.15, 20]} />
+        <meshStandardMaterial color="#78b9b2" roughness={0.92} />
+      </mesh>
+      {[-4.8, -3.8, -2.8].map((x, index) => (
+        <mesh key={x} position={[x, 1.9, 7.71]}>
+          <circleGeometry args={[0.28 + index * 0.04, 12]} />
+          <meshStandardMaterial color={[warm, sunny, accent][index]} roughness={0.8} />
+        </mesh>
+      ))}
+
+      {/* Hallway: a runner, name tiles, and cheerful pennants. */}
+      <mesh position={[-12, 0.025, 0]}>
+        <boxGeometry args={[2.35, 0.04, 10.8]} />
+        <meshStandardMaterial color={imaginationMode ? '#5935a5' : '#d77b6d'} roughness={0.94} />
+      </mesh>
+      {[-5, -3, -1, 1, 3, 5].map((z, index) => (
+        <group key={z}>
+          <mesh position={[-15.69, 1.55, z]} rotation={[0, Math.PI / 2, 0]}>
+            <boxGeometry args={[0.5, 0.42, 0.025]} />
+            <meshStandardMaterial color={[warm, sunny, accent][index % 3]} roughness={0.82} />
+          </mesh>
+          <mesh position={[-10.2, 0.055, z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.18, 10]} />
+            <meshBasicMaterial color={[accent, sunny, warm][index % 3]} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Art room: washable rug, paint cups, and pinned paper. */}
+      <mesh position={[-12, 0.025, -14.65]}>
+        <boxGeometry args={[5.2, 0.04, 1.1]} />
+        <meshStandardMaterial color={imaginationMode ? '#3d5bd6' : '#a8dce4'} roughness={0.92} />
+      </mesh>
+      {[-0.55, 0, 0.55].map((x, index) => (
+        <group key={x} position={[-12 + x, 1.12, -12]}>
+          <mesh>
+            <cylinderGeometry args={[0.11, 0.1, 0.22, 8]} />
+            <meshStandardMaterial color={[warm, sunny, accent][index]} roughness={0.76} />
+          </mesh>
+          <mesh position={[0, 0.2, 0]} rotation={[0, 0, 0.14 - index * 0.12]}>
+            <cylinderGeometry args={[0.014, 0.014, 0.3, 5]} />
+            <meshBasicMaterial color="#7a5134" />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Storage: box labels and grounded foam shapes without extra shadows. */}
+      {[
+        [-14, 1.02, 9.48, warm],
+        [-11, 1.02, 13.24, accent],
+        [-14, 1.92, 9.58, sunny],
+      ].map(([x, y, z, color], index) => (
+        <mesh key={index} position={[x as number, y as number, z as number]}>
+          <boxGeometry args={[0.48, 0.24, 0.025]} />
+          <meshStandardMaterial color={color as string} roughness={0.84} />
+        </mesh>
+      ))}
+      {[-13.2, -12.4, -11.6].map((x, index) => (
+        <mesh key={x} position={[x, 0.12, 9]} rotation={[0, index * 0.45, 0]}>
+          <boxGeometry args={[0.3, 0.24, 0.3]} />
+          <meshStandardMaterial color={[accent, warm, sunny][index]} roughness={0.9} />
+        </mesh>
+      ))}
+
+      {/* Playground: hopscotch tiles and a row of planted flowers. */}
+      {[0, 1, 2, 3].map((index) => (
+        <mesh key={index} position={[9.05 + (index % 2) * 0.34, 0.04, -7.8 + index * 0.58]}>
+          <boxGeometry args={[0.58, 0.035, 0.5]} />
+          <meshStandardMaterial color={[sunny, accent, warm][index % 3]} roughness={0.9} />
+        </mesh>
+      ))}
+      {[-13.5, -12.4, -11.3].map((z, index) => (
+        <group key={z} position={[15.2, 0, z]}>
+          <mesh position={[0, 0.34, 0]}><cylinderGeometry args={[0.025, 0.025, 0.65, 5]} /><meshBasicMaterial color="#4d9a73" /></mesh>
+          <mesh position={[0, 0.68, 0]}><sphereGeometry args={[0.16, 8, 6]} /><meshStandardMaterial color={[warm, sunny, accent][index]} /></mesh>
+        </group>
+      ))}
     </group>
   );
 }

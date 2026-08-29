@@ -1,4 +1,4 @@
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky, KeyboardControls } from '@react-three/drei';
 import { Player } from './Player';
 import { Environment } from './Environment';
@@ -15,10 +15,13 @@ import { resolveInteractionCandidate } from './interactionFocus';
 
 function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   const forward = useRef(new THREE.Vector3());
+  const cameraForward = useRef(new THREE.Vector3());
+  const { camera } = useThree();
   useFrame(() => {
     if (!playerRef.current) return;
     forward.current.set(0, 0, -1).applyQuaternion(playerRef.current.quaternion);
-    const candidate = resolveInteractionCandidate(playerRef.current.position, forward.current);
+    camera.getWorldDirection(cameraForward.current);
+    const candidate = resolveInteractionCandidate(playerRef.current.position, forward.current, cameraForward.current);
     const store = useGameStore.getState();
     if (store.activeInteractable !== (candidate?.id ?? null)) {
       store.setActiveInteractable(candidate?.id ?? null);

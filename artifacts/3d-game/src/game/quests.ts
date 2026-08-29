@@ -185,9 +185,14 @@ function validObjectiveStates(definition: QuestDefinition, state: unknown): Ques
         : 'pending',
     ]),
   ) as Record<string, ObjectiveStatus>;
-  const status: QuestStatus = candidate.status === 'complete' || candidate.status === 'active'
+  let status: QuestStatus = candidate.status === 'complete' || candidate.status === 'active'
     ? candidate.status
     : 'locked';
+  if (status === 'locked') {
+    definition.objectives.forEach((objective) => {
+      objectiveStates[objective.id] = 'pending';
+    });
+  }
   let currentObjectiveId = typeof candidate.currentObjectiveId === 'string'
     && definition.objectives.some((objective) => objective.id === candidate.currentObjectiveId)
     ? candidate.currentObjectiveId
@@ -195,8 +200,10 @@ function validObjectiveStates(definition: QuestDefinition, state: unknown): Ques
   const completionCount = typeof candidate.completionCount === 'number' && Number.isFinite(candidate.completionCount)
     ? Math.max(0, Math.floor(candidate.completionCount))
     : 0;
+  const firstIncomplete = definition.objectives.find((objective) => objectiveStates[objective.id] !== 'complete');
+  if (status === 'complete' && firstIncomplete) status = 'active';
+  if (status === 'active' && !firstIncomplete) status = 'complete';
   if (status === 'active') {
-    const firstIncomplete = definition.objectives.find((objective) => objectiveStates[objective.id] !== 'complete');
     currentObjectiveId = currentObjectiveId && objectiveStates[currentObjectiveId] !== 'complete'
       ? currentObjectiveId
       : firstIncomplete?.id ?? definition.objectives[0]?.id ?? null;
@@ -247,6 +254,10 @@ export function normalizeQuestStates(value: unknown, legacyBinkyStatus?: string,
 
   if (legacyBinkyStatus === 'returned-good' || normalized['where-binky'].status === 'complete') {
     normalized['rainbow-tidy-up'] = activateQuest(normalized, 'rainbow-tidy-up')['rainbow-tidy-up'];
+  }
+  if (!legacyBinkyStatus && normalized['where-binky'].status === 'locked') {
+    // Partial/corrupt saves must still begin with the intended opening quest.
+    normalized['where-binky'] = initial['where-binky'];
   }
   if (legacyBinkyStatus === 'found' && !inventory.includes('binky')) {
     // The store adds the actual recovery world item; this keeps migration deterministic.

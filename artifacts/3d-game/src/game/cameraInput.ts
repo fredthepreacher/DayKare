@@ -3,6 +3,7 @@ export interface CameraInputState {
   pitch: number;
   yawVelocity: number;
   pitchVelocity: number;
+  recenterRequested: boolean;
 }
 
 const cameraInput: CameraInputState = {
@@ -10,6 +11,7 @@ const cameraInput: CameraInputState = {
   pitch: 0.22,
   yawVelocity: 0,
   pitchVelocity: 0,
+  recenterRequested: false,
 };
 
 export function getCameraInput() {
@@ -17,8 +19,10 @@ export function getCameraInput() {
 }
 
 export function addCameraOrbit(deltaX: number, deltaY: number) {
-  cameraInput.yawVelocity += deltaX * 0.035;
-  cameraInput.pitchVelocity += deltaY * 0.025;
+  // Pointer movement is already frame-rate independent. Applying it directly
+  // prevents a fast mouse from building up an unpredictable swing after drag.
+  cameraInput.yaw += deltaX * 0.008;
+  cameraInput.pitch = Math.max(-0.05, Math.min(0.62, cameraInput.pitch + deltaY * 0.006));
 }
 
 export function recenterCamera() {
@@ -26,12 +30,17 @@ export function recenterCamera() {
   cameraInput.pitch = 0.22;
   cameraInput.yawVelocity = 0;
   cameraInput.pitchVelocity = 0;
+  cameraInput.recenterRequested = true;
 }
 
-export function stepCameraInput(delta: number) {
-  cameraInput.yaw += cameraInput.yawVelocity * delta;
-  cameraInput.pitch = Math.max(-0.05, Math.min(0.62, cameraInput.pitch + cameraInput.pitchVelocity * delta));
-  const damping = Math.exp(-10 * delta);
-  cameraInput.yawVelocity *= damping;
-  cameraInput.pitchVelocity *= damping;
+export function consumeCameraRecenterRequest() {
+  const requested = cameraInput.recenterRequested;
+  cameraInput.recenterRequested = false;
+  return requested;
+}
+
+export function stepCameraInput(_delta: number) {
+  // Keep the small per-frame safety clamp, but do not add inertia to direct
+  // orbit input. This also keeps the result stable at 30/60/120 FPS.
+  cameraInput.pitch = Math.max(-0.05, Math.min(0.62, cameraInput.pitch));
 }

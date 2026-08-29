@@ -50,12 +50,49 @@ function scheduleDestination(
   defaultPos: [number, number, number],
   phase: number,
 ) {
-  if (schedule === 'outdoor-play' && !isRainy) return new THREE.Vector3(12 + Math.cos(phase) * 2.2, 0, Math.sin(phase) * 8);
-  if (schedule === 'outdoor-play') return new THREE.Vector3(4.8 + Math.cos(phase) * 1.2, 0, -5.2 + Math.sin(phase));
-  if (schedule === 'art-time') return new THREE.Vector3(-12 + Math.cos(phase) * 1.7, 0, -12 + Math.sin(phase) * 1.7);
-  if (schedule === 'juice-club') return new THREE.Vector3(Math.cos(phase) * 4.5, 0, Math.sin(phase) * 4);
-  if (schedule === 'pickup') return new THREE.Vector3(-6 + Math.cos(phase), 0, Math.sin(phase) * 4.8);
-  return new THREE.Vector3(...defaultPos);
+  const slot = Math.abs(Math.floor(phase * 10)) % 6;
+  const activitySpots: Record<string, [number, number, number][]> = {
+    'morning-play': [
+      [-3.4, 0, -0.8], [-2.2, 0, 2.4], [0, 0, 3.4],
+      [2.5, 0, 2.2], [3.5, 0, 0.2], [1.8, 0, -1.8],
+    ],
+    'art-time': [
+      [-14.5, 0, -12.8], [-14.5, 0, -10.4], [-12.8, 0, -9.2],
+      [-10.4, 0, -9.2], [-9.2, 0, -11.2], [-9.2, 0, -14.4],
+    ],
+    'juice-club': [
+      [0.9, 0, -3.0], [0.6, 0, -1.7], [-0.6, 0, -2.2],
+      [-1.6, 0, -1.0], [0.8, 0, 0.2], [-2.2, 0, 0.5],
+    ],
+    pickup: [
+      [-9.2, 0, -5.2], [-9.2, 0, -3.2], [-9.2, 0, -1.2],
+      [-9.2, 0, 1.2], [-9.2, 0, 3.2], [-9.2, 0, 5.2],
+    ],
+  };
+  if (schedule === 'outdoor-play' && isRainy) {
+    const rainySpots: [number, number, number][] = [
+      [3.6, 0, -6.7], [3.4, 0, -5.1], [1.8, 0, -6.2],
+      [1.1, 0, -4.8], [-1.6, 0, -5.6], [-3.4, 0, -5.2],
+    ];
+    return new THREE.Vector3(...rainySpots[slot]);
+  }
+  if (schedule === 'outdoor-play') {
+    const playgroundSpots: [number, number, number][] = [
+      [10, 0, -11.5], [14.1, 0, -9], [10.1, 0, -2.2],
+      [14.3, 0, 0.5], [14.5, 0, 8.7], [9.5, 0, 10.5],
+    ];
+    return new THREE.Vector3(...playgroundSpots[slot]);
+  }
+  const spots = activitySpots[schedule];
+  return spots ? new THREE.Vector3(...spots[slot]) : new THREE.Vector3(...defaultPos);
+}
+
+function smoothTurn(ref: THREE.Group, target: THREE.Vector3, delta: number) {
+  const offset = target.clone().sub(ref.position).setY(0);
+  if (offset.lengthSq() < 0.001) return;
+  const targetAngle = Math.atan2(offset.x, offset.z);
+  const difference = THREE.MathUtils.euclideanModulo(targetAngle - ref.rotation.y + Math.PI, Math.PI * 2) - Math.PI;
+  ref.rotation.y += difference * (1 - Math.exp(-8 * delta));
 }
 
 function stepNpc(
@@ -78,7 +115,7 @@ function stepNpc(
   const desired = ref.position.clone().addScaledVector(direction, Math.min(speed * delta, ref.position.distanceTo(navTarget)));
   const resolved = resolveMovement(ref.position, desired, 0.34, 0.24);
   ref.position.copy(resolved);
-  ref.lookAt(navTarget.x, ref.position.y, navTarget.z);
+  smoothTurn(ref, navTarget, delta);
 }
 
 function Teacher({
@@ -158,6 +195,8 @@ function Kid({
   const mood = useGameStore((state) => state.friends[name]?.mood ?? 'happy');
   const phase = useMemo(() => namePhase(name), [name]);
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
+  const activityTarget = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
+  const activityState = useRef({ key: '', dwellUntil: 0, arrived: false });
   const candidate = useMemo(() => ({
     id: `kid-${name}`,
     position: mirror,
@@ -170,14 +209,26 @@ function Kid({
 
   useFrame((state, delta) => {
     if (!ref.current) return;
-    const destination = scheduleDestination(schedule, isRainy, defaultPos, phase);
-    destination.x += Math.sin(state.clock.elapsedTime * 0.45 + phase) * 0.55;
-    destination.z += Math.cos(state.clock.elapsedTime * 0.37 + phase) * 0.55;
-    const paused = Math.sin(state.clock.elapsedTime * 0.48 + phase) > 0.82;
+    const activityKey = `${schedule}:${isRainy}`;
+    if (activityState.current.key !== activityKey) {
+      activityState.current.key = activityKey;
+      activityState.current.dwellUntil = 0;
+      activityState.current.arrived = false;
+      activityTarget.copy(scheduleDestination(schedule, isRainy, defaultPos, phase));
+    }
+    const distanceToActivity = ref.current.position.distanceTo(activityTarget);
+    if (distanceToActivity < 0.48 && !activityState.current.arrived) {
+      activityState.current.arrived = true;
+      activityState.current.dwellUntil = state.clock.elapsedTime + 3.5 + (phase % 3);
+    }
     if (active && playerRef.current) {
-      ref.current.lookAt(playerRef.current.position.x, ref.current.position.y, playerRef.current.position.z);
-    } else if (!paused) {
-      stepNpc(`kid-${name}`, ref.current, destination, playerRef.current, delta, 1.15);
+      smoothTurn(ref.current, playerRef.current.position, delta);
+    } else if (distanceToActivity >= 0.48) {
+      activityState.current.arrived = false;
+      stepNpc(`kid-${name}`, ref.current, activityTarget, playerRef.current, delta, 1.15);
+    } else if (state.clock.elapsedTime >= activityState.current.dwellUntil) {
+      const faceTarget = activityTarget.clone().multiplyScalar(0.82);
+      smoothTurn(ref.current, faceTarget, delta);
     }
     mirror.copy(ref.current.position);
     updateInteractionCandidate(`kid-${name}`, { position: mirror, valid: true });
@@ -185,7 +236,64 @@ function Kid({
 
   return (
     <group ref={ref} position={defaultPos}>
-      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} />
+      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} accessory={Math.floor(phase) % 2 === 0 ? 'backpack' : 'badge'} />
+      <ActivityProp schedule={schedule} rainy={isRainy} phase={phase} />
+    </group>
+  );
+}
+
+function ActivityProp({ schedule, rainy, phase }: { schedule: string; rainy: boolean; phase: number }) {
+  const prop = useRef<THREE.Group>(null);
+  useFrame((state) => {
+    if (!prop.current) return;
+    prop.current.position.y = 0.75 + Math.sin(state.clock.elapsedTime * 2.2 + phase) * 0.035;
+    prop.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.8 + phase) * 0.18;
+  });
+
+  if (schedule === 'art-time') {
+    return (
+      <group ref={prop} position={[0.42, 0.75, -0.32]} rotation={[0, 0, -0.35]}>
+        <mesh><cylinderGeometry args={[0.025, 0.025, 0.58, 6]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
+        <mesh position={[0, -0.31, 0]}><coneGeometry args={[0.07, 0.16, 6]} /><meshStandardMaterial color="#e8613c" /></mesh>
+      </group>
+    );
+  }
+  if (schedule === 'outdoor-play' && rainy) {
+    return (
+      <group ref={prop} position={[0, 0.75, -0.42]} rotation={[0.18, 0, 0]}>
+        <mesh position={[-0.18, 0, 0]}><boxGeometry args={[0.34, 0.04, 0.42]} /><meshStandardMaterial color="#4c82d4" /></mesh>
+        <mesh position={[0.18, 0, 0]}><boxGeometry args={[0.34, 0.04, 0.42]} /><meshStandardMaterial color="#f2b85b" /></mesh>
+      </group>
+    );
+  }
+  if (schedule === 'juice-club') {
+    return (
+      <group ref={prop} position={[0.34, 0.75, -0.3]}>
+        <mesh><cylinderGeometry args={[0.11, 0.09, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.88} /></mesh>
+        <mesh position={[0.02, 0.19, 0]} rotation={[0, 0, -0.18]}><cylinderGeometry args={[0.012, 0.012, 0.25, 5]} /><meshBasicMaterial color="#d76f78" /></mesh>
+      </group>
+    );
+  }
+  if (schedule === 'outdoor-play') {
+    return (
+      <mesh ref={prop} position={[0.42, 0.75, -0.32]}>
+        <sphereGeometry args={[0.2, 10, 8]} />
+        <meshStandardMaterial color="#e8613c" roughness={0.8} />
+      </mesh>
+    );
+  }
+  if (schedule === 'pickup') {
+    return (
+      <group ref={prop} position={[0.38, 0.75, -0.28]}>
+        <mesh><boxGeometry args={[0.3, 0.32, 0.18]} /><meshStandardMaterial color="#55b89b" /></mesh>
+        <mesh position={[0, 0.2, 0]}><torusGeometry args={[0.11, 0.025, 6, 10]} /><meshStandardMaterial color="#fff0b8" /></mesh>
+      </group>
+    );
+  }
+  return (
+    <group ref={prop} position={[0.4, 0.75, -0.3]}>
+      <mesh position={[0, -0.08, 0]}><boxGeometry args={[0.22, 0.22, 0.22]} /><meshStandardMaterial color="#4c82d4" /></mesh>
+      <mesh position={[0, 0.15, 0]} rotation={[0, 0.4, 0]}><boxGeometry args={[0.18, 0.18, 0.18]} /><meshStandardMaterial color="#e6ae2f" /></mesh>
     </group>
   );
 }

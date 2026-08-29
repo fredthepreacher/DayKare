@@ -45,9 +45,21 @@ export interface WalkableRegion {
   maxZ: number;
 }
 
+export interface WorldSolidTransform {
+  position: [number, number, number];
+  size: [number, number, number];
+}
+
 const box = (id: string, kind: SolidKind, minX: number, maxX: number, minZ: number, maxZ: number): WorldSolid => ({
   id, kind, minX, maxX, minZ, maxZ,
 });
+
+export const PLAY_SLIDE_RAMP = {
+  position: [12, 0.5, -3.5] as [number, number, number],
+  size: [1, 3, 0.2] as [number, number, number],
+  rotation: [-Math.PI / 4, 0, 0] as [number, number, number],
+  solid: box('play-slide-ramp', 'playground', 11.4, 12.6, -4.7, -2.3),
+};
 
 export const WORLD_SOLIDS: WorldSolid[] = [
   box('north-boundary', 'boundary', -16, 16, -16.3, -15.7),
@@ -60,10 +72,6 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('playground-divider-south', 'wall', 7.7, 8.3, 2, 8),
   box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2),
   box('hall-divider-south', 'wall', -8.3, -7.7, 2, 8),
-  box('art-north-wall', 'wall', -16, -8, -16.3, -15.7),
-  box('storage-south-wall', 'wall', -16, -8, 15.7, 16.3),
-  box('playground-north-wall', 'wall', 8, 16, -16.3, -15.7),
-  box('playground-south-wall', 'wall', 8, 16, 15.7, 16.3),
   box('juice-stand', 'counter', 2, 4, -3.6, -2.4),
   box('art-table', 'table', -13.7, -10.3, -13.7, -10.3),
   box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8),
@@ -72,12 +80,22 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('storage-box-a', 'box', -14.7, -13.3, 9.3, 10.7),
   box('storage-box-b', 'box', -11.8, -10.2, 13.1, 14.9),
   box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8),
+  PLAY_SLIDE_RAMP.solid,
   box('sandbox', 'playground', 10, 14, 3, 7),
   box('route-garden-district', 'route-gate', 13, 15.4, -14.3, -12.3),
   box('route-storybook-lane', 'route-gate', -15.4, -13, -14.3, -12.3),
   box('route-maker-market', 'route-gate', 13, 15.4, 12.2, 14.3),
   box('rainbow-tidy-up', 'activity-station', -0.65, 0.65, -4.65, -3.35),
 ];
+
+export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {
+  const solid = WORLD_SOLIDS.find((candidate) => candidate.id === id);
+  if (!solid) throw new Error(`Unknown world solid: ${id}`);
+  return {
+    position: [(solid.minX + solid.maxX) / 2, centerY, (solid.minZ + solid.maxZ) / 2],
+    size: [solid.maxX - solid.minX, height, solid.maxZ - solid.minZ],
+  };
+}
 
 export const WORLD_PORTALS: WorldPortal[] = [
   { id: 'main-hall-west', axis: 'x', position: [-8, 0, 0], width: 4, connects: ['classroom', 'hallway'] },
@@ -196,7 +214,9 @@ export function resolveCameraPosition(target: THREE.Vector3, desired: THREE.Vect
   for (let index = 1; index <= steps; index += 1) {
     const sample = target.clone().addScaledVector(direction, distance * (index / steps));
     if (CAMERA_BLOCKERS.some((solid) => overlapsCircle(sample, radius, solid))) {
-      safeDistance = Math.max(1.8, distance * ((index - 1) / steps));
+      // The last verified-clear sample is authoritative. A forced minimum can
+      // jump past nearby geometry when the player stands close to a wall.
+      safeDistance = distance * ((index - 1) / steps);
       break;
     }
   }

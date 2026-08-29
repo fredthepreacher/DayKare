@@ -4,6 +4,10 @@ import * as THREE from 'three';
 
 type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
+type Accessory = 'none' | 'backpack' | 'badge';
+
+const SHARED_ACCESSORY_BOX = new THREE.BoxGeometry(0.42, 0.5, 0.16);
+const SHARED_BADGE = new THREE.CircleGeometry(0.09, 10);
 
 export interface CharacterModelProps {
   bodyColor: string;
@@ -18,6 +22,7 @@ export interface CharacterModelProps {
   imaginationMode?: boolean;
   motionSeed?: number;
   idleEnergy?: number;
+  accessory?: Accessory;
 }
 
 const moodBrowRotation: Record<Mood, number> = {
@@ -41,6 +46,7 @@ export function CharacterModel({
   imaginationMode = false,
   motionSeed = 0,
   idleEnergy = 1,
+  accessory = 'none',
 }: CharacterModelProps) {
   const rig = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -278,6 +284,24 @@ export function CharacterModel({
         <mesh position={[0, 1.12, -0.32]} rotation={[0, 0, 0]} castShadow>
           <torusGeometry args={[0.22, 0.035, 8, 18]} />
           <meshStandardMaterial color="#e7b95e" metalness={0.35} roughness={0.45} />
+        </mesh>
+      )}
+      {accessory === 'backpack' && (
+        <group position={[0, 1.02, 0.3]}>
+          <mesh>
+            <primitive object={SHARED_ACCESSORY_BOX} attach="geometry" />
+            <meshStandardMaterial color={trimColor} roughness={0.82} />
+          </mesh>
+          <mesh position={[0, 0.02, 0.1]}>
+            <boxGeometry args={[0.24, 0.16, 0.04]} />
+            <meshStandardMaterial color={mainColor} roughness={0.82} />
+          </mesh>
+        </group>
+      )}
+      {accessory === 'badge' && (
+        <mesh position={[0.24, 1.13, -0.34]} rotation={[0, 0, 0]}>
+          <primitive object={SHARED_BADGE} attach="geometry" />
+          <meshStandardMaterial color={trimColor} roughness={0.65} />
         </mesh>
       )}
     </group>

@@ -1,4 +1,5 @@
 import { useGameStore } from './store';
+import { getWorldSolidTransform, PLAY_SLIDE_RAMP, WORLD_SOLIDS } from './world';
 
 export function Environment() {
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
@@ -59,27 +60,11 @@ export function Environment() {
         <meshStandardMaterial color={floorGrass} />
       </mesh>
 
-      {/* Walls (simplified blocks) */}
-      {/* Top Wall main */}
-      <Wall position={[0, 1.5, -8]} size={[16, 3, 0.5]} color={wallColor} />
-      {/* Bottom Wall main */}
-      <Wall position={[0, 1.5, 8]} size={[16, 3, 0.5]} color={wallColor} />
-      
-      {/* Divider between Main and Playground (Right) with door */}
-      <Wall position={[8, 1.5, -5]} size={[0.5, 3, 6]} color={wallColor} />
-      <Wall position={[8, 1.5, 5]} size={[0.5, 3, 6]} color={wallColor} />
-      
-      {/* Divider between Main and Hallway (Left) with door */}
-      <Wall position={[-8, 1.5, -5]} size={[0.5, 3, 6]} color={wallColor} />
-      <Wall position={[-8, 1.5, 5]} size={[0.5, 3, 6]} color={wallColor} />
-
-      {/* Far walls */}
-      <Wall position={[-16, 1.5, 0]} size={[0.5, 3, 32]} color={wallColor} />
-      <Wall position={[16, 1.5, 0]} size={[0.5, 3, 32]} color={wallColor} />
-      <Wall position={[-12, 1.5, -16]} size={[8, 3, 0.5]} color={wallColor} />
-      <Wall position={[-12, 1.5, 16]} size={[8, 3, 0.5]} color={wallColor} />
-      <Wall position={[12, 1.5, -16]} size={[8, 3, 0.5]} color={wallColor} />
-      <Wall position={[12, 1.5, 16]} size={[8, 3, 0.5]} color={wallColor} />
+      {/* Visible walls are derived from the same bounds used by collision. */}
+      {WORLD_SOLIDS.filter((solid) => solid.kind === 'wall' || solid.kind === 'boundary').map((solid) => {
+        const transform = getWorldSolidTransform(solid.id, 3);
+        return <Wall key={solid.id} position={transform.position} size={transform.size} color={wallColor} />;
+      })}
 
       {/* Decorations / Decor */}
       {/* Main room rug */}
@@ -89,52 +74,54 @@ export function Environment() {
       </mesh>
       
       {/* Playground Slide */}
-      <group position={[12, 0, -5]}>
-        <mesh position={[0, 1, 0]} castShadow>
-          <boxGeometry args={[1, 2, 1]} />
-          <meshStandardMaterial color="#3a86ff" />
-        </mesh>
-        <mesh position={[0, 0.5, 1.5]} rotation={[-Math.PI / 4, 0, 0]} castShadow>
-          <boxGeometry args={[1, 3, 0.2]} />
+      <group>
+        <AuthoredSolidBox id="play-slide" height={2} color="#3a86ff" />
+        <mesh position={PLAY_SLIDE_RAMP.position} rotation={PLAY_SLIDE_RAMP.rotation} castShadow>
+          <boxGeometry args={PLAY_SLIDE_RAMP.size} />
           <meshStandardMaterial color="#ff006e" />
         </mesh>
       </group>
       
       {/* Playground Sandbox */}
-      <mesh position={[12, 0.1, 5]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[4, 4]} />
-        <meshStandardMaterial color="#fb8500" />
-      </mesh>
+      <AuthoredSolidSurface id="sandbox" color="#fb8500" />
       
       {/* Art Room Tables */}
-      <group position={[-12, 0, -12]}>
-        <mesh position={[0, 0.5, 0]} castShadow>
-          <boxGeometry args={[3, 1, 3]} />
-          <meshStandardMaterial color="#8ecae6" />
-        </mesh>
+      <group>
+        <AuthoredSolidBox id="art-table" height={1} color="#8ecae6" />
         {/* Easels */}
-        <mesh position={[-2, 1, -2]} castShadow>
-          <boxGeometry args={[1, 2, 0.2]} />
-          <meshStandardMaterial color="#219ebc" />
-        </mesh>
+        <AuthoredSolidBox id="art-easel" height={2} color="#219ebc" />
       </group>
       
       {/* Storage Boxes */}
-      <group position={[-12, 0, 12]}>
-        <mesh position={[-2, 0.5, -2]} castShadow>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#bb9457" />
-        </mesh>
-        <mesh position={[-2, 1.5, -2]} castShadow>
+      <group>
+        <AuthoredSolidBox id="storage-box-a" height={1} color="#bb9457" />
+        <mesh position={[-14, 1.5, 10]} castShadow>
           <boxGeometry args={[0.8, 0.8, 0.8]} />
           <meshStandardMaterial color="#99582a" />
         </mesh>
-        <mesh position={[1, 0.5, 2]} castShadow>
-          <boxGeometry args={[1.5, 1, 1.5]} />
-          <meshStandardMaterial color="#bb9457" />
-        </mesh>
+        <AuthoredSolidBox id="storage-box-b" height={1} color="#bb9457" />
       </group>
     </group>
+  );
+}
+
+function AuthoredSolidBox({ id, height, color }: { id: string; height: number; color: string }) {
+  const transform = getWorldSolidTransform(id, height);
+  return (
+    <mesh position={transform.position} castShadow receiveShadow>
+      <boxGeometry args={transform.size} />
+      <meshStandardMaterial color={color} />
+    </mesh>
+  );
+}
+
+function AuthoredSolidSurface({ id, color }: { id: string; color: string }) {
+  const transform = getWorldSolidTransform(id, 0.06, 0.04);
+  return (
+    <mesh position={transform.position} receiveShadow>
+      <boxGeometry args={transform.size} />
+      <meshStandardMaterial color={color} />
+    </mesh>
   );
 }
 

@@ -27,9 +27,11 @@ export function updateInteractionCandidate(id: string, update: Partial<Interacti
 export function resolveInteractionCandidate(
   playerPosition: THREE.Vector3,
   playerForward: THREE.Vector3,
+  cameraForward?: THREE.Vector3,
   now = performance.now(),
 ) {
   const forward = playerForward.clone().setY(0).normalize();
+  const cameraIntent = (cameraForward ?? playerForward).clone().setY(0).normalize();
   let best: { candidate: InteractionCandidate; score: number } | null = null;
   for (const candidate of candidates.values()) {
     if (!candidate.valid) continue;
@@ -38,8 +40,14 @@ export function resolveInteractionCandidate(
     if (distance > candidate.range) continue;
     const direction = distance > 0.001 ? offset.clone().normalize() : forward;
     const facing = Math.max(-1, Math.min(1, forward.dot(direction)));
-    // Facing is a tie-breaker, not a hard gate: close targets remain usable on touch.
-    const score = candidate.priority * 100 + (1 - distance / candidate.range) * 30 + facing * 12;
+    const cameraFacing = Math.max(-1, Math.min(1, cameraIntent.dot(direction)));
+    // Priority is a nudge, not a trump card. A nearby, intended target should
+    // win over a quest target that happens to be farther away.
+    const score =
+      (1 - distance / candidate.range) * 58
+      + Math.max(0, facing) * 22
+      + Math.max(0, cameraFacing) * 12
+      + Math.min(candidate.priority, 100) * 0.08;
     if (!best || score > best.score) best = { candidate, score };
   }
   const nextId = best?.candidate.id ?? null;

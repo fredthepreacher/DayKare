@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WORLD_PORTALS, isWalkable, resolveMovement } from './world';
 
 const npcPositions = new Map<string, THREE.Vector3>();
+const npcPaths = new Map<string, { destinationKey: string; waypoints: THREE.Vector3[]; index: number }>();
 
 export function registerNpcPosition(id: string, position: THREE.Vector3) {
   npcPositions.set(id, position);
@@ -31,12 +32,25 @@ export function getPortalWaypoints(start: THREE.Vector3, target: THREE.Vector3) 
 }
 
 export function getNavigationTarget(id: string, current: THREE.Vector3, destination: THREE.Vector3) {
-  const waypoint = getPortalWaypoints(current, destination)[0] ?? destination;
+  const destinationKey = `${destination.x.toFixed(2)}:${destination.z.toFixed(2)}`;
+  let path = npcPaths.get(id);
+  if (!path || path.destinationKey !== destinationKey) {
+    const waypoints = getPortalWaypoints(current, destination)
+      .map((waypoint) => waypoint.clone().setY(0))
+      .filter((waypoint) => isWalkable(waypoint, 0.34));
+    path = { destinationKey, waypoints: waypoints.length > 0 ? waypoints : [destination.clone().setY(0)], index: 0 };
+    npcPaths.set(id, path);
+  }
+
+  while (path.index < path.waypoints.length - 1 && current.distanceTo(path.waypoints[path.index]) < 0.55) {
+    path.index += 1;
+  }
+  const waypoint = (path.waypoints[path.index] ?? destination).clone();
   const separation = new THREE.Vector3();
   npcPositions.forEach((position, otherId) => {
     if (otherId === id) return;
     const distance = current.distanceTo(position);
-    if (distance > 1.4 || distance < 0.001) return;
+    if (distance > 1.45 || distance < 0.001) return;
     separation.add(current.clone().sub(position).multiplyScalar((1.4 - distance) / 1.4));
   });
   if (separation.lengthSq() > 0) waypoint.add(separation.normalize().multiplyScalar(0.65));

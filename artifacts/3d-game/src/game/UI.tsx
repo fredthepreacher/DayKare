@@ -187,10 +187,6 @@ export function UI() {
           const kidName = activeInteractable.split('-')[1];
           handleKidInteraction(kidName);
         }
-      } else if (inventory.length > 0) {
-        const item = inventory[0];
-        drop(item);
-        setActiveDialogue({ name: 'System', text: `Dropped ${item}.` });
       }
     };
 
@@ -279,7 +275,7 @@ export function UI() {
     if (activeDialogue?.options) return null;
     if (activeDialogue) return 'Continue';
     if (isRiding) return 'Dismount';
-    if (!activeInteractable) return inventory.length > 0 ? `Drop ${inventory[0]}` : null;
+    if (!activeInteractable) return null;
     if (activeInteractable === 'binky') return 'Pick up Binky';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';

@@ -178,6 +178,53 @@ const initialState = {
   progression: createInitialProgression(),
 };
 
+const BINKY_STATUSES = new Set<BinkyStatus>([
+  'not-started', 'talked-to-owner', 'found-clue', 'traded-info', 'found', 'returned-good', 'returned-bad',
+]);
+const TIDY_ITEMS = new Set(['blue-block', 'red-block', 'yellow-block']);
+
+function safeStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? Array.from(new Set(value.filter((item): item is string => typeof item === 'string')))
+    : [];
+}
+
+export function normalizeTidyItems(value: unknown) {
+  return safeStringArray(value).filter((item) => TIDY_ITEMS.has(item)).slice(-3);
+}
+
+function safeDroppedItems(value: unknown): DroppedWorldItem[] {
+  if (!Array.isArray(value)) return [];
+  const byItem = new Map<string, DroppedWorldItem>();
+  value.forEach((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return;
+    const item = (candidate as Partial<DroppedWorldItem>).item;
+    const position = (candidate as Partial<DroppedWorldItem>).position;
+    if (typeof item !== 'string' || !Array.isArray(position) || position.length !== 3) return;
+    if (!position.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))) return;
+    byItem.set(item, {
+      id: `dropped-${item}`,
+      item,
+      position: [position[0], position[1], position[2]],
+    });
+  });
+  return [...byItem.values()];
+}
+
+export function normalizeSavedItems(inventoryValue: unknown, droppedValue: unknown) {
+  const inventory = safeStringArray(inventoryValue);
+  return {
+    inventory,
+    droppedItems: safeDroppedItems(droppedValue).filter((item) => !inventory.includes(item.item)),
+  };
+}
+
+function safeBinkyStatus(value: unknown, quests: QuestStates): BinkyStatus {
+  return typeof value === 'string' && BINKY_STATUSES.has(value as BinkyStatus)
+    ? value as BinkyStatus
+    : legacyStatusForQuest(quests) as BinkyStatus;
+}
+
 export const useGameStore = create<GameState>()(
   persist(
     (set) => ({
@@ -212,6 +259,7 @@ export const useGameStore = create<GameState>()(
       }),
       
       drop: (item) => set((state) => {
+        if (!state.inventory.includes(item)) return state;
         const protectedItem = item === 'binky' || item.endsWith('-block');
         const position: [number, number, number] = protectedItem
           && state.progression.hubUpgrades.includes('storage-organizer')
@@ -234,16 +282,26 @@ export const useGameStore = create<GameState>()(
           inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
         };
       }),
-      dropAt: (item, position) => set((state) => ({
-        droppedItems: [
-          ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
-          { id: `dropped-${item}`, item, position },
-        ],
-        inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
-      })),
-      recoverDroppedItem: (id) => set((state) => ({
-        droppedItems: state.droppedItems.filter((droppedItem) => droppedItem.id !== id),
-      })),
+      dropAt: (item, position) => set((state) => {
+        if (!state.inventory.includes(item)) return state;
+        return {
+          droppedItems: [
+            ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
+            { id: `dropped-${item}`, item, position },
+          ],
+          inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
+        };
+      }),
+      recoverDroppedItem: (id) => set((state) => {
+        const droppedItem = state.droppedItems.find((candidate) => candidate.id === id);
+        if (!droppedItem) return state;
+        return {
+          droppedItems: state.droppedItems.filter((candidate) => candidate.id !== id),
+          inventory: state.inventory.includes(droppedItem.item)
+            ? state.inventory
+            : [...state.inventory, droppedItem.item],
+        };
+      }),
 
       setIsRiding: (r) => set((state) => ({
         isRiding: r,
@@ -340,7 +398,7 @@ export const useGameStore = create<GameState>()(
           changed = true;
           return {
             inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
-            tidyPlacedItems: [...state.tidyPlacedItems, item],
+            tidyPlacedItems: [...state.tidyPlacedItems.filter((placedItem) => placedItem !== item), item].slice(-3),
             quests: completedRound ? resetRepeatableQuest(nextQuests, 'rainbow-tidy-up') : nextQuests,
             progression: nextProgression,
           };
@@ -497,6 +555,11 @@ export const useGameStore = create<GameState>()(
       version: PROGRESSION_VERSION,
       migrate: (persistedState, storedVersion) => {
         const persisted = persistedState as Partial<GameState>;
+        const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
+        const inventory = savedItems.inventory;
+        const collectibles = safeStringArray(persisted.collectibles);
+        const droppedItems = savedItems.droppedItems;
+        const tidyPlacedItems = normalizeTidyItems(persisted.tidyPlacedItems);
         if (storedVersion > PROGRESSION_VERSION) {
           console.warn(
             `DayKare save version ${storedVersion} is newer than supported version ${PROGRESSION_VERSION}; keeping legacy game fields and resetting only progression.`,
@@ -504,45 +567,58 @@ export const useGameStore = create<GameState>()(
           return {
             ...initialState,
             ...persisted,
-            quests: normalizeQuestStates(persisted.quests, persisted.binkyStatus, persisted.inventory ?? []),
+            inventory,
+            collectibles,
+            droppedItems,
+            tidyPlacedItems,
+            quests: normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory),
             progression: normalizeProgression(persisted.progression),
           };
         }
          const migratedQuests = normalizeQuestStates(
            persisted.quests,
            persisted.binkyStatus,
-           persisted.inventory ?? [],
+           inventory,
          );
-         const migratedBinkyStatus = (persisted.binkyStatus ?? legacyStatusForQuest(migratedQuests)) as BinkyStatus;
-         const droppedItems = Array.isArray(persisted.droppedItems) ? persisted.droppedItems : [];
+         const migratedBinkyStatus = safeBinkyStatus(persisted.binkyStatus, migratedQuests);
          const needsBinkyRecovery = migratedBinkyStatus === 'found'
-           && !(persisted.inventory ?? []).includes('binky')
+           && !inventory.includes('binky')
            && !droppedItems.some((item) => item.item === 'binky');
          return {
           ...initialState,
           ...persisted,
+           inventory,
+           collectibles,
            binkyStatus: migratedBinkyStatus,
            quests: migratedQuests,
            droppedItems: needsBinkyRecovery
              ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number] }]
              : droppedItems,
+           tidyPlacedItems,
            progression: normalizeProgression(persisted.progression),
         };
       },
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<GameState>;
-        const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, persisted.inventory ?? []);
-        const droppedItems = Array.isArray(persisted.droppedItems) ? persisted.droppedItems : [];
+        const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
+        const inventory = savedItems.inventory;
+        const collectibles = safeStringArray(persisted.collectibles);
+        const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory);
+        const droppedItems = savedItems.droppedItems;
         const needsBinkyRecovery = quests['where-binky'].currentObjectiveId === 'return-binky'
-          && !(persisted.inventory ?? []).includes('binky')
+          && !inventory.includes('binky')
           && !droppedItems.some((item) => item.item === 'binky');
         return {
           ...currentState,
           ...persisted,
+          inventory,
+          collectibles,
+          binkyStatus: safeBinkyStatus(persisted.binkyStatus, quests),
           quests,
           droppedItems: needsBinkyRecovery
             ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number] }]
             : droppedItems,
+          tidyPlacedItems: normalizeTidyItems(persisted.tidyPlacedItems),
           progression: normalizeProgression(persisted.progression),
         };
       },

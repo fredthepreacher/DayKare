@@ -6,7 +6,7 @@ import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
 import { CharacterModel } from './CharacterModel';
-import { addCameraOrbit, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
+import { addCameraOrbit, consumeCameraRecenterRequest, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
 import { PLAYER_RADIUS, TRICYCLE_RADIUS, resolveCameraPosition, resolveMovement, trackPlayerPosition } from './world';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
@@ -31,6 +31,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const idealCameraPosition = useRef(new THREE.Vector3());
   const cameraFocus = useRef(new THREE.Vector3());
   const cameraLookTarget = useRef(new THREE.Vector3());
+  const cameraSafePosition = useRef(new THREE.Vector3());
+  const cameraCurrentSafePosition = useRef(new THREE.Vector3());
+  const cameraBaseHeading = useRef(0);
+  const cameraReady = useRef(false);
   const turnVelocity = useRef(0);
   const mouseDragging = useRef(false);
   const [isCrouching, setIsCrouching] = useState(false);
@@ -158,9 +162,18 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     
     localRef.current.position.y += yVelocity.current * delta;
 
+    if (!cameraReady.current) {
+      cameraBaseHeading.current = localRef.current.rotation.y;
+      cameraReady.current = true;
+    }
+    if (consumeCameraRecenterRequest()) {
+      cameraBaseHeading.current = localRef.current.rotation.y;
+    }
     stepCameraInput(delta);
     const orbit = getCameraInput();
-    const heading = localRef.current.rotation.y + orbit.yaw;
+    // Locomotion turns the character, not the camera. Only a deliberate
+    // recenter changes the camera's world-facing baseline.
+    const heading = cameraBaseHeading.current + orbit.yaw;
     const horizontalDistance = 7.4 * Math.cos(orbit.pitch);
     idealCameraPosition.current.set(
       localRef.current.position.x + Math.sin(heading) * horizontalDistance,
@@ -170,11 +183,25 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     cameraFocus.current.lerp(localRef.current.position, 1 - Math.exp(-10 * delta));
     cameraLookTarget.current.copy(cameraFocus.current);
     cameraLookTarget.current.y += isCrouching ? 0.78 : 1.0;
-    idealCameraPosition.current.copy(
+    cameraSafePosition.current.copy(
       resolveCameraPosition(cameraLookTarget.current, idealCameraPosition.current),
     );
     const cameraBlend = 1 - Math.exp(-7 * delta);
-    camera.position.lerp(idealCameraPosition.current, cameraBlend);
+    const safeDistance = cameraSafePosition.current.distanceTo(cameraLookTarget.current);
+    const currentDistance = camera.position.distanceTo(cameraLookTarget.current);
+    cameraCurrentSafePosition.current.copy(
+      resolveCameraPosition(cameraLookTarget.current, camera.position),
+    );
+    const currentPositionIsSafe = cameraCurrentSafePosition.current.distanceToSquared(camera.position) < 0.0025;
+    // Pull in immediately when a new obstruction appears so interpolation
+    // never leaves the camera behind a wall. Ease back out once space clears.
+    if (!currentPositionIsSafe) {
+      camera.position.copy(cameraCurrentSafePosition.current);
+    } else if (safeDistance + 0.05 < currentDistance) {
+      camera.position.copy(cameraSafePosition.current);
+    } else {
+      camera.position.lerp(cameraSafePosition.current, cameraBlend);
+    }
     camera.lookAt(cameraLookTarget.current);
   });
 
