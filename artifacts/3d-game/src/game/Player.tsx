@@ -87,6 +87,11 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       velocity.current.set(0, 0, 0);
       desiredVelocity.current.set(0, 0, 0);
       yVelocity.current = 0;
+      // A zone travel or reset should establish a fresh third-person shot at
+      // the new spawn instead of easing the focus across the old zone.
+      cameraFocus.current.copy(localRef.current.position);
+      cameraReady.current = false;
+      recenterCamera();
       lastTeleport.current = teleportTrigger;
     }
     

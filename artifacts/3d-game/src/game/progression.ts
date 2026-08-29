@@ -119,12 +119,15 @@ export function normalizeProgression(value: unknown): ProgressionState {
 
   return {
     ...normalized,
-    routeUnlocks: Array.from(new Set([...routeUnlocks, ...getUnlockedRoutes(normalized)])),
+    routeUnlocks: getUnlockedRoutes(normalized),
   };
 }
 
 export function isRouteUnlocked(route: RouteDefinition, progression: ProgressionState) {
-  return progression.routeUnlocks.includes(route.id);
+  // Route unlocks are a derived record for saves and UI history. The live
+  // requirement remains authoritative so a stale or hand-edited save cannot
+  // bypass a locked gate.
+  return getUnlockedRoutes(progression).includes(route.id);
 }
 
 export function requirementLabel(route: RouteDefinition) {
@@ -132,6 +135,23 @@ export function requirementLabel(route: RouteDefinition) {
   if (kind === 'reputation') return `${value} hub reputation`;
   if (kind === 'activity-runs') return `${value} tidy-up rounds`;
   return `${value} Star Tokens`;
+}
+
+export function getRouteRequirementProgress(route: RouteDefinition, progression: ProgressionState) {
+  const { kind, value } = route.requirement;
+  const current = kind === 'reputation'
+    ? progression.reputation
+    : kind === 'activity-runs'
+      ? progression.activityRuns['rainbow-tidy-up'] ?? 0
+      : progression.tokens;
+  return { current: Math.min(value, Math.max(0, current)), required: value };
+}
+
+export function requirementProgressLabel(route: RouteDefinition, progression: ProgressionState) {
+  const { current, required } = getRouteRequirementProgress(route, progression);
+  if (route.requirement.kind === 'reputation') return `${current}/${required} hub reputation`;
+  if (route.requirement.kind === 'activity-runs') return `${current}/${required} tidy-up rounds`;
+  return `${current}/${required} Star Tokens`;
 }
 
 export function getUnlockedRoutes(progression: ProgressionState) {

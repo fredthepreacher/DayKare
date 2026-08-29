@@ -620,7 +620,7 @@ export const useGameStore = create<GameState>()(
           if (
             state.zone !== 'hub'
             || state.zoneTransitioning
-            || !state.progression.routeUnlocks.includes('garden-district')
+            || !getUnlockedRoutes(state.progression).includes('garden-district')
           ) return state;
           changed = true;
           const position = currentPosition(state);

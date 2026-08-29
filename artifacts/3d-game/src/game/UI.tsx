@@ -20,7 +20,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { TouchControls } from './TouchControls';
-import { HUB_ROUTES, isRouteUnlocked, requirementLabel } from './progression';
+import { HUB_ROUTES, isRouteUnlocked, requirementLabel, requirementProgressLabel } from './progression';
 import { getActiveQuest, getCurrentObjective, objectiveIsActive, QUEST_DEFINITIONS } from './quests';
 
 export function UI() {
@@ -191,7 +191,9 @@ export function UI() {
                 name: route.label,
                 text: unlocked
                   ? `${route.description} This route is prepared, but it is not open yet.`
-                  : `${route.subtitle}. Build ${requirementLabel(route)} to prepare this route.`,
+                  : route.id === 'garden-district'
+                    ? `${route.subtitle}. Garden District opens at 10 hub reputation (${requirementProgressLabel(route, progression)}). Complete helpful quests and activities to earn reputation.`
+                    : `${route.subtitle}. Build ${requirementProgressLabel(route, progression)} to prepare this route.`,
               });
             }
           }
@@ -342,7 +344,7 @@ export function UI() {
       if (!route) return 'Future access point';
       return isRouteUnlocked(route, progression)
         ? route.id === 'garden-district' ? 'Connected route · Garden spawn' : 'Route prepared'
-        : `Locked · ${requirementLabel(route)}`;
+        : `Locked · ${requirementProgressLabel(route, progression)}`;
     }
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
     if (activeInteractable === 'tricycle') return 'Ride or customize';

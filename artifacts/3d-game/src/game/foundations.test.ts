@@ -30,7 +30,7 @@ import {
   trackPlayerPosition,
 } from './world';
 import { normalizeSavedItems, normalizeTidyItems, serializeGameState } from './store';
-import { HUB_ROUTES, normalizeProgression } from './progression';
+import { HUB_ROUTES, isRouteUnlocked, normalizeProgression, requirementProgressLabel } from './progression';
 import { useGameStore } from './store';
 import { teacherPatrolSpots } from './NPCs';
 
@@ -182,9 +182,24 @@ const gardenRoute = HUB_ROUTES.find((routeDefinition) => routeDefinition.id === 
 assert.ok(gardenRoute);
 assert.equal(normalizeProgression({ reputation: 9 }).routeUnlocks.includes('garden-district'), false);
 assert.equal(normalizeProgression({ reputation: 10 }).routeUnlocks.includes('garden-district'), true);
+const forgedGardenUnlock = normalizeProgression({
+  reputation: 0,
+  routeUnlocks: ['garden-district'],
+});
+assert.equal(forgedGardenUnlock.routeUnlocks.includes('garden-district'), false);
+assert.equal(isRouteUnlocked(HUB_ROUTES[0], forgedGardenUnlock), false, 'Garden requirement stays authoritative over saved unlock flags');
+assert.equal(
+  requirementProgressLabel(HUB_ROUTES[0], normalizeProgression({ reputation: 7 })),
+  '7/10 hub reputation',
+);
 
 useGameStore.getState().resetGame();
 assert.equal(useGameStore.getState().enterGarden(), false, 'Garden remains blocked below ten reputation');
+useGameStore.setState((state) => ({
+  progression: { ...state.progression, routeUnlocks: ['garden-district'] },
+}));
+assert.equal(useGameStore.getState().enterGarden(), false, 'a forged route flag cannot bypass the live reputation requirement');
+useGameStore.getState().resetGame();
 useGameStore.getState().completeActivity('test-reputation', 0, 10);
 assert.equal(useGameStore.getState().progression.routeUnlocks.includes('garden-district'), true);
 trackPlayerPosition(new THREE.Vector3(12, 0, -10.4));
@@ -197,6 +212,7 @@ useGameStore.getState().setPlayerPosition([1, 0, 12]);
 const persistedGarden = serializeGameState(useGameStore.getState());
 assert.equal(persistedGarden.zone, 'garden');
 assert.deepEqual(persistedGarden.playerPosition, [1, 0, 12], 'Garden position is included in local save state');
+assert.deepEqual(persistedGarden.gardenPosition, [1, 0, 12], 'Garden position is retained independently of the active zone');
 assert.deepEqual(persistedGarden.hubPosition, [12, 0, -10.4], 'hub return position survives a Garden save');
 trackPlayerPosition(new THREE.Vector3(0, 0, 16));
 assert.equal(useGameStore.getState().returnToHub(), true);
