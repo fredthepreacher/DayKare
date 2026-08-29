@@ -6,6 +6,7 @@ import { useGameStore } from './store';
 export function HubDetails() {
   const isImaginationMode = useGameStore((s) => s.isImaginationMode);
   const schedule = useGameStore((s) => s.schedule);
+  const storageOrganizer = useGameStore((s) => s.progression.hubUpgrades.includes('storage-organizer'));
 
   return (
     <group>
@@ -16,6 +17,7 @@ export function HubDetails() {
       <PlaygroundDetails />
       <CeilingMobile imaginationMode={isImaginationMode} />
       <ScheduleBeacon schedule={schedule} imaginationMode={isImaginationMode} />
+      {storageOrganizer && <LostAndFoundOrganizer />}
     </group>
   );
 }
@@ -132,9 +134,9 @@ function ArtGallery({ imaginationMode }: { imaginationMode: boolean }) {
 function PlaygroundDetails() {
   return (
     <group>
-      <group position={[10, 0.08, 7.2]}>
+      <group position={[10, 0, 7.2]}>
         {[-1.2, 0, 1.2].map((x, index) => (
-          <mesh key={x} position={[x, 0, Math.sin(index) * 0.3]} rotation={[-Math.PI / 2, 0, index * 0.25]} receiveShadow>
+          <mesh key={x} position={[x, 0.04, Math.sin(index) * 0.3]} rotation={[0, index * 0.25, 0]} receiveShadow>
             <cylinderGeometry args={[0.48, 0.48, 0.08, 12]} />
             <meshStandardMaterial color={['#e6ae2f', '#55b89b', '#e8613c'][index]} roughness={0.86} />
           </mesh>
@@ -204,7 +206,7 @@ function ScheduleBeacon({
   schedule: string;
   imaginationMode: boolean;
 }) {
-  const ref = useRef<THREE.Group>(null);
+  const indicatorRef = useRef<THREE.Group>(null);
   const colors: Record<string, string> = {
     'morning-play': '#f2b85b',
     'art-time': '#e8613c',
@@ -215,22 +217,45 @@ function ScheduleBeacon({
   const color = imaginationMode ? '#ff4da6' : colors[schedule] ?? '#f2b85b';
 
   useFrame((state) => {
-    if (ref.current) ref.current.position.y = Math.sin(state.clock.elapsedTime * 2.4) * 0.04;
+    if (indicatorRef.current) indicatorRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.4) * 0.04;
   });
 
   return (
-    <group ref={ref} position={[6.7, 0.05, -6.8]}>
+    <group position={[6.7, 0, -6.8]}>
       <mesh position={[0, 0.82, 0]} castShadow>
         <cylinderGeometry args={[0.035, 0.035, 1.45, 6]} />
         <meshStandardMaterial color="#8b5a2b" roughness={0.8} />
       </mesh>
-      <mesh position={[0.28, 1.27, 0]} rotation={[0, 0, -0.12]} castShadow>
-        <boxGeometry args={[0.58, 0.32, 0.05]} />
-        <meshStandardMaterial color={color} roughness={0.68} />
+      <group ref={indicatorRef}>
+        <mesh position={[0.28, 1.27, 0]} rotation={[0, 0, -0.12]} castShadow>
+          <boxGeometry args={[0.58, 0.32, 0.05]} />
+          <meshStandardMaterial color={color} roughness={0.68} />
+        </mesh>
+        <mesh position={[0, 0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[0.35, 0.025, 6, 18]} />
+          <meshBasicMaterial color={color} transparent opacity={0.45} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+function LostAndFoundOrganizer() {
+  return (
+    <group position={[-10.5, 0, 10.2]}>
+      <mesh position={[0, 0.55, 0]} castShadow>
+        <boxGeometry args={[2.2, 1.1, 0.65]} />
+        <meshStandardMaterial color="#55b89b" roughness={0.75} />
       </mesh>
-      <mesh position={[0, 0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.35, 0.025, 6, 18]} />
-        <meshBasicMaterial color={color} transparent opacity={0.45} />
+      {[-0.7, 0, 0.7].map((x, index) => (
+        <mesh key={x} position={[x, 0.62, -0.36]} castShadow>
+          <boxGeometry args={[0.48, 0.58, 0.08]} />
+          <meshStandardMaterial color={['#4c82d4', '#e8613c', '#e6ae2f'][index]} roughness={0.7} />
+        </mesh>
+      ))}
+      <mesh position={[0, 1.35, 0]} castShadow>
+        <boxGeometry args={[1.8, 0.34, 0.1]} />
+        <meshStandardMaterial color="#fff0b8" roughness={0.7} />
       </mesh>
     </group>
   );

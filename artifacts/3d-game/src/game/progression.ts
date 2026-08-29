@@ -22,9 +22,11 @@ export interface ProgressionState {
   activityRewards: Record<string, number>;
   collectibleProgress: Record<string, number>;
   vehicleProgress: Record<string, number>;
+  hubUpgrades: string[];
+  trustedHelperPass: boolean;
 }
 
-export const PROGRESSION_VERSION = 1;
+export const PROGRESSION_VERSION = 2;
 
 export const HUB_ROUTES: RouteDefinition[] = [
   {
@@ -65,6 +67,8 @@ export const createInitialProgression = (): ProgressionState => ({
   activityRewards: {},
   collectibleProgress: {},
   vehicleProgress: {},
+  hubUpgrades: [],
+  trustedHelperPass: false,
 });
 
 function safeCount(value: unknown, fallback = 0, maximum = Number.MAX_SAFE_INTEGER) {
@@ -105,6 +109,12 @@ export function normalizeProgression(value: unknown): ProgressionState {
     activityRewards: safeCountRecord(candidate.activityRewards),
     collectibleProgress: safeCountRecord(candidate.collectibleProgress),
     vehicleProgress: safeCountRecord(candidate.vehicleProgress),
+    hubUpgrades: Array.isArray(candidate.hubUpgrades)
+      ? Array.from(new Set(candidate.hubUpgrades.filter((id): id is string => typeof id === 'string')))
+      : [],
+    trustedHelperPass: candidate.trustedHelperPass === true
+      || safeCount(candidate.reputation) >= 8
+      || safeCountRecord(candidate.activityRuns)['rainbow-tidy-up'] >= 1,
   };
 
   return {

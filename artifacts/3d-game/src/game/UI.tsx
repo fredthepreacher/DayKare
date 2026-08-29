@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { TouchControls } from './TouchControls';
 import { HUB_ROUTES, isRouteUnlocked, requirementLabel } from './progression';
+import { getActiveQuest, getCurrentObjective, objectiveIsActive, QUEST_DEFINITIONS } from './quests';
 
 export function UI() {
   const {
@@ -59,7 +60,10 @@ export function UI() {
     setIsRiding,
     isRiding,
     progression,
-    completeActivity,
+    quests,
+    advanceQuestObjective,
+    completeTidyToy,
+    buyHubUpgrade,
   } = useGameStore();
 
   const [subscribe] = useKeyboardControls<Controls>();
@@ -104,14 +108,18 @@ export function UI() {
 
       if (activeInteractable) {
         if (activeInteractable === 'binky') {
-          updateBinkyStatus('found');
           pickUp('binky');
+          if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
+            advanceQuestObjective('where-binky', 'search-storage');
+          }
           setActiveInteractable(null);
           setActiveDialogue({ name: 'System', text: 'You found Binky! Return it to Leo.' });
-        } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block') {
+        } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block' || activeInteractable === 'yellow-block') {
           pickUp(activeInteractable);
+          const objectiveId = `collect-${activeInteractable}`;
+          advanceQuestObjective('rainbow-tidy-up', objectiveId);
           setActiveInteractable(null);
-          setActiveDialogue({ name: 'Toy Box', text: 'Toy collected and tucked safely into your backpack.' });
+          setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Toy collected! Carry it to the activity station.' });
         } else if (activeInteractable === 'juice-stand') {
           if (schedule === 'juice-club') {
             setActiveDialogue({
@@ -150,12 +158,19 @@ export function UI() {
             ],
           });
         } else if (activeInteractable === 'activity-rainbow-tidy-up') {
-          const nextRun = (progression.activityRuns['rainbow-tidy-up'] ?? 0) + 1;
-          completeActivity('rainbow-tidy-up', 2, 2);
-          setActiveDialogue({
-            name: 'Rainbow Tidy-Up',
-            text: `Everything is sorted and sparkling. Round ${nextRun} complete — +2 hub reputation and +2 Star Tokens!${nextRun === 3 ? ' Storybook Lane is now prepared for a future adventure.' : ''}`,
-          });
+          const objective = quests['rainbow-tidy-up']?.currentObjectiveId;
+          const item = objective?.replace('place-', '');
+          if (item && inventory.includes(item) && completeTidyToy(item)) {
+            const finishedRound = item === 'yellow-block';
+            setActiveDialogue({
+              name: 'Rainbow Tidy-Up',
+              text: finishedRound
+                ? 'Everything is sorted! +2 reputation and +2 Star Tokens. You earned a Trusted Helper Pass, and a fresh tidy round is ready.'
+                : 'Perfect fit! Now find the next misplaced toy.',
+            });
+          } else {
+            setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
+          }
         } else if (activeInteractable.startsWith('route-')) {
           const routeId = activeInteractable.replace('route-', '');
           const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
@@ -186,33 +201,40 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, inventory, progression, quests]);
 
   const handleKidInteraction = (name: string) => {
     // Binky Quest Logic
     if (name === 'Leo') {
-      if (binkyStatus === 'not-started') {
-        updateBinkyStatus('talked-to-owner');
+      if (objectiveIsActive(quests, 'where-binky', 'talk-to-leo')) {
+        advanceQuestObjective('where-binky', 'talk-to-leo');
         setActiveDialogue({ name: 'Leo', text: "I lost Binky! He's pink and round. I think Mia saw something." });
-      } else if (binkyStatus === 'found') {
-        updateBinkyStatus('returned-good');
-        drop('binky');
-        updateFriend('Leo', { friendship: 100, mood: 'happy', recentMemory: 'Got Binky back!' });
-        setActiveDialogue({ name: 'Leo', text: "BINKY! Thank you so much! You're my best friend." });
+      } else if (objectiveIsActive(quests, 'where-binky', 'return-binky')) {
+        if (inventory.includes('binky')) {
+          drop('binky');
+          useGameStore.setState((state) => ({
+            droppedItems: state.droppedItems.filter((item) => item.item !== 'binky'),
+          }));
+          updateBinkyStatus('returned-good');
+          updateFriend('Leo', { friendship: 100, mood: 'happy', recentMemory: 'Got Binky back!' });
+          setActiveDialogue({ name: 'Leo', text: "BINKY! Thank you! Ms. Harper has a real helper job next: carry the misplaced blocks to the Rainbow Tidy-Up station." });
+        } else {
+          setActiveDialogue({ name: 'Leo', text: "You found Binky, but you're not carrying him. Pick him up from where you dropped him or check Lost & Found." });
+        }
       } else if (binkyStatus === 'returned-good') {
-        setActiveDialogue({ name: 'Leo', text: "Binky says hi!" });
+        setActiveDialogue({ name: 'Leo', text: "Binky says hi! The Rainbow Tidy-Up station could use your help." });
       } else {
         setActiveDialogue({ name: 'Leo', text: "Please find Binky..." });
       }
     } else if (name === 'Mia') {
-      if (binkyStatus === 'talked-to-owner') {
-        updateBinkyStatus('found-clue');
+      if (objectiveIsActive(quests, 'where-binky', 'ask-mia')) {
+        advanceQuestObjective('where-binky', 'ask-mia');
         setActiveDialogue({ name: 'Mia', text: "I saw Sam taking a shiny rock near the playground." });
       } else {
         setActiveDialogue({ name: 'Mia', text: "I like shiny things." });
       }
     } else if (name === 'Sam') {
-      if (binkyStatus === 'found-clue') {
+      if (objectiveIsActive(quests, 'where-binky', 'trade-with-sam')) {
         if (collectibles.includes('Shiny Rock')) {
           setActiveDialogue({
             name: 'Sam',
@@ -220,7 +242,7 @@ export function UI() {
             options: [
               { label: 'Trade Rock', action: () => {
                 useGameStore.setState(s => ({ collectibles: s.collectibles.filter(c => c !== 'Shiny Rock') }));
-                updateBinkyStatus('traded-info');
+                advanceQuestObjective('where-binky', 'trade-with-sam');
                 setActiveDialogue({ name: 'Sam', text: "Thanks! I saw Mr. Davis put something pink in the Storage Room boxes." });
               }},
               { label: 'Keep it', action: () => setActiveDialogue(null) }
@@ -229,7 +251,7 @@ export function UI() {
         } else {
           setActiveDialogue({ name: 'Sam', text: "I want a Shiny Rock." });
         }
-      } else if (binkyStatus === 'traded-info') {
+      } else if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
         setActiveDialogue({ name: 'Sam', text: "Check the Storage Room!" });
       } else {
         setActiveDialogue({ name: 'Sam', text: "Tag, you're it! Just kidding." });
@@ -261,7 +283,7 @@ export function UI() {
     if (activeInteractable === 'binky') return 'Pick up Binky';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
-    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Start Rainbow Tidy-Up';
+    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Place Toy';
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Check Route';
@@ -276,7 +298,7 @@ export function UI() {
   const getInteractionDetail = () => {
     if (activeDialogue) return null;
     if (!activeInteractable) return null;
-    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Repeatable · +2 reputation · +2 Star Tokens';
+    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Future access point';
@@ -288,6 +310,8 @@ export function UI() {
     return 'Nearby object';
   };
   const interactionDetail = getInteractionDetail();
+  const activeQuest = getActiveQuest(quests);
+  const activeObjective = getCurrentObjective(quests);
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">
@@ -337,6 +361,13 @@ export function UI() {
             {useGameStore.getState().quality === 'high' ? 'HQ' : 'LQ'}
           </button>
         </div>
+        {activeQuest && activeObjective && (
+          <div className="max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-3 rounded-xl shadow-lg">
+            <div className="text-[10px] uppercase tracking-[0.18em] font-black text-amber-700">{activeQuest.title}</div>
+            <div className="font-bold text-card-foreground mt-1">{activeObjective.label}</div>
+            <div className="text-xs text-muted-foreground mt-1">{activeObjective.guidance}</div>
+          </div>
+        )}
       </div>
 
       {/* Teacher Suspicion */}
@@ -489,23 +520,58 @@ export function UI() {
                     <Sparkles className="w-4 h-4 text-amber-500" />
                     Repeat activities, help friends, and run the Juice Club to prepare new routes.
                   </div>
+                  <div className="mt-3 p-3 rounded-lg bg-white/70 border border-amber-200">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-black text-[#5c3a21]">Lost & Found Organizer</div>
+                        <div className="text-xs text-amber-950/70">
+                          Sends dropped quest toys to a visible recovery shelf. Costs 6 Star Tokens.
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => buyHubUpgrade('storage-organizer', 6)}
+                        disabled={!progression.trustedHelperPass || progression.tokens < 6 || progression.hubUpgrades.includes('storage-organizer')}
+                        className="shrink-0 bg-amber-500 text-white px-3 py-2 rounded-lg text-xs font-black disabled:opacity-45"
+                      >
+                        {progression.hubUpgrades.includes('storage-organizer')
+                          ? 'Installed'
+                          : progression.trustedHelperPass
+                            ? 'Buy · 6 ★'
+                            : 'Helper Pass required'}
+                      </button>
+                    </div>
+                  </div>
+                  {progression.trustedHelperPass && (
+                    <div className="mt-2 text-xs font-bold text-green-700 bg-green-100 px-3 py-2 rounded-lg">
+                      Trusted Helper Pass: storage access approved.
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-white/50 p-4 rounded-xl border border-[#e5d8cc]">
-                  <h3 className="font-bold text-xl mb-2">Quest: Where's Binky?</h3>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-bold uppercase text-[#5c3a21] tracking-wider bg-[#e5d8cc] px-2 py-1 rounded">
-                      {binkyStatus.replace(/-/g, ' ')}
-                    </span>
+                  <h3 className="font-bold text-xl mb-3">Quests & Activities</h3>
+                  <div className="space-y-3">
+                    {QUEST_DEFINITIONS.map((definition) => {
+                      const quest = quests[definition.id];
+                      const objective = getCurrentObjective(quests, definition.id);
+                      return (
+                        <div key={definition.id} className={`p-3 rounded-xl border ${quest.status === 'active' ? 'bg-orange-50 border-orange-200' : 'bg-white/70 border-[#e5d8cc]'}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-black text-[#5c3a21]">{definition.title}</div>
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-[#e5d8cc] px-2 py-1 rounded">
+                              {quest.status}{definition.repeatable && quest.completionCount > 0 ? ` · ${quest.completionCount} done` : ''}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">{definition.summary}</div>
+                          {objective && (
+                            <div className="mt-2 text-sm text-orange-900">
+                              <strong>{objective.label}</strong> — {objective.guidance}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <ul className="text-sm space-y-1 list-disc pl-4 text-orange-900">
-                    {binkyStatus === 'not-started' && <li>Talk to kids to see if anyone lost something.</li>}
-                    {binkyStatus === 'talked-to-owner' && <li>Leo lost Binky. Mia might know something.</li>}
-                    {binkyStatus === 'found-clue' && <li>Mia said Sam saw something. Talk to Sam.</li>}
-                    {binkyStatus === 'traded-info' && <li>Sam said Mr. Davis put something in the Storage Room. Sneak in!</li>}
-                    {binkyStatus === 'found' && <li>I found Binky! Return it to Leo.</li>}
-                    {binkyStatus === 'returned-good' && <li className="text-green-700">Mission Complete! Leo is happy.</li>}
-                  </ul>
                 </div>
 
                 <div className="bg-white/50 p-4 rounded-xl border border-[#e5d8cc]">
@@ -635,6 +701,7 @@ export function UI() {
           <div className="flex justify-between gap-4"><span>Move</span> <span className="text-gray-300">Arrows / WASD</span></div>
           <div className="flex justify-between gap-4"><span>Jump</span> <span className="text-gray-300">Space</span></div>
           <div className="flex justify-between gap-4"><span>Run</span> <span className="text-gray-300">Shift</span></div>
+          <div className="flex justify-between gap-4"><span>Orbit</span> <span className="text-gray-300">Drag mouse · R centers</span></div>
           <div className="flex justify-between gap-4"><span>Crouch</span> <span className="text-gray-300">C</span></div>
           <div className="flex justify-between gap-4"><span>Interact</span> <span className="text-gray-300">E</span></div>
           <div className="flex justify-between gap-4"><span>Journal</span> <span className="text-gray-300">J/Tab</span></div>

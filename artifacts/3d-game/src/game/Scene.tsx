@@ -1,4 +1,4 @@
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame } from '@react-three/fiber';
 import { Sky, KeyboardControls } from '@react-three/drei';
 import { Player } from './Player';
 import { Environment } from './Environment';
@@ -11,6 +11,21 @@ import { UI } from './UI';
 import { useRef } from 'react';
 import * as THREE from 'three';
 import { useGameStore } from './store';
+import { resolveInteractionCandidate } from './interactionFocus';
+
+function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
+  const forward = useRef(new THREE.Vector3());
+  useFrame(() => {
+    if (!playerRef.current) return;
+    forward.current.set(0, 0, -1).applyQuaternion(playerRef.current.quaternion);
+    const candidate = resolveInteractionCandidate(playerRef.current.position, forward.current);
+    const store = useGameStore.getState();
+    if (store.activeInteractable !== (candidate?.id ?? null)) {
+      store.setActiveInteractable(candidate?.id ?? null);
+    }
+  });
+  return null;
+}
 
 function GameScene() {
   const playerRef = useRef<THREE.Group>(null);
@@ -37,6 +52,7 @@ function GameScene() {
       <Interactables playerRef={playerRef} />
       <NPCs playerRef={playerRef} />
       <Player ref={playerRef} />
+      <InteractionFocusSystem playerRef={playerRef} />
     </>
   );
 }

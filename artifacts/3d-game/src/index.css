@@ -152,6 +152,27 @@
     z-index: 45;
   }
 
+  .daykare-touch-look {
+    position: absolute;
+    inset: 18% 0 22% 46%;
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  .daykare-touch-recenter {
+    position: absolute;
+    right: 1rem;
+    top: 0;
+    border: 1px solid rgb(255 255 255 / 35%);
+    border-radius: 999px;
+    background: rgb(41 30 24 / 68%);
+    color: white;
+    padding: 0.45rem 0.7rem;
+    font-size: 0.68rem;
+    font-weight: 800;
+    pointer-events: auto;
+  }
+
   .daykare-touch-movement {
     position: absolute;
     left: max(14px, env(safe-area-inset-left));

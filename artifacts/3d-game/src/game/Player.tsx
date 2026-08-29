@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useImperativeHandle, useState } from 'react';
+import { forwardRef, useEffect, useRef, useImperativeHandle, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -6,13 +6,15 @@ import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
 import { CharacterModel } from './CharacterModel';
+import { addCameraOrbit, getCameraInput, recenterCamera, stepCameraInput } from './cameraInput';
+import { PLAYER_RADIUS, TRICYCLE_RADIUS, resolveCameraPosition, resolveMovement, trackPlayerPosition } from './world';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
   useImperativeHandle(ref, () => localRef.current as THREE.Group);
 
   const [, getKeys] = useKeyboardControls<Controls>();
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const isImaginationMode = useGameStore((s) => s.isImaginationMode);
   const isRiding = useGameStore((s) => s.isRiding);
   const tricycleColorIndex = useGameStore((s) => s.tricycleColorIndex);
@@ -30,13 +32,37 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const cameraFocus = useRef(new THREE.Vector3());
   const cameraLookTarget = useRef(new THREE.Vector3());
   const turnVelocity = useRef(0);
+  const mouseDragging = useRef(false);
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
   
   const colors = ["#d62828", "#3a86ff", "#ff006e", "#06d6a0"];
   
-  // Camera responsive rotation
-  const cameraOffset = new THREE.Vector3(0, 5, 8);
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse' && event.button === 0) mouseDragging.current = true;
+    };
+    const onPointerUp = () => {
+      mouseDragging.current = false;
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (mouseDragging.current && event.pointerType === 'mouse') addCameraOrbit(event.movementX, event.movementY);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'KeyR') recenterCamera();
+    };
+    canvas.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [gl]);
 
   useFrame((state, delta) => {
     if (!localRef.current) return;
@@ -46,11 +72,6 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       lastTeleport.current = teleportTrigger;
     }
     
-    if (activeDialogue) {
-      velocity.current.set(0, 0, 0);
-      return;
-    }
-
     const keys = getKeys();
     const touch = getTouchInput();
     const crouching = keys.crouch || touch.crouch;
@@ -77,13 +98,15 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
 
     desiredVelocity.current.set(0, 0, 0);
 
-    if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
-    if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
-    if (keys.left) desiredVelocity.current.addScaledVector(right.current, -speed);
-    if (keys.right) desiredVelocity.current.addScaledVector(right.current, speed);
-    if (Math.abs(touch.x) > 0.05 || Math.abs(touch.y) > 0.05) {
-      desiredVelocity.current.addScaledVector(right.current, touch.x * speed);
-      desiredVelocity.current.addScaledVector(forward.current, -touch.y * speed);
+    if (!activeDialogue) {
+      if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
+      if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
+      if (keys.left) desiredVelocity.current.addScaledVector(right.current, -speed);
+      if (keys.right) desiredVelocity.current.addScaledVector(right.current, speed);
+      if (Math.abs(touch.x) > 0.05 || Math.abs(touch.y) > 0.05) {
+        desiredVelocity.current.addScaledVector(right.current, touch.x * speed);
+        desiredVelocity.current.addScaledVector(forward.current, -touch.y * speed);
+      }
     }
 
     if (desiredVelocity.current.length() > speed) {
@@ -111,26 +134,14 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     // Apply XZ movement
     const nextPos = nextPosition.current.copy(localRef.current.position).addScaledVector(velocity.current, delta);
 
-    // Collision Check (AABB)
-    // Outer walls: -15.5 to 15.5
-    nextPos.x = THREE.MathUtils.clamp(nextPos.x, -15.5, 15.5);
-    nextPos.z = THREE.MathUtils.clamp(nextPos.z, -15.5, 15.5);
-
-    // Dividers at x = 8 and x = -8, doorway between z = -2 and z = 2
-    const checkDivider = (xVal: number) => {
-      if (Math.abs(nextPos.x - xVal) < 0.8) { // Near the wall
-        if (nextPos.z < -2 || nextPos.z > 2) {
-          // Push back out
-          if (localRef.current!.position.x < xVal) nextPos.x = xVal - 0.8;
-          else nextPos.x = xVal + 0.8;
-        }
-      }
-    };
-    checkDivider(-8);
-    checkDivider(8);
-
-    localRef.current.position.x = nextPos.x;
-    localRef.current.position.z = nextPos.z;
+    const resolvedPosition = resolveMovement(
+      localRef.current.position,
+      nextPos,
+      isRiding ? TRICYCLE_RADIUS : PLAYER_RADIUS,
+    );
+    localRef.current.position.x = resolvedPosition.x;
+    localRef.current.position.z = resolvedPosition.z;
+    trackPlayerPosition(localRef.current.position);
 
     // Jumping and Gravity
     const isGrounded = localRef.current.position.y <= 0;
@@ -147,18 +158,23 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     
     localRef.current.position.y += yVelocity.current * delta;
 
-    // Follow with frame-rate-independent damping. Keep the camera inside the
-    // daycare shell so the outer walls never swallow the view.
-    idealCameraPosition.current.copy(localRef.current.position).add(cameraOffset);
-    idealCameraPosition.current.x = THREE.MathUtils.clamp(idealCameraPosition.current.x, -14.4, 14.4);
-    idealCameraPosition.current.z = THREE.MathUtils.clamp(idealCameraPosition.current.z, -14.4, 14.4);
-    idealCameraPosition.current.y = Math.max(2.8, idealCameraPosition.current.y);
-    const cameraBlend = 1 - Math.exp(-7 * delta);
-    camera.position.lerp(idealCameraPosition.current, cameraBlend);
-
+    stepCameraInput(delta);
+    const orbit = getCameraInput();
+    const heading = localRef.current.rotation.y + orbit.yaw;
+    const horizontalDistance = 7.4 * Math.cos(orbit.pitch);
+    idealCameraPosition.current.set(
+      localRef.current.position.x + Math.sin(heading) * horizontalDistance,
+      localRef.current.position.y + 3.8 + Math.sin(orbit.pitch) * 4,
+      localRef.current.position.z + Math.cos(heading) * horizontalDistance,
+    );
     cameraFocus.current.lerp(localRef.current.position, 1 - Math.exp(-10 * delta));
     cameraLookTarget.current.copy(cameraFocus.current);
     cameraLookTarget.current.y += isCrouching ? 0.78 : 1.0;
+    idealCameraPosition.current.copy(
+      resolveCameraPosition(cameraLookTarget.current, idealCameraPosition.current),
+    );
+    const cameraBlend = 1 - Math.exp(-7 * delta);
+    camera.position.lerp(idealCameraPosition.current, cameraBlend);
     camera.lookAt(cameraLookTarget.current);
   });
 

@@ -1,8 +1,11 @@
 import { useFrame } from '@react-three/fiber';
-import { useGameStore } from './store';
-import { useRef, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { CharacterModel, type CharacterModelProps } from './CharacterModel';
+import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
+import { getNavigationTarget, registerNpcPosition } from './navigation';
+import { useGameStore } from './store';
+import { resolveMovement } from './world';
 
 type KidDefinition = {
   name: string;
@@ -17,7 +20,7 @@ type KidDefinition = {
 const KID_CAST: KidDefinition[] = [
   { name: 'Leo', color: '#e65a4f', accent: '#ffd166', hairColor: '#5b352c', hairStyle: 'sprout', skinColor: '#efb58f', defaultPos: [2, 0, 3] },
   { name: 'Mia', color: '#54b9bd', accent: '#f1d985', hairColor: '#3f2927', hairStyle: 'ponytail', skinColor: '#c98562', defaultPos: [-3, 0, 4] },
-  { name: 'Sam', color: '#2a9d8f', accent: '#ecb56b', hairColor: '#2f231f', hairStyle: 'curls', skinColor: '#8f5139', defaultPos: [-12, 0, -10] },
+  { name: 'Sam', color: '#2a9d8f', accent: '#ecb56b', hairColor: '#2f231f', hairStyle: 'curls', skinColor: '#8f5139', defaultPos: [11, 0, -10] },
   { name: 'Zoe', color: '#e9aa45', accent: '#e76f8c', hairColor: '#8d5d2f', hairStyle: 'bob', skinColor: '#f2c4a0', defaultPos: [12, 0, -2] },
   { name: 'Eli', color: '#f08a5d', accent: '#6a8caf', hairColor: '#d0a16d', hairStyle: 'cap', skinColor: '#f2c8a8', defaultPos: [13, 0, 4] },
   { name: 'Noah', color: '#7654bd', accent: '#71d4b4', hairColor: '#4d2c25', hairStyle: 'curls', skinColor: '#b66f50', defaultPos: [5, 0, -5] },
@@ -34,42 +37,52 @@ function namePhase(name: string) {
 export function NPCs({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
     <group>
-      <Teacher
-        name="Ms. Harper"
-        color="#457b9d"
-        accent="#e4bd6a"
-        hairColor="#46352f"
-        hairStyle="bob"
-        skinColor="#c98562"
-        defaultPos={[-2, 0, -2]}
-        playerRef={playerRef}
-      />
-      <Teacher
-        name="Mr. Davis"
-        color="#355272"
-        accent="#68a9a7"
-        hairColor="#6a4a3c"
-        hairStyle="curls"
-        skinColor="#e6ad88"
-        defaultPos={[10, 0, 0]}
-        playerRef={playerRef}
-      />
-      {KID_CAST.map((kid) => (
-        <Kid key={kid.name} {...kid} playerRef={playerRef} />
-      ))}
+      <Teacher name="Ms. Harper" color="#457b9d" accent="#e4bd6a" hairColor="#46352f" hairStyle="bob" skinColor="#c98562" defaultPos={[-2, 0, -2]} playerRef={playerRef} />
+      <Teacher name="Mr. Davis" color="#355272" accent="#68a9a7" hairColor="#6a4a3c" hairStyle="curls" skinColor="#e6ad88" defaultPos={[10, 0, 0]} playerRef={playerRef} />
+      {KID_CAST.map((kid) => <Kid key={kid.name} {...kid} playerRef={playerRef} />)}
     </group>
   );
 }
 
+function scheduleDestination(
+  schedule: string,
+  isRainy: boolean,
+  defaultPos: [number, number, number],
+  phase: number,
+) {
+  if (schedule === 'outdoor-play' && !isRainy) return new THREE.Vector3(12 + Math.cos(phase) * 2.2, 0, Math.sin(phase) * 8);
+  if (schedule === 'outdoor-play') return new THREE.Vector3(4.8 + Math.cos(phase) * 1.2, 0, -5.2 + Math.sin(phase));
+  if (schedule === 'art-time') return new THREE.Vector3(-12 + Math.cos(phase) * 1.7, 0, -12 + Math.sin(phase) * 1.7);
+  if (schedule === 'juice-club') return new THREE.Vector3(Math.cos(phase) * 4.5, 0, Math.sin(phase) * 4);
+  if (schedule === 'pickup') return new THREE.Vector3(-6 + Math.cos(phase), 0, Math.sin(phase) * 4.8);
+  return new THREE.Vector3(...defaultPos);
+}
+
+function stepNpc(
+  id: string,
+  ref: THREE.Group,
+  destination: THREE.Vector3,
+  player: THREE.Group | null,
+  delta: number,
+  speed: number,
+) {
+  const navTarget = getNavigationTarget(id, ref.position, destination);
+  const direction = navTarget.clone().sub(ref.position).setY(0);
+  if (player) {
+    const fromPlayer = ref.position.clone().sub(player.position).setY(0);
+    const playerDistance = fromPlayer.length();
+    if (playerDistance < 1.2 && playerDistance > 0.001) direction.add(fromPlayer.normalize().multiplyScalar(1.2 - playerDistance));
+  }
+  if (direction.lengthSq() < 0.002) return;
+  direction.normalize();
+  const desired = ref.position.clone().addScaledVector(direction, Math.min(speed * delta, ref.position.distanceTo(navTarget)));
+  const resolved = resolveMovement(ref.position, desired, 0.34, 0.24);
+  ref.position.copy(resolved);
+  ref.lookAt(navTarget.x, ref.position.y, navTarget.z);
+}
+
 function Teacher({
-  name,
-  color,
-  accent,
-  hairColor,
-  hairStyle,
-  skinColor,
-  defaultPos,
-  playerRef,
+  name, color, accent, hairColor, hairStyle, skinColor, defaultPos, playerRef,
 }: {
   name: string;
   color: string;
@@ -81,174 +94,98 @@ function Teacher({
   playerRef: React.RefObject<THREE.Group | null>;
 }) {
   const ref = useRef<THREE.Group>(null);
-  const schedule = useGameStore(s => s.schedule);
-  const isRainy = useGameStore(s => s.isRainy);
-  const setTeacherSuspicion = useGameStore(s => s.setTeacherSuspicion);
-  const teacherSuspicion = useGameStore(s => s.teacherSuspicion);
-  
-  const triggerTeleport = useGameStore(s => s.triggerTeleport);
-  const setActiveDialogue = useGameStore(s => s.setActiveDialogue);
-  const isImaginationMode = useGameStore(s => s.isImaginationMode);
-  const activeDialogue = useGameStore(s => s.activeDialogue);
-  
-  const targetPos = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
-  
-  useFrame((state, delta) => {
-    if (!ref.current || !playerRef.current) return;
-    
-    // Adjust target based on schedule
-    if (schedule === 'outdoor-play' && !isRainy) {
-      if (name === 'Ms. Harper') targetPos.set(10, 0, -2);
-    } else if (schedule === 'art-time') {
-      if (name === 'Ms. Harper') targetPos.set(-10, 0, -12);
-    } else {
-      targetPos.set(...defaultPos);
-    }
+  const schedule = useGameStore((state) => state.schedule);
+  const isRainy = useGameStore((state) => state.isRainy);
+  const suspicion = useGameStore((state) => state.teacherSuspicion);
+  const trusted = useGameStore((state) => state.progression.trustedHelperPass);
+  const imagination = useGameStore((state) => state.isImaginationMode);
+  const activeDialogue = useGameStore((state) => state.activeDialogue);
+  const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
+  const suspicionAccumulator = useRef(0);
+  useEffect(() => registerNpcPosition(`teacher-${name}`, mirror), [name, mirror]);
+  const destination = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
 
-    // Move towards target smoothly
-    ref.current.position.lerp(targetPos, delta * 2);
+  useFrame((_, delta) => {
+    if (!ref.current) return;
+    destination.set(...defaultPos);
+    if (name === 'Ms. Harper' && schedule === 'outdoor-play' && !isRainy) destination.set(10, 0, -2);
+    if (name === 'Ms. Harper' && schedule === 'art-time') destination.set(-10, 0, -11);
+    stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, 1.4);
+    mirror.copy(ref.current.position);
 
-    // Suspicion mechanic (only Ms. Harper checks for simplicity)
-    if (name === 'Ms. Harper') {
-      const px = playerRef.current.position.x;
-      const pz = playerRef.current.position.z;
-      // In Storage Area
-      if (px < -8 && pz > 8) {
-        setTeacherSuspicion(s => {
-          const next = s + delta * 20;
+    if (name === 'Ms. Harper' && playerRef.current) {
+      suspicionAccumulator.current += delta;
+      if (suspicionAccumulator.current < 0.1) return;
+      const suspicionDelta = suspicionAccumulator.current;
+      suspicionAccumulator.current = 0;
+      const inStorage = playerRef.current.position.x < -8 && playerRef.current.position.z > 8;
+      const store = useGameStore.getState();
+      if (inStorage && !trusted) {
+        store.setTeacherSuspicion((current) => {
+          const next = current + suspicionDelta * 20;
           if (next >= 100) {
-            triggerTeleport();
-            setActiveDialogue({
-              name: 'Ms. Harper',
-              text: 'Storage is off limits during playtime! Back to the main room.'
-            });
-            return 0; // Reset suspicion
+            store.triggerTeleport();
+            store.setActiveDialogue({ name: 'Ms. Harper', text: 'Storage is off limits until you earn a Trusted Helper Pass.' });
+            return 0;
           }
           return Math.min(100, next);
         });
       } else {
-        setTeacherSuspicion(s => Math.max(0, s - delta * 10));
+        store.setTeacherSuspicion((current) => Math.max(0, current - suspicionDelta * 10));
       }
-      
-      // If suspicious, look at player
-      if (teacherSuspicion > 0) {
-        ref.current.lookAt(playerRef.current.position);
-      }
+      if (suspicion > 0) ref.current.lookAt(playerRef.current.position);
     }
   });
 
   return (
     <group ref={ref} position={defaultPos}>
       <group scale={1.28}>
-        <CharacterModel
-          bodyColor={color}
-          accentColor={accent}
-          hairColor={hairColor}
-          hairStyle={hairStyle}
-          skinColor={skinColor}
-          mood="curious"
-          isTeacher
-          isTalking={activeDialogue?.name === name}
-          imaginationMode={isImaginationMode}
-          motionSeed={namePhase(name)}
-          idleEnergy={0.55}
-        />
+        <CharacterModel bodyColor={color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood="curious" isTeacher isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={namePhase(name)} idleEnergy={0.55} />
       </group>
     </group>
   );
 }
 
 function Kid({
-  name,
-  color,
-  accent,
-  hairColor,
-  hairStyle,
-  skinColor,
-  defaultPos,
-  playerRef,
+  name, color, accent, hairColor, hairStyle, skinColor, defaultPos, playerRef,
 }: KidDefinition & { playerRef: React.RefObject<THREE.Group | null> }) {
   const ref = useRef<THREE.Group>(null);
-  const schedule = useGameStore(s => s.schedule);
-  const isRainy = useGameStore(s => s.isRainy);
-  const isImaginationMode = useGameStore(s => s.isImaginationMode);
-  
-  const setActiveInteractable = useGameStore(s => s.setActiveInteractable);
-  const activeInteractable = useGameStore(s => s.activeInteractable);
-  const activeDialogue = useGameStore(s => s.activeDialogue);
-  const mood = useGameStore(s => s.friends[name]?.mood ?? 'happy');
-  
-  const [canInteract, setCanInteract] = useState(false);
-
-  const basePos = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
-  const targetPos = useRef(new THREE.Vector3(...defaultPos));
-  const timeOffset = useMemo(() => namePhase(name), [name]);
+  const schedule = useGameStore((state) => state.schedule);
+  const isRainy = useGameStore((state) => state.isRainy);
+  const imagination = useGameStore((state) => state.isImaginationMode);
+  const activeDialogue = useGameStore((state) => state.activeDialogue);
+  const active = useGameStore((state) => state.activeInteractable === `kid-${name}`);
+  const mood = useGameStore((state) => state.friends[name]?.mood ?? 'happy');
+  const phase = useMemo(() => namePhase(name), [name]);
+  const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
+  const candidate = useMemo(() => ({
+    id: `kid-${name}`,
+    position: mirror,
+    range: 2.1,
+    priority: name === 'Leo' || name === 'Mia' || name === 'Sam' ? 55 : 35,
+    valid: true,
+  }), [mirror, name]);
+  useEffect(() => registerNpcPosition(`kid-${name}`, mirror), [mirror, name]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
 
   useFrame((state, delta) => {
-    if (!ref.current || !playerRef.current) return;
-    
-    // Determine area based on schedule and weather
-    if (schedule === 'outdoor-play' && !isRainy) {
-      basePos.set(12 + Math.cos(timeOffset) * 3, 0, Math.sin(timeOffset) * 10);
-    } else if (schedule === 'outdoor-play' && isRainy) {
-      basePos.set(4.8 + Math.cos(timeOffset) * 1.5, 0, -5.4 + Math.sin(timeOffset) * 1.1);
-    } else if (schedule === 'art-time') {
-      basePos.set(-12 + Math.cos(timeOffset) * 2, 0, -12 + Math.sin(timeOffset) * 2);
-    } else if (schedule === 'juice-club') {
-      basePos.set(Math.cos(timeOffset) * 4, 0, Math.sin(timeOffset) * 4);
-    } else if (schedule === 'pickup') {
-      basePos.set(-5.8 + Math.cos(timeOffset) * 1.2, 0, Math.sin(timeOffset) * 5.5);
-    } else {
-      basePos.set(defaultPos[0], defaultPos[1], defaultPos[2]);
-    }
-
-    // Add some random wandering
-    targetPos.current.x = basePos.x + Math.sin(state.clock.elapsedTime + timeOffset) * 1.5;
-    targetPos.current.z = basePos.z + Math.cos((state.clock.elapsedTime + timeOffset) * 0.8) * 1.5;
-
-    // Interaction Check
-    const dist = ref.current.position.distanceTo(playerRef.current.position);
-    const inRange = dist < 2.0;
-    
-    if (inRange !== canInteract) {
-      setCanInteract(inRange);
-      if (inRange) setActiveInteractable(`kid-${name}`);
-      else if (activeInteractable === `kid-${name}`) setActiveInteractable(null);
-    }
-
-    const pauseForAmbientMoment = Math.sin(state.clock.elapsedTime * 0.48 + timeOffset) > 0.78;
-
-    // Move in short, readable bursts, then pause for a look-around or reaction.
-    if (activeInteractable !== `kid-${name}` && !pauseForAmbientMoment) {
-      ref.current.position.lerp(targetPos.current, delta * 1.5);
-      if (targetPos.current.distanceTo(ref.current.position) > 0.1) {
-        ref.current.lookAt(targetPos.current.x, ref.current.position.y, targetPos.current.z);
-      }
-    } else if (activeInteractable === `kid-${name}`) {
-      // Look at player when talking
+    if (!ref.current) return;
+    const destination = scheduleDestination(schedule, isRainy, defaultPos, phase);
+    destination.x += Math.sin(state.clock.elapsedTime * 0.45 + phase) * 0.55;
+    destination.z += Math.cos(state.clock.elapsedTime * 0.37 + phase) * 0.55;
+    const paused = Math.sin(state.clock.elapsedTime * 0.48 + phase) > 0.82;
+    if (active && playerRef.current) {
       ref.current.lookAt(playerRef.current.position.x, ref.current.position.y, playerRef.current.position.z);
-    } else {
-      const targetYaw = Math.sin(state.clock.elapsedTime * 0.42 + timeOffset) * 0.35;
-      ref.current.rotation.y = THREE.MathUtils.lerp(ref.current.rotation.y, targetYaw, 1 - Math.exp(-2.4 * delta));
+    } else if (!paused) {
+      stepNpc(`kid-${name}`, ref.current, destination, playerRef.current, delta, 1.15);
     }
+    mirror.copy(ref.current.position);
+    updateInteractionCandidate(`kid-${name}`, { position: mirror, valid: true });
   });
-
-  const activeColor = isImaginationMode ? "#ff006e" : color;
 
   return (
     <group ref={ref} position={defaultPos}>
-      <CharacterModel
-        bodyColor={activeColor}
-        accentColor={accent}
-        hairColor={hairColor}
-        hairStyle={hairStyle}
-        skinColor={skinColor}
-        mood={mood}
-        isTalking={activeDialogue?.name === name}
-        imaginationMode={isImaginationMode}
-        motionSeed={timeOffset}
-        idleEnergy={0.8 + (timeOffset % 0.5)}
-      />
+      <CharacterModel bodyColor={imagination ? '#ff006e' : color} accentColor={accent} hairColor={hairColor} hairStyle={hairStyle} skinColor={skinColor} mood={mood} isTalking={activeDialogue?.name === name} imaginationMode={imagination} motionSeed={phase} idleEnergy={0.8 + (phase % 0.5)} />
     </group>
   );
 }

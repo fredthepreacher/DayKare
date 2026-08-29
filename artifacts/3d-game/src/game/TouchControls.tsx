@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { clearTouchMove, setTouchCrouch, setTouchMove, toggleTouchRun } from './touchInput';
+import { addCameraOrbit, recenterCamera } from './cameraInput';
 
 const HOLD_DELAY_MS = 520;
 const DOUBLE_TAP_WINDOW_MS = 360;
@@ -21,6 +22,8 @@ export function TouchControls({
   const padRef = useRef<HTMLDivElement>(null);
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activePointer = useRef<number | null>(null);
+  const lookPointer = useRef<number | null>(null);
+  const lookPoint = useRef({ x: 0, y: 0 });
   const startPoint = useRef({ x: 0, y: 0 });
   const maxTravel = useRef(0);
   const lastTapAt = useRef(0);
@@ -142,8 +145,46 @@ export function TouchControls({
     setKnob({ x: 0, y: 0 });
   };
 
+  const startLook = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (lookPointer.current !== null) return;
+    lookPointer.current = event.pointerId;
+    lookPoint.current = { x: event.clientX, y: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveLook = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (lookPointer.current !== event.pointerId) return;
+    event.preventDefault();
+    addCameraOrbit(event.clientX - lookPoint.current.x, event.clientY - lookPoint.current.y);
+    lookPoint.current = { x: event.clientX, y: event.clientY };
+  };
+
+  const finishLook = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (lookPointer.current === event.pointerId) lookPointer.current = null;
+  };
+
   return (
     <div className="daykare-touch-ui" aria-label="Touch game controls">
+      {movementEnabled && (
+        <div
+          className="daykare-touch-look"
+          onPointerDown={startLook}
+          onPointerMove={moveLook}
+          onPointerUp={finishLook}
+          onPointerCancel={finishLook}
+          role="application"
+          aria-label="Drag to orbit the camera"
+        >
+          <button
+            type="button"
+            className="daykare-touch-recenter"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={recenterCamera}
+          >
+            Center camera
+          </button>
+        </div>
+      )}
       {movementEnabled && (
         <div className="daykare-touch-movement">
           <div

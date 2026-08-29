@@ -7,6 +7,16 @@ import {
   PROGRESSION_VERSION,
   type ProgressionState,
 } from './progression';
+import {
+  activateQuest,
+  advanceObjective,
+  createInitialQuests,
+  legacyStatusForQuest,
+  normalizeQuestStates,
+  resetRepeatableQuest,
+  type QuestStates,
+} from './quests';
+import { getTrackedPlayerPosition } from './world';
 
 export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -15,6 +25,12 @@ export interface FriendState {
   mood: 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
   friendship: number; // 0 to 100
   recentMemory: string;
+}
+
+export interface DroppedWorldItem {
+  id: string;
+  item: string;
+  position: [number, number, number];
 }
 
 export interface GameState {
@@ -39,6 +55,9 @@ export interface GameState {
   // Mission: Binky
   binkyStatus: BinkyStatus;
   binkyClues: string[];
+  quests: QuestStates;
+  droppedItems: DroppedWorldItem[];
+  tidyPlacedItems: string[];
   
   // Business
   juiceStock: number;
@@ -65,6 +84,8 @@ export interface GameState {
   toggleRain: () => void;
   pickUp: (item: string) => void;
   drop: (item: string) => void;
+  dropAt: (item: string, position: [number, number, number]) => void;
+  recoverDroppedItem: (id: string) => void;
   setIsRiding: (r: boolean) => void;
   
   updateFriend: (name: string, updates: Partial<FriendState>) => void;
@@ -72,6 +93,8 @@ export interface GameState {
 
   updateBinkyStatus: (status: BinkyStatus) => void;
   addClue: (clue: string) => void;
+  advanceQuestObjective: (questId: string, objectiveId: string) => boolean;
+  completeTidyToy: (item: string) => boolean;
   
   buyStock: (type: 'juice' | 'cracker', cost: number, amount: number) => void;
   buyUpgrade: (id: string, cost: number) => void;
@@ -86,6 +109,8 @@ export interface GameState {
   triggerTeleport: () => void;
   completeActivity: (activityId: string, tokenReward: number, reputationReward: number) => void;
   addProgressionTokens: (amount: number) => void;
+  buyHubUpgrade: (id: string, cost: number) => boolean;
+  setTrustedHelperPass: () => void;
   resetGame: () => void;
 }
 
@@ -133,6 +158,9 @@ const initialState = {
 
   binkyStatus: 'not-started' as BinkyStatus,
   binkyClues: [],
+  quests: createInitialQuests(),
+  droppedItems: [] as DroppedWorldItem[],
+  tidyPlacedItems: [] as string[],
   
   juiceStock: 5,
   crackerStock: 5,
@@ -169,8 +197,10 @@ export const useGameStore = create<GameState>()(
       
       pickUp: (item) => set((state) => {
         if (state.inventory.includes(item)) return state;
+        const dropped = state.droppedItems.filter((droppedItem) => droppedItem.item !== item);
         return {
           inventory: [...state.inventory, item],
+          droppedItems: dropped,
           progression: {
             ...state.progression,
             collectibleProgress: {
@@ -181,8 +211,38 @@ export const useGameStore = create<GameState>()(
         };
       }),
       
-      drop: (item) => set((state) => ({ 
-        inventory: state.inventory.filter(i => i !== item) 
+      drop: (item) => set((state) => {
+        const protectedItem = item === 'binky' || item.endsWith('-block');
+        const position: [number, number, number] = protectedItem
+          && state.progression.hubUpgrades.includes('storage-organizer')
+          ? [-10.5, 0.25, 10.2]
+          : getTrackedPlayerPosition();
+        if (item === 'binky') {
+          return {
+            droppedItems: [
+              ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
+              { id: `dropped-${item}`, item, position },
+            ],
+            inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
+          };
+        }
+        return {
+          droppedItems: [
+            ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
+            { id: `dropped-${item}`, item, position },
+          ],
+          inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
+        };
+      }),
+      dropAt: (item, position) => set((state) => ({
+        droppedItems: [
+          ...state.droppedItems.filter((droppedItem) => droppedItem.item !== item),
+          { id: `dropped-${item}`, item, position },
+        ],
+        inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
+      })),
+      recoverDroppedItem: (id) => set((state) => ({
+        droppedItems: state.droppedItems.filter((droppedItem) => droppedItem.id !== id),
       })),
 
       setIsRiding: (r) => set((state) => ({
@@ -205,20 +265,25 @@ export const useGameStore = create<GameState>()(
         }
       })),
 
-      setTeacherSuspicion: (s) => set((state) => ({
-        teacherSuspicion: typeof s === 'function' ? s(state.teacherSuspicion) : s
-      })),
+      setTeacherSuspicion: (s) => set((state) => {
+        const teacherSuspicion = typeof s === 'function' ? s(state.teacherSuspicion) : s;
+        return teacherSuspicion === state.teacherSuspicion ? state : { teacherSuspicion };
+      }),
       
       updateBinkyStatus: (status) => set((state) => {
+        const quests = status === 'returned-good'
+          ? activateQuest(advanceObjective(state.quests, 'where-binky', 'return-binky'), 'rainbow-tidy-up')
+          : state.quests;
         if (status === 'returned-good' && state.binkyStatus !== 'returned-good') {
           const progression = withQualifiedRoutes({
             ...state.progression,
             reputation: Math.min(100, state.progression.reputation + 8),
             tokens: state.progression.tokens + 5,
+            trustedHelperPass: true,
           });
-          return { binkyStatus: status, progression };
+          return { binkyStatus: status, quests, progression };
         }
-        return { binkyStatus: status };
+        return { binkyStatus: status, quests };
       }),
       
       addClue: (clue) => set((state) => {
@@ -227,7 +292,61 @@ export const useGameStore = create<GameState>()(
         }
         return state;
       }),
-
+      advanceQuestObjective: (questId, objectiveId) => {
+        let changed = false;
+        set((state) => {
+          const nextQuests = advanceObjective(state.quests, questId, objectiveId);
+          changed = nextQuests !== state.quests;
+          if (!changed) return state;
+          const nextStatus = questId === 'where-binky'
+            ? legacyStatusForQuest(nextQuests) as BinkyStatus
+            : state.binkyStatus;
+          return {
+            quests: nextQuests,
+            binkyStatus: nextStatus,
+          };
+        });
+        return changed;
+      },
+      completeTidyToy: (item) => {
+        let changed = false;
+        set((state) => {
+          const objectiveByItem: Record<string, [string, string]> = {
+            'blue-block': ['collect-blue-block', 'place-blue-block'],
+            'red-block': ['collect-red-block', 'place-red-block'],
+            'yellow-block': ['collect-yellow-block', 'place-yellow-block'],
+          };
+          const pair = objectiveByItem[item];
+          const quest = state.quests['rainbow-tidy-up'];
+          if (!pair || !quest || quest.currentObjectiveId !== pair[1] || !state.inventory.includes(item)) return state;
+          const nextQuests = advanceObjective(state.quests, 'rainbow-tidy-up', pair[1]);
+          const completedRound = nextQuests['rainbow-tidy-up'].status === 'complete';
+          const nextProgression = completedRound
+            ? withQualifiedRoutes({
+                ...state.progression,
+                tokens: state.progression.tokens + 2,
+                reputation: Math.min(100, state.progression.reputation + 2),
+                trustedHelperPass: true,
+                activityRuns: {
+                  ...state.progression.activityRuns,
+                  'rainbow-tidy-up': (state.progression.activityRuns['rainbow-tidy-up'] ?? 0) + 1,
+                },
+                activityRewards: {
+                  ...state.progression.activityRewards,
+                  'rainbow-tidy-up': (state.progression.activityRewards['rainbow-tidy-up'] ?? 0) + 2,
+                },
+              })
+            : state.progression;
+          changed = true;
+          return {
+            inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
+            tidyPlacedItems: [...state.tidyPlacedItems, item],
+            quests: completedRound ? resetRepeatableQuest(nextQuests, 'rainbow-tidy-up') : nextQuests,
+            progression: nextProgression,
+          };
+        });
+        return changed;
+      },
       buyStock: (type, cost, amount) => set((state) => {
         if (state.juiceClubCash >= cost) {
           return {
@@ -331,6 +450,24 @@ export const useGameStore = create<GameState>()(
         });
         return { progression };
       }),
+      buyHubUpgrade: (id, cost) => {
+        let changed = false;
+        set((state) => {
+          if (!state.progression.trustedHelperPass || state.progression.tokens < cost || state.progression.hubUpgrades.includes(id)) return state;
+          changed = true;
+          return {
+            progression: withQualifiedRoutes({
+              ...state.progression,
+              tokens: state.progression.tokens - cost,
+              hubUpgrades: [...state.progression.hubUpgrades, id],
+            }),
+          };
+        });
+        return changed;
+      },
+      setTrustedHelperPass: () => set((state) => ({
+        progression: { ...state.progression, trustedHelperPass: true },
+      })),
       resetGame: () => set(initialState),
     }),
     {
@@ -345,6 +482,9 @@ export const useGameStore = create<GameState>()(
         friends: state.friends,
         binkyStatus: state.binkyStatus,
         binkyClues: state.binkyClues,
+        quests: state.quests,
+        droppedItems: state.droppedItems,
+        tidyPlacedItems: state.tidyPlacedItems,
         juiceStock: state.juiceStock,
         crackerStock: state.crackerStock,
         juiceClubCash: state.juiceClubCash,
@@ -364,20 +504,45 @@ export const useGameStore = create<GameState>()(
           return {
             ...initialState,
             ...persisted,
-            progression: createInitialProgression(),
+            quests: normalizeQuestStates(persisted.quests, persisted.binkyStatus, persisted.inventory ?? []),
+            progression: normalizeProgression(persisted.progression),
           };
         }
-        return {
+         const migratedQuests = normalizeQuestStates(
+           persisted.quests,
+           persisted.binkyStatus,
+           persisted.inventory ?? [],
+         );
+         const migratedBinkyStatus = (persisted.binkyStatus ?? legacyStatusForQuest(migratedQuests)) as BinkyStatus;
+         const droppedItems = Array.isArray(persisted.droppedItems) ? persisted.droppedItems : [];
+         const needsBinkyRecovery = migratedBinkyStatus === 'found'
+           && !(persisted.inventory ?? []).includes('binky')
+           && !droppedItems.some((item) => item.item === 'binky');
+         return {
           ...initialState,
           ...persisted,
-          progression: normalizeProgression(persisted.progression),
+           binkyStatus: migratedBinkyStatus,
+           quests: migratedQuests,
+           droppedItems: needsBinkyRecovery
+             ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number] }]
+             : droppedItems,
+           progression: normalizeProgression(persisted.progression),
         };
       },
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<GameState>;
+        const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, persisted.inventory ?? []);
+        const droppedItems = Array.isArray(persisted.droppedItems) ? persisted.droppedItems : [];
+        const needsBinkyRecovery = quests['where-binky'].currentObjectiveId === 'return-binky'
+          && !(persisted.inventory ?? []).includes('binky')
+          && !droppedItems.some((item) => item.item === 'binky');
         return {
           ...currentState,
           ...persisted,
+          quests,
+          droppedItems: needsBinkyRecovery
+            ? [...droppedItems, { id: 'recovered-binky', item: 'binky', position: [-14, 0.2, 14] as [number, number, number] }]
+            : droppedItems,
           progression: normalizeProgression(persisted.progression),
         };
       },
