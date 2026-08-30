@@ -484,7 +484,7 @@ try {
     timeOfDay: 9,
     schedule: 'morning-play',
     inventory: [],
-    friendNames: ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max'],
+    friendNames: ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max', 'Mae'],
     leo: { mood: 'sad', friendship: 10, recentMemory: 'Lost his favorite toy.' },
     waitingCustomers: [],
     activeCustomer: null,

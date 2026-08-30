@@ -56,6 +56,7 @@ export const KID_CAST: KidDefinition[] = [
   { name: 'Finn', color: '#4c82d4', accent: '#f3ca52', hairColor: '#bd7448', hairStyle: 'sprout', skinColor: '#f1bf98', defaultPos: [0, 0, 6] },
   { name: 'Ruby', color: '#e8613c', accent: '#8bc5db', hairColor: '#7a2d2d', hairStyle: 'bob', skinColor: '#d5916b', defaultPos: [-4, 0, 0] },
   { name: 'Max', color: '#e6ae2f', accent: '#4b7f8c', hairColor: '#4b382c', hairStyle: 'cap', skinColor: '#d79b78', defaultPos: [4, 0, 2] },
+  { name: 'Mae', color: '#6f62b5', accent: '#f4b65f', hairColor: '#342c45', hairStyle: 'bob', skinColor: '#bd795d', defaultPos: [-1.2, 0, 5.2] },
 ];
 
 function namePhase(name: string) {
@@ -228,7 +229,6 @@ function Teacher({
   const schedule = useGameStore((state) => state.schedule);
   const isRainy = useGameStore((state) => state.isRainy);
   const suspicion = useGameStore((state) => state.teacherSuspicion);
-  const trusted = useGameStore((state) => state.progression.trustedHelperPass);
   const imagination = useGameStore((state) => state.isImaginationMode);
   const activeDialogue = useGameStore((state) => state.activeDialogue);
   const active = useGameStore((state) => state.activeInteractable === `teacher-${name}`);
@@ -373,12 +373,16 @@ function Teacher({
       suspicionAccumulator.current = 0;
       const inStorage = playerRef.current.position.x < -8 && playerRef.current.position.z > 8;
       const store = useGameStore.getState();
-      if (inStorage && !trusted) {
+      const storageAuthorized = objectiveIsActive(store.quests, 'where-binky', 'search-storage');
+      if (inStorage && !storageAuthorized) {
         store.setTeacherSuspicion((current) => {
           const next = current + suspicionDelta * 20;
           if (next >= 100) {
             store.triggerTeleport();
-            store.setActiveDialogue({ name: 'Ms. Harper', text: 'Storage is off limits until you earn a Trusted Helper Pass.' });
+            store.setActiveDialogue({
+              name: 'Ms. Harper',
+              text: 'Storage is adults-only. A Helper Pass lets you help at the Lost & Found shelf, not enter this room. Let’s head back together.',
+            });
             return 0;
           }
           return Math.min(100, next);
@@ -802,11 +806,13 @@ export function kidDestination(
     const castIndex = KID_CAST.findIndex((kid) => kid.name === name);
     const pair = Math.floor(castIndex / 2);
     const groupSpots: Partial<Record<string, [number, number, number][]>> = {
-      'morning-play': [[-2.7, 0, 1.4], [0.5, 0, 3.1], [2.8, 0, 0.5], [-0.2, 0, -1.8], [3.1, 0, 2.6]],
-      'art-time': [[-14.1, 0, -11.5], [-12.6, 0, -9.5], [-9.7, 0, -10.6], [-9.7, 0, -13.5], [-12.2, 0, -14.6]],
+      'morning-play': [[-2.7, 0, 1.4], [0.5, 0, 3.1], [2.8, 0, 0.5], [-0.2, 0, -1.8], [3.1, 0, 2.6], [-5, 0, -1.8]],
+      'art-time': [[-14.1, 0, -11.5], [-12.6, 0, -9.5], [-9.7, 0, -10.6], [-9.7, 0, -13.5], [-12.2, 0, -14.6], [-12.1, 0, -9.1]],
+      'juice-club': [[0.8, 0, -2.2], [-1.4, 0, -1], [1.1, 0, 1.9], [-2.2, 0, 0.5], [4.8, 0, 4], [-4.8, 0, 1.8]],
       'outdoor-play': rainy
-        ? [[3.4, 0, -6.2], [1.5, 0, -5.2], [-1.4, 0, -5.5], [2.5, 0, -4.6], [-3.1, 0, -5.5]]
-        : [[10.3, 0, -10.7], [13.6, 0, -8.2], [10.6, 0, -1.6], [14.1, 0, 1.1], [13.6, 0, 8.4]],
+        ? [[3.4, 0, -6.2], [1.5, 0, -5.2], [-1.4, 0, -5.5], [2.5, 0, -4.6], [-3.1, 0, -5.5], [0, 0, -6.7]]
+        : [[10.3, 0, -10.7], [13.6, 0, -8.2], [10.6, 0, -1.6], [14.1, 0, 1.1], [13.6, 0, 8.4], [11.5, 0, 12.1]],
+      pickup: [[-9.2, 0, -5.2], [-9.2, 0, -1.2], [-9.2, 0, 3.2], [-12.8, 0, -6], [-12.8, 0, -2], [-12.8, 0, 5.8]],
     };
     const spots = groupSpots[schedule];
     if (spots) {

@@ -14,6 +14,55 @@ export function HubProgression({ playerRef }: { playerRef: React.RefObject<THREE
     <group>
       {HUB_ROUTES.map((route) => <FutureAccessPoint key={route.id} route={route} playerRef={playerRef} />)}
       <RainbowTidyUp playerRef={playerRef} />
+      <StickerParadeBoard />
+    </group>
+  );
+}
+
+function StickerParadeBoard() {
+  const ref = useRef<THREE.Group>(null);
+  const progression = useGameStore((state) => state.progression);
+  const caper = useGameStore((state) => state.caper);
+  const active = useGameStore((state) => state.activeInteractable === 'caper-board');
+  const position = useMemo(() => new THREE.Vector3(11.2, 0, 11.4), []);
+  const available = progression.trustedHelperPass;
+  const candidate = useMemo(() => ({
+    id: 'caper-board',
+    position,
+    range: 2.2,
+    priority: 34,
+    questPriority: available,
+    valid: available,
+  }), [available, position]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  useFrame((state, delta) => {
+    updateInteractionCandidate('caper-board', { position, valid: available, questPriority: available });
+    if (!ref.current) return;
+    const scale = THREE.MathUtils.lerp(ref.current.scale.x, active ? 1.06 : 1, 1 - Math.exp(-8 * delta));
+    ref.current.scale.setScalar(scale);
+    ref.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.6) * 0.03;
+  });
+  if (!available) return null;
+  const boardColor = caper.step === 'complete' ? '#65b891' : '#e8a84d';
+  return (
+    <group ref={ref} position={position}>
+      <mesh position={[0, 0.72, 0]} castShadow>
+        <boxGeometry args={[1.5, 1.35, 0.12]} />
+        <meshStandardMaterial color="#7b4f38" roughness={0.82} />
+      </mesh>
+      <mesh position={[0, 0.78, -0.08]} castShadow>
+        <boxGeometry args={[1.18, 0.92, 0.035]} />
+        <meshStandardMaterial color={boardColor} roughness={0.9} />
+      </mesh>
+      <mesh position={[0, 0.24, 0]} castShadow>
+        <boxGeometry args={[0.14, 0.48, 0.14]} />
+        <meshStandardMaterial color="#7b4f38" />
+      </mesh>
+      <mesh position={[0, 0.04, 0]} castShadow>
+        <boxGeometry args={[1.5, 0.08, 0.5]} />
+        <meshStandardMaterial color="#d37b3d" />
+      </mesh>
+      <FocusRing active={active} color={boardColor} radius={1} />
     </group>
   );
 }

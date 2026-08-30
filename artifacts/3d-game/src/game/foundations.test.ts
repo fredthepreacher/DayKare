@@ -96,6 +96,153 @@ import {
   activityIsSocial,
   getChildActivityPlan,
 } from './npcActivities';
+import {
+  advanceCaper as advanceCaperState,
+  advanceDistrictPreview,
+  appendRewardEvent,
+  chooseMaeIntroduction,
+  createInitialCaper,
+  createInitialDistrictProgress,
+  createInitialRivalStory,
+  getOptionalRewardMultiplier,
+  normalizeCaper,
+  normalizeDistrictProgress,
+  normalizeRewardEvents,
+  normalizeRivalStory,
+  recordGardenStoryMilestone,
+  recordRainbowStoryMilestone,
+  resolveMaeStory,
+  startCaper as startCaperState,
+} from './storyProgression';
+
+const freshRivalStory = createInitialRivalStory();
+const curiousIntroduction = chooseMaeIntroduction(freshRivalStory, 'curious');
+assert.equal(curiousIntroduction.beat, 'rainbow-challenge');
+assert.equal(curiousIntroduction.chapter, 2);
+assert.equal(curiousIntroduction.choices[0]?.choice, 'curious');
+assert.equal(
+  chooseMaeIntroduction(curiousIntroduction, 'bold'),
+  curiousIntroduction,
+  'the introduction choice is idempotent and cannot be replaced on replay',
+);
+const afterRainbowStory = recordRainbowStoryMilestone(curiousIntroduction);
+assert.equal(afterRainbowStory.beat, 'garden-reversal');
+assert.equal(
+  recordGardenStoryMilestone(curiousIntroduction),
+  curiousIntroduction,
+  'Garden cannot skip the authored Rainbow chapter',
+);
+const afterGardenStory = recordGardenStoryMilestone(afterRainbowStory);
+const resolvedRivalStory = resolveMaeStory(afterGardenStory);
+assert.equal(resolvedRivalStory.beat, 'complete');
+assert.equal(resolvedRivalStory.unlocks.includes('bridge-builder'), true);
+assert.equal(resolveMaeStory(resolvedRivalStory), resolvedRivalStory);
+
+const repairedRivalStory = normalizeRivalStory({
+  beat: 'garden-reversal',
+  chapter: 99,
+  trust: 900,
+  completedChapters: ['the-new-plan', 'forged'],
+  unlocks: ['mae-note', 'forged'],
+  choices: [{ beat: 'meet-mae', choice: 'kind' }, { beat: 'oops', choice: 'bold' }],
+});
+assert.equal(repairedRivalStory.chapter, 2);
+assert.equal(repairedRivalStory.beat, 'rainbow-challenge');
+assert.equal(repairedRivalStory.trust, 18);
+assert.deepEqual(repairedRivalStory.completedChapters, ['the-new-plan']);
+assert.deepEqual(repairedRivalStory.unlocks, ['mae-note']);
+assert.equal(repairedRivalStory.choices.length, 1);
+const forgedCompleteStory = normalizeRivalStory({
+  ...resolvedRivalStory,
+  choices: resolvedRivalStory.choices.filter((record) => record.beat !== 'make-peace'),
+});
+assert.equal(forgedCompleteStory.beat, 'make-peace', 'a forged completion cannot skip the final authored choice');
+
+const rewardReceipt = {
+  id: 'test-reward',
+  title: 'Test',
+  detail: 'A safe visual receipt',
+  tokens: 2,
+  reputation: 1,
+};
+const oneRewardReceipt = appendRewardEvent([], rewardReceipt);
+assert.equal(appendRewardEvent(oneRewardReceipt, rewardReceipt), oneRewardReceipt);
+assert.deepEqual(normalizeRewardEvents([rewardReceipt, { bad: true }]), [rewardReceipt]);
+assert.equal(getOptionalRewardMultiplier(1_001, 1_000), 2);
+assert.equal(getOptionalRewardMultiplier(1_000, 1_000), 1);
+
+let caperRules = startCaperState(createInitialCaper());
+assert.equal(caperRules.step, 'plan');
+for (const expected of ['gather', 'teacher-check', 'celebrate', 'complete'] as const) {
+  caperRules = advanceCaperState(caperRules);
+  assert.equal(caperRules.step, expected);
+}
+assert.equal(advanceCaperState(caperRules), caperRules, 'a completed caper cannot reward twice');
+assert.equal(caperRules.consequence, 'teacher-guided');
+assert.equal(normalizeCaper({ step: 'forged', attempts: -5 }).step, 'idle');
+let districtRules = createInitialDistrictProgress();
+for (let index = 0; index < 5; index += 1) {
+  districtRules = advanceDistrictPreview(districtRules, 'makerMarket');
+}
+assert.equal(districtRules.makerMarket, 3, 'district entrance foundations have a bounded authored endpoint');
+assert.deepEqual(
+  normalizeDistrictProgress({ makerMarket: 99, storybookLane: -4 }),
+  { version: 1, makerMarket: 3, storybookLane: 0 },
+);
+
+useGameStore.getState().resetGame();
+useGameStore.setState((state) => ({
+  progression: { ...state.progression, reputation: 17, tokens: 26, trustedHelperPass: true },
+}));
+useGameStore.getState().setTimeOfDay(17.5);
+const dayBeforeRollover = useGameStore.getState().dayNumber;
+useGameStore.getState().advanceSchedule();
+const rolledDay = useGameStore.getState();
+assert.equal(rolledDay.dayNumber, dayBeforeRollover + 1);
+assert.equal(rolledDay.timeOfDay, 9);
+assert.equal(rolledDay.schedule, 'morning-play');
+assert.equal(rolledDay.progression.tokens, 26, 'day rollover preserves permanent progression');
+assert.equal(rolledDay.progression.reputation, 17);
+
+assert.equal(rolledDay.startCaper(), true);
+assert.equal(rolledDay.startCaper(), false, 'an active caper cannot restart over itself');
+assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(useGameStore.getState().advanceCaper(), true);
+const caperRewardBefore = useGameStore.getState().progression.tokens;
+assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(useGameStore.getState().progression.tokens, caperRewardBefore + 3);
+assert.equal(useGameStore.getState().advanceCaper(), false, 'caper completion is idempotent');
+assert.equal(useGameStore.getState().progression.tokens, caperRewardBefore + 3);
+
+useGameStore.setState((state) => ({
+  progression: { ...state.progression, tokens: Math.max(25, state.progression.tokens) },
+}));
+assert.equal(useGameStore.getState().advanceDistrictPreview('makerMarket'), true);
+assert.equal(useGameStore.getState().districtProgress.makerMarket >= 1, true);
+const boostStartedAt = Date.now();
+assert.equal(useGameStore.getState().activateOptionalRewardBoost(boostStartedAt), true);
+assert.equal(useGameStore.getState().activateOptionalRewardBoost(boostStartedAt + 100), false);
+assert.equal(useGameStore.getState().startCaper(), true);
+assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(useGameStore.getState().advanceCaper(), true);
+const boostedCaperRewardBefore = useGameStore.getState().progression.tokens;
+assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(
+  useGameStore.getState().progression.tokens,
+  boostedCaperRewardBefore + 6,
+  'the visible optional boost doubles ordinary Star Token rewards for 15 seconds',
+);
+const serializedExpandedSave = serializeGameState(useGameStore.getState());
+assert.equal('rewardEvents' in serializedExpandedSave, false, 'transient reward receipts are never persisted');
+const expandedSave = normalizePersistedGameState(serializedExpandedSave);
+assert.equal(expandedSave.dayNumber, dayBeforeRollover + 1);
+assert.equal(expandedSave.caper.step, 'complete');
+assert.equal(expandedSave.districtProgress.makerMarket >= 1, true);
+assert.equal(expandedSave.optionalRewardBoostUntil, 0, 'the optional 15-second boost remains session-only');
+assert.deepEqual(expandedSave.rewardEvents, [], 'reload never replays stale reward celebrations');
+useGameStore.getState().resetGame();
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');

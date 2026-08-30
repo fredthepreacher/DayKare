@@ -29,6 +29,7 @@ const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default:
 export function UI() {
   const {
     timeOfDay,
+    dayNumber,
     schedule,
     isRainy,
     isImaginationMode,
@@ -86,6 +87,16 @@ export function UI() {
     completeActivity,
     ambientMessage,
     storageWarning,
+    rivalStory,
+    rewardEvents,
+    chooseRivalResponse,
+    resolveRivalStory,
+    dismissRewardEvent,
+    caper,
+    districtProgress,
+    startCaper,
+    advanceCaper,
+    advanceDistrictPreview,
   } = useGameStore();
 
   const [subscribe] = useKeyboardControls<Controls>();
@@ -164,6 +175,14 @@ export function UI() {
   useEffect(() => {
     if (activeDialogue) playGameSound('dialogue', 'dialogue');
   }, [activeDialogue?.name, activeDialogue?.text]);
+
+  const activeReward = rewardEvents[0] ?? null;
+  useEffect(() => {
+    if (!activeReward) return;
+    playGameSound('tidy-place', 'interaction');
+    const timer = window.setTimeout(() => dismissRewardEvent(activeReward.id), 2600);
+    return () => window.clearTimeout(timer);
+  }, [activeReward?.id, dismissRewardEvent]);
 
   useEffect(() => {
     return subscribe(
@@ -262,7 +281,7 @@ export function UI() {
                         if (juiceClubCustomerPhase === 'ordering') {
                           serveCustomer();
                           playGameSound('juice-service', 'interaction');
-                          setActiveDialogue({ name: 'System', text: 'Served a happy customer! +1 reputation and +1 Star Token.' });
+                           setActiveDialogue(null);
                         } else {
                           setActiveDialogue({ name: 'System', text: `${juiceClubActiveCustomer ?? waitingCustomers[0]} is still walking up to order.` });
                         }
@@ -295,12 +314,16 @@ export function UI() {
           const item = objective?.replace('place-', '');
           if (item && inventory.includes(item) && completeTidyToy(item)) {
             const finishedRound = item === 'yellow-block';
-            setActiveDialogue({
-              name: 'Rainbow Tidy-Up',
-              text: finishedRound
-                ? 'Everything is sorted! +2 reputation and +2 Star Tokens. You earned a Trusted Helper Pass, and a fresh tidy round is ready.'
-                : 'Perfect fit! Now find the next misplaced toy.',
-            });
+            if (finishedRound && rivalStory.beat === 'rainbow-challenge') {
+              setActiveDialogue({
+                name: 'Mae',
+                text: 'You finished the whole sort without bossing anyone around. Maybe a good plan can leave room for other people. I wrote a new one for the Garden.',
+              });
+            } else if (finishedRound) {
+              setActiveDialogue(null);
+            } else {
+              setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Perfect fit! Now find the next misplaced toy.' });
+            }
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
           }
@@ -317,10 +340,12 @@ export function UI() {
             const nextStep = advanceGardenActivity();
             if (nextStep >= 3) {
               completeActivity('garden-planting', 2, 1);
-              setActiveDialogue({
-                name: 'Gardener Nia',
-                text: 'All three seedlings are watered and standing tall! +1 reputation and +2 Star Tokens. This bed can be planted again.',
-              });
+              setActiveDialogue(rivalStory.beat === 'garden-reversal'
+                ? {
+                    name: 'Mae',
+                    text: 'My map put the watering can on the wrong side, and you fixed it without making me feel silly. Meet me back in the Hub. I think our plans fit together.',
+                  }
+                : null);
             } else {
               setActiveDialogue({
                 name: 'Gardener Nia',
@@ -361,6 +386,36 @@ export function UI() {
             'Ms. Harper': 'I am supervising the planting beds, pond edge, and gazebo path. Everyone has a clear route.',
           };
           setActiveDialogue({ name, text: gardenDialogue[name] ?? 'The Garden has something new to notice at every stop.' });
+        } else if (activeInteractable === 'caper-board') {
+          if (caper.step === 'idle' || caper.step === 'complete') {
+            if (startCaper()) {
+              setActiveDialogue({
+                name: 'Sticker Parade Plan',
+                text: 'Mae’s safe caper has one rule: nobody sneaks, takes, or gets left out. First, choose a parade route that stays clear of the tricycle loop.',
+              });
+            }
+          } else if (caper.step === 'plan') {
+            if (advanceCaper()) {
+              setActiveDialogue({
+                name: 'Sticker Parade Plan',
+                text: 'Route planned. Next, gather pretend signs, ribbon scraps, and washable stickers from the public craft cart.',
+              });
+            }
+          } else if (caper.step === 'gather') {
+            if (advanceCaper()) {
+              setActiveDialogue({
+                name: 'Sticker Parade Plan',
+                text: 'Supplies ready. Show the plan to Ms. Harper before the parade starts—good capers have responsible grown-ups in the loop.',
+              });
+            }
+          } else if (caper.step === 'teacher-check') {
+            setActiveDialogue({
+              name: 'Sticker Parade Plan',
+              text: 'The plan needs a grown-up check. Bring it to Ms. Harper before launching the parade.',
+            });
+          } else if (caper.step === 'celebrate' && advanceCaper()) {
+            setActiveDialogue(null);
+          }
         } else if (activeInteractable.startsWith('route-')) {
           const routeId = activeInteractable.replace('route-', '');
           const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
@@ -369,10 +424,15 @@ export function UI() {
             if (route.id === 'garden-district' && unlocked) {
               enterGarden();
             } else {
+              if (unlocked && route.id === 'maker-market') advanceDistrictPreview('makerMarket');
+              if (unlocked && route.id === 'storybook-lane') advanceDistrictPreview('storybookLane');
+              const foundationProgress = route.id === 'maker-market'
+                ? districtProgress.makerMarket
+                : districtProgress.storybookLane;
               setActiveDialogue({
                 name: route.label,
                 text: unlocked
-                  ? `${route.description} This route is prepared, but it is not open yet.`
+                  ? `${route.description} Foundation ${Math.min(3, foundationProgress + 1)}/3 is now sketched at this entrance; the full district remains a future route.`
                   : route.id === 'garden-district'
                     ? `${route.subtitle}. Garden District opens at 10 hub reputation (${requirementProgressLabel(route, progression)}). Complete helpful quests and activities to earn reputation.`
                     : `${route.subtitle}. Build ${requirementProgressLabel(route, progression)} to prepare this route.`,
@@ -395,9 +455,18 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, collectShinyRock]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, collectShinyRock, rivalStory.beat, caper.step, districtProgress]);
 
   const handleTeacherInteraction = (name: string) => {
+    if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
+      if (advanceCaper()) {
+        setActiveDialogue({
+          name: 'Ms. Harper',
+          text: 'Clear route, washable stickers, and a role for everyone. Approved. I’ll supervise the turn by the playground gate.',
+        });
+      }
+      return;
+    }
     if (name === 'Mr. Davis' && objectiveIsActive(quests, 'where-binky', 'search-storage')) {
       setActiveDialogue({ name, text: 'I moved a small pink toy to the Storage Room for safekeeping. Check the grounded boxes along the back wall.' });
       return;
@@ -445,6 +514,53 @@ export function UI() {
   };
 
   const handleKidInteraction = (name: string) => {
+    if (name === 'Mae') {
+      if (rivalStory.beat === 'meet-mae') {
+        const respond = (choice: 'kind' | 'bold' | 'curious', text: string) => {
+          if (chooseRivalResponse(choice)) setActiveDialogue({ name: 'Mae', text });
+        };
+        setActiveDialogue({
+          name: 'Mae',
+          text: 'I’m Mae. I make the best plans, but nobody follows them for long. I bet I can finish Rainbow Tidy-Up before you.',
+          options: [
+            { label: '“We can both help.”', action: () => respond('kind', 'Maybe. I usually work alone—but I wrote you a clue card. Let’s see how your way works.') },
+            { label: '“Challenge accepted.”', action: () => respond('bold', 'Good! A real challenge. I left my first plan in your Journal. No shortcuts, okay?') },
+            { label: '“Why do plans matter?”', action: () => respond('curious', 'Because people forget my ideas when play gets noisy. I left a note in your Journal so this one won’t disappear.') },
+          ],
+        });
+        return;
+      }
+      if (rivalStory.beat === 'rainbow-challenge') {
+        setActiveDialogue({ name: 'Mae', text: 'The Rainbow Tidy-Up is our challenge. You sort your way, I’ll watch whether it really helps everyone.' });
+        return;
+      }
+      if (rivalStory.beat === 'garden-reversal') {
+        setActiveDialogue({ name: 'Mae', text: 'My next plan is in the Garden. Gardener Nia needs help with the seedlings—and I may have mixed up one part.' });
+        return;
+      }
+      if (rivalStory.beat === 'make-peace') {
+        setActiveDialogue({
+          name: 'Mae',
+          text: 'You notice people. I notice steps. Want to make one fair plan together and share the credit?',
+          options: [
+            {
+              label: 'Build the plan together',
+              action: () => {
+                if (resolveRivalStory()) {
+                  setActiveDialogue({
+                    name: 'Mae',
+                    text: 'Two stars, one team. Ms. Harper says “Bridge Builder” is a good nickname for someone who helps ideas meet in the middle.',
+                  });
+                }
+              },
+            },
+          ],
+        });
+        return;
+      }
+      setActiveDialogue({ name: 'Mae', text: 'Our next plan has two names at the top. That makes it better.' });
+      return;
+    }
     // Binky Quest Logic
     if (name === 'Leo') {
       if (objectiveIsActive(quests, 'where-binky', 'talk-to-leo')) {
@@ -538,6 +654,11 @@ export function UI() {
       if (gardenActivityStep < 3) return `Tend Seedlings · ${gardenActivityStep}/3`;
       return 'Plant Another Bed';
     }
+    if (activeInteractable === 'caper-board') {
+      if (caper.step === 'idle' || caper.step === 'complete') return 'Start Sticker Parade';
+      if (caper.step === 'celebrate') return 'Launch Sticker Parade';
+      return `Continue Caper · ${caper.step.replace('-', ' ')}`;
+    }
     if (activeInteractable.startsWith('garden-landmark-')) {
       const labels: Record<string, string> = {
         pond: 'Notice Pond Ripples',
@@ -565,6 +686,7 @@ export function UI() {
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
     if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
+    if (activeInteractable === 'caper-board') return 'Safe caper · planned with teacher supervision';
     if (activeInteractable.startsWith('garden-landmark-')) return 'Garden discovery · safe observation point';
     if (activeInteractable.startsWith('garden-npc-')) return 'Garden routine';
     if (activeInteractable.startsWith('route-')) {
@@ -596,7 +718,7 @@ export function UI() {
           </div>
           <div>
             <div className="text-2xl font-bold tracking-tight">{formatTime(timeOfDay)}</div>
-            <div className="text-sm font-medium text-muted-foreground">{getScheduleLabel(schedule)} {isRainy && "(Indoor)"}</div>
+            <div className="text-sm font-medium text-muted-foreground">Day {dayNumber} · {getScheduleLabel(schedule)} {isRainy && "(Indoor)"}</div>
           </div>
           <img
             src={`${import.meta.env.BASE_URL}daykare-assets/01_playtime_app_icon.png`}
@@ -611,7 +733,7 @@ export function UI() {
             disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-card border-2 border-transparent hover:border-primary/20 transition-all pointer-events-auto"
           >
-            +1.5h
+            {timeOfDay >= 17.5 ? 'Next day' : '+1.5h'}
           </button>
           <button 
             onClick={toggleRain}
@@ -716,6 +838,24 @@ export function UI() {
           </div>
         )}
       </div>
+
+      {activeReward && (
+        <div className="daykare-reward-burst" role="status" aria-live="polite">
+          <div className="daykare-reward-sparkle" aria-hidden="true">✦</div>
+          <div className="daykare-reward-copy">
+            <strong>{activeReward.title}</strong>
+            <span>{activeReward.detail}</span>
+            {(activeReward.tokens > 0 || activeReward.reputation > 0) && (
+              <small>
+                {activeReward.tokens > 0 ? `+${activeReward.tokens} ★` : ''}
+                {activeReward.tokens > 0 && activeReward.reputation > 0 ? '  ·  ' : ''}
+                {activeReward.reputation > 0 ? `+${activeReward.reputation} REP` : ''}
+              </small>
+            )}
+          </div>
+          {activeReward.sticker && <div className="daykare-reward-sticker">{activeReward.sticker}</div>}
+        </div>
+      )}
 
       {/* Dialogue Overlay */}
       {activeDialogue && (

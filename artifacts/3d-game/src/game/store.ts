@@ -29,6 +29,28 @@ import {
   type GameZone,
 } from './world';
 import { resetTouchInput } from './touchInput';
+import {
+  appendRewardEvent,
+  chooseMaeIntroduction,
+  createInitialRivalStory,
+  normalizeRivalStory,
+  recordGardenStoryMilestone,
+  recordRainbowStoryMilestone,
+  resolveMaeStory,
+  advanceCaper as advanceCaperState,
+  advanceDistrictPreview as advanceDistrictPreviewState,
+  createInitialCaper,
+  createInitialDistrictProgress,
+  normalizeCaper,
+  normalizeDistrictProgress,
+  startCaper as startCaperState,
+  type CaperState,
+  type DistrictProgress,
+  type RewardEvent,
+  type RivalChoice,
+  type RivalStoryState,
+  getOptionalRewardMultiplier,
+} from './storyProgression';
 
 export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -52,7 +74,8 @@ export interface GameState {
   quality: 'low' | 'high';
 
   // Time and Schedule
-  timeOfDay: number; // 9.0 to 17.0
+  timeOfDay: number; // 9.0 to 17.5
+  dayNumber: number;
   schedule: ScheduleState;
   isRainy: boolean;
   isImaginationMode: boolean;
@@ -100,6 +123,11 @@ export interface GameState {
   pendingZone: GameZone | null;
   gardenActivityStep: number;
   ambientMessage: string | null;
+  rivalStory: RivalStoryState;
+  rewardEvents: RewardEvent[];
+  caper: CaperState;
+  districtProgress: DistrictProgress;
+  optionalRewardBoostUntil: number;
   // This is deliberately session-only: it must never alter the save payload.
   storageWarning: boolean;
   
@@ -145,6 +173,13 @@ export interface GameState {
   advanceGardenActivity: () => number;
   resetGardenActivity: () => void;
   setAmbientMessage: (message: string | null) => void;
+  chooseRivalResponse: (choice: Exclude<RivalChoice, 'team-up'>) => boolean;
+  resolveRivalStory: () => boolean;
+  dismissRewardEvent: (id: string) => void;
+  startCaper: () => boolean;
+  advanceCaper: () => boolean;
+  advanceDistrictPreview: (district: 'makerMarket' | 'storybookLane') => boolean;
+  activateOptionalRewardBoost: (now: number) => boolean;
   addProgressionTokens: (amount: number) => void;
   buyHubUpgrade: (id: string, cost: number) => boolean;
   setTrustedHelperPass: () => void;
@@ -182,11 +217,13 @@ const initialFriends: Record<string, FriendState> = {
   Finn: { mood: 'excited', friendship: 20, recentMemory: 'Building a tower.' },
   Ruby: { mood: 'happy', friendship: 25, recentMemory: 'Drawing a picture.' },
   Max: { mood: 'grumpy', friendship: 10, recentMemory: 'Hungry for crackers.' },
+  Mae: { mood: 'curious', friendship: 8, recentMemory: 'Wants her plans to be taken seriously.' },
 };
 
 const initialState = {
   quality: 'high' as const,
   timeOfDay: 9.0,
+  dayNumber: 1,
   schedule: 'morning-play' as ScheduleState,
   isRainy: false,
   isImaginationMode: false,
@@ -228,6 +265,11 @@ const initialState = {
   pendingZone: null,
   gardenActivityStep: 0,
   ambientMessage: null,
+  rivalStory: createInitialRivalStory(),
+  rewardEvents: [] as RewardEvent[],
+  caper: createInitialCaper(),
+  districtProgress: createInitialDistrictProgress(),
+  optionalRewardBoostUntil: 0,
   storageWarning: false,
 };
 
@@ -559,7 +601,7 @@ export function normalizePersistedGameState(value: unknown) {
     && !inventory.includes('binky')
     && !savedItems.droppedItems.some((item) => item.item === 'binky')
   );
-  const timeOfDay = safeNumber(persisted.timeOfDay, initialState.timeOfDay, 9, 17);
+  const timeOfDay = safeNumber(persisted.timeOfDay, initialState.timeOfDay, 9, 17.5);
   const schedule = getScheduleForTime(timeOfDay);
   const restoredZone = restoreZoneState(persisted, progression);
   const clubState = normalizeJuiceClubState(persisted, schedule);
@@ -578,6 +620,7 @@ export function normalizePersistedGameState(value: unknown) {
   return {
     quality: persisted.quality === 'low' || persisted.quality === 'high' ? persisted.quality : initialState.quality,
     timeOfDay,
+    dayNumber: safeInteger(persisted.dayNumber, initialState.dayNumber, 1, 9999),
     schedule,
     isRainy: persisted.isRainy === true,
     isImaginationMode: false,
@@ -616,6 +659,11 @@ export function normalizePersistedGameState(value: unknown) {
     pendingZone: null,
     gardenActivityStep: 0,
     ambientMessage: null,
+    rivalStory: normalizeRivalStory(persisted.rivalStory),
+    rewardEvents: [],
+    caper: normalizeCaper(persisted.caper),
+    districtProgress: normalizeDistrictProgress(persisted.districtProgress),
+    optionalRewardBoostUntil: 0,
   };
 }
 
@@ -623,6 +671,7 @@ export function serializeGameState(state: GameState) {
   return {
     quality: state.quality,
     timeOfDay: state.timeOfDay,
+    dayNumber: state.dayNumber,
     schedule: state.schedule,
     isRainy: state.isRainy,
     inventory: state.inventory,
@@ -650,6 +699,9 @@ export function serializeGameState(state: GameState) {
     playerPosition: state.playerPosition,
     hubPosition: state.hubPosition,
     gardenPosition: state.gardenPosition,
+    rivalStory: state.rivalStory,
+    caper: state.caper,
+    districtProgress: state.districtProgress,
   };
 }
 
@@ -662,16 +714,32 @@ export const useGameStore = create<GameState>()(
         quality: quality === 'low' || quality === 'high' ? quality : initialState.quality,
       }),
       setTimeOfDay: (time) => set((state) => {
-        const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 17);
+         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 17.5);
         const schedule = getScheduleForTime(timeOfDay);
         return { timeOfDay, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
       }),
       
       advanceSchedule: () => set((state) => {
-        let nextTime = safeNumber(state.timeOfDay, initialState.timeOfDay, 9, 17) + 1.5;
-        if (nextTime > 17.0) nextTime = 9.0;
+         const currentTime = safeNumber(state.timeOfDay, initialState.timeOfDay, 9, 17.5);
+         const isNewDay = currentTime >= 17.5;
+         const nextTime = isNewDay ? 9.0 : Math.min(17.5, currentTime + 1.5);
         const schedule = getScheduleForTime(nextTime);
-        return { timeOfDay: nextTime, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
+         if (isNewDay) {
+           return {
+             timeOfDay: nextTime,
+             dayNumber: state.dayNumber + 1,
+             schedule,
+             zone: 'hub',
+             playerPosition: [0, 0, 0],
+             hubPosition: [0, 0, 0],
+             gardenActivityStep: 0,
+             teacherSuspicion: 0,
+             optionalRewardBoostUntil: 0,
+             ambientMessage: `Day ${state.dayNumber + 1} is ready. Yesterday’s progress is safe in your Journal.`,
+             ...resetJuiceClubCustomerState(state),
+           };
+         }
+         return { timeOfDay: nextTime, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
       }),
       
       toggleImagination: () => set((state) => ({ isImaginationMode: !state.isImaginationMode })),
@@ -871,6 +939,14 @@ export const useGameStore = create<GameState>()(
             binkyStatus: status,
             quests,
             progression,
+            rewardEvents: appendRewardEvent(state.rewardEvents, {
+              id: 'where-binky-complete',
+              title: 'Binky is home!',
+              detail: 'Trusted Helper Pass earned',
+              tokens: 5,
+              reputation: 8,
+              sticker: 'Binky Buddy',
+            }),
             inventory: state.inventory.filter((item) => item !== 'binky'),
             droppedItems: state.droppedItems.filter((item) => item.item !== 'binky'),
           };
@@ -913,10 +989,11 @@ export const useGameStore = create<GameState>()(
           if (!pair || !quest || quest.currentObjectiveId !== pair[1] || !state.inventory.includes(item)) return state;
           const nextQuests = advanceObjective(state.quests, 'rainbow-tidy-up', pair[1]);
           const completedRound = nextQuests['rainbow-tidy-up'].status === 'complete';
+          const tokenReward = 2 * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
           const nextProgression = completedRound
             ? withQualifiedRoutes({
                 ...state.progression,
-                tokens: Math.min(MAX_TOKENS, state.progression.tokens + 2),
+                tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
                 reputation: Math.min(100, state.progression.reputation + 2),
                 trustedHelperPass: true,
                 activityRuns: {
@@ -930,7 +1007,7 @@ export const useGameStore = create<GameState>()(
                   ...state.progression.activityRewards,
                   'rainbow-tidy-up': Math.min(
                     MAX_TOKENS,
-                    (state.progression.activityRewards['rainbow-tidy-up'] ?? 0) + 2,
+                    (state.progression.activityRewards['rainbow-tidy-up'] ?? 0) + tokenReward,
                   ),
                 },
               })
@@ -941,6 +1018,19 @@ export const useGameStore = create<GameState>()(
             tidyPlacedItems: [...state.tidyPlacedItems.filter((placedItem) => placedItem !== item), item].slice(-3),
             quests: completedRound ? resetRepeatableQuest(nextQuests, 'rainbow-tidy-up') : nextQuests,
             progression: nextProgression,
+            rivalStory: completedRound
+              ? recordRainbowStoryMilestone(state.rivalStory)
+              : state.rivalStory,
+            rewardEvents: completedRound
+              ? appendRewardEvent(state.rewardEvents, {
+                  id: `rainbow-tidy-${(state.progression.activityRuns['rainbow-tidy-up'] ?? 0) + 1}`,
+                  title: 'Rainbow Tidy-Up!',
+                  detail: 'A fresh round is ready',
+                  tokens: tokenReward,
+                  reputation: 2,
+                  sticker: 'Rainbow Ribbon',
+                })
+              : state.rewardEvents,
           };
         });
         return changed;
@@ -1018,10 +1108,11 @@ export const useGameStore = create<GameState>()(
           const friend = state.friends[servedId];
           if (!JUICE_CLUB_CUSTOMERS.has(servedId) || !friend) return state;
           const reward = ACTIVITY_DEFINITIONS['juice-club-service'];
+          const tokenReward = reward.tokenReward * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
           const progression = withQualifiedRoutes({
             ...state.progression,
             reputation: Math.min(100, state.progression.reputation + reward.reputationReward),
-            tokens: Math.min(MAX_TOKENS, state.progression.tokens + reward.tokenReward),
+            tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
             activityRuns: {
               ...state.progression.activityRuns,
               'juice-club-service': Math.min(
@@ -1033,7 +1124,7 @@ export const useGameStore = create<GameState>()(
               ...state.progression.activityRewards,
               'juice-club-service': Math.min(
                 MAX_TOKENS,
-                (state.progression.activityRewards['juice-club-service'] ?? 0) + reward.tokenReward,
+                  (state.progression.activityRewards['juice-club-service'] ?? 0) + tokenReward,
               ),
             },
           });
@@ -1051,6 +1142,13 @@ export const useGameStore = create<GameState>()(
             juiceClubActiveCustomer: servedId,
             juiceClubCustomerPhase: 'service',
             progression,
+            rewardEvents: appendRewardEvent(state.rewardEvents, {
+              id: `juice-service-${state.juiceClubCustomersServed + 1}`,
+              title: 'Happy customer!',
+              detail: `${servedId} loved the snack`,
+              tokens: tokenReward,
+              reputation: reward.reputationReward,
+            }),
             friends: {
               ...state.friends,
               [servedId]: {
@@ -1124,17 +1222,18 @@ export const useGameStore = create<GameState>()(
             (state.progression.activityRuns[activityId] ?? 0) + 1,
           ),
         };
+        const tokenReward = definition.tokenReward * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
         const nextRewards = {
           ...state.progression.activityRewards,
           [activityId]: Math.min(
             MAX_TOKENS,
-            (state.progression.activityRewards[activityId] ?? 0) + definition.tokenReward,
+            (state.progression.activityRewards[activityId] ?? 0) + tokenReward,
           ),
         };
         const nextProgression: ProgressionState = {
           ...state.progression,
           version: PROGRESSION_VERSION,
-          tokens: Math.min(MAX_TOKENS, state.progression.tokens + definition.tokenReward),
+          tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
           reputation: Math.min(100, state.progression.reputation + definition.reputationReward),
           activityRuns: nextRuns,
           activityRewards: nextRewards,
@@ -1142,6 +1241,15 @@ export const useGameStore = create<GameState>()(
         return {
           progression: withQualifiedRoutes(nextProgression),
           gardenActivityStep: 4,
+          rivalStory: recordGardenStoryMilestone(state.rivalStory),
+          rewardEvents: appendRewardEvent(state.rewardEvents, {
+            id: `garden-planting-${nextRuns[activityId]}`,
+            title: 'Seedlings standing tall!',
+            detail: 'The garden plan is complete',
+            tokens: tokenReward,
+            reputation: definition.reputationReward,
+            sticker: 'Garden Helper',
+          }),
         };
       }),
       startGardenActivity: () => {
@@ -1171,6 +1279,126 @@ export const useGameStore = create<GameState>()(
           ? { ambientMessage: null }
           : { ambientMessage }
       )),
+      chooseRivalResponse: (choice) => {
+        let changed = false;
+        set((state) => {
+          if (choice !== 'kind' && choice !== 'bold' && choice !== 'curious') return state;
+          const rivalStory = chooseMaeIntroduction(state.rivalStory, choice);
+          if (rivalStory === state.rivalStory) return state;
+          changed = true;
+          return {
+            rivalStory,
+            rewardEvents: appendRewardEvent(state.rewardEvents, {
+              id: 'rival-mae-note',
+              title: 'Story clue found',
+              detail: 'Mae’s folded plan is now in your Journal',
+              tokens: 0,
+              reputation: 0,
+              sticker: 'Mae’s Plan',
+            }),
+          };
+        });
+        return changed;
+      },
+      resolveRivalStory: () => {
+        let changed = false;
+        set((state) => {
+          const rivalStory = resolveMaeStory(state.rivalStory);
+          if (rivalStory === state.rivalStory) return state;
+          changed = true;
+          const progression = withQualifiedRoutes({
+            ...state.progression,
+            tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
+            reputation: Math.min(100, state.progression.reputation + 4),
+          });
+          return {
+            rivalStory,
+            progression,
+            friends: {
+              ...state.friends,
+              Mae: {
+                ...state.friends.Mae,
+                mood: 'happy',
+                friendship: Math.min(100, (state.friends.Mae?.friendship ?? 0) + 35),
+                recentMemory: 'Built a fair plan together.',
+              },
+            },
+            rewardEvents: appendRewardEvent(state.rewardEvents, {
+              id: 'rival-story-complete',
+              title: 'Two Stars, One Team!',
+              detail: 'Nickname earned: Bridge Builder',
+              tokens: 5,
+              reputation: 4,
+              sticker: 'Two Stars',
+            }),
+          };
+        });
+        return changed;
+      },
+      dismissRewardEvent: (id) => set((state) => ({
+        rewardEvents: state.rewardEvents.filter((event) => event.id !== id),
+      })),
+      startCaper: () => {
+        let changed = false;
+        set((state) => {
+          const caper = startCaperState(state.caper);
+          if (caper === state.caper) return state;
+          changed = true;
+          return { caper };
+        });
+        return changed;
+      },
+      advanceCaper: () => {
+        let changed = false;
+        set((state) => {
+          const caper = advanceCaperState(state.caper);
+          if (caper === state.caper) return state;
+          changed = true;
+          if (caper.step !== 'complete') return { caper };
+          const tokenReward = 3 * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
+          const progression = withQualifiedRoutes({
+            ...state.progression,
+            tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
+            reputation: Math.min(100, state.progression.reputation + 2),
+          });
+          return {
+            caper,
+            progression,
+            districtProgress: advanceDistrictPreviewState(state.districtProgress, 'makerMarket'),
+            rewardEvents: appendRewardEvent(state.rewardEvents, {
+              id: `sticker-parade-${state.caper.attempts}`,
+              title: 'Sticker Parade complete!',
+              detail: 'Everyone had a safe role in the plan',
+              tokens: tokenReward,
+              reputation: 2,
+              sticker: 'Kindness Crew',
+            }),
+          };
+        });
+        return changed;
+      },
+      advanceDistrictPreview: (district) => {
+        let changed = false;
+        set((state) => {
+          const routeId = district === 'makerMarket' ? 'maker-market' : 'storybook-lane';
+          if (!getUnlockedRoutes(state.progression).includes(routeId)) return state;
+          const next = advanceDistrictPreviewState(state.districtProgress, district);
+          if (next === state.districtProgress) return state;
+          changed = true;
+          return { districtProgress: next };
+        });
+        return changed;
+      },
+      activateOptionalRewardBoost: (now) => {
+        if (typeof now !== 'number' || !Number.isFinite(now)) return false;
+        let changed = false;
+        set((state) => {
+          if (state.optionalRewardBoostUntil > now) return state;
+          changed = true;
+          return { optionalRewardBoostUntil: now + 15_000 };
+        });
+        return changed;
+      },
       addProgressionTokens: (amount) => set((state) => {
         if (typeof amount !== 'number' || !Number.isFinite(amount)) return state;
         const progression = withQualifiedRoutes({

@@ -45,7 +45,7 @@ type Station = Omit<ChildActivityPlan, 'duration' | 'soloFallback'> & {
   duration: number;
 };
 
-const CHILD_ORDER = ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max'];
+const CHILD_ORDER = ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max', 'Mae'];
 export const MIN_CHILD_ACTIVITY_DWELL_SECONDS = 7.2;
 export const MAX_CHILD_ACTIVITY_DWELL_SECONDS = 8.5;
 
@@ -61,6 +61,7 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'circle-time', mode: 'circle-time', position: [0, 0, 2.3], focus: [0, 0, 1.2], duration: 6.4 },
     { activity: 'conversation', mode: 'conversation', position: [5.2, 0, 3.8], focus: [4.2, 0, 3.3], duration: 5.4 },
     { activity: 'parallel-play', mode: 'playing', position: [-5.2, 0, 4.2], focus: [-4.2, 0, 3.8], duration: 5.8 },
+    { activity: 'blocks', mode: 'toy-play', position: [-5.1, 0, -1.8], focus: [-4.1, 0, -1.8], duration: 6 },
   ],
   'art-time': [
     { activity: 'coloring', mode: 'coloring', position: [-14.5, 0, -10.5], focus: [-13.5, 0, -10.5], duration: 6.2 },
@@ -73,6 +74,7 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'singing', mode: 'singing', position: [-9.5, 0, -14.2], focus: [-10.4, 0, -14.2], duration: 5.2 },
     { activity: 'conversation', mode: 'conversation', position: [-12.8, 0, -14.7], focus: [-11.8, 0, -14.5], duration: 5.3 },
     { activity: 'picture-books', mode: 'reading', position: [-11.2, 0, -14.7], focus: [-12.1, 0, -14.45], duration: 5.9 },
+    { activity: 'drawing', mode: 'coloring', position: [-12.1, 0, -9.05], focus: [-12.1, 0, -10.05], duration: 6.1 },
   ],
   'juice-club': [
     { activity: 'snacking', mode: 'snacking', position: [5.2, 0, -3.8], focus: [4.4, 0, -3.2], duration: 4.6 },
@@ -85,6 +87,7 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'parallel-play', mode: 'playing', position: [4.8, 0, 4], focus: [3.8, 0, 3.8], duration: 4.5 },
     { activity: 'picture-books', mode: 'reading', position: [-4.8, 0, -4.6], focus: [-3.8, 0, -4.6], duration: 4.6 },
     { activity: 'toy-play', mode: 'toy-play', position: [1.6, 0, -5.7], focus: [1.6, 0, -4.7], duration: 4.5 },
+    { activity: 'conversation', mode: 'conversation', position: [-5.2, 0, 1.6], focus: [-4.2, 0, 1.6], duration: 4.4 },
   ],
   'outdoor-play': [
     { activity: 'toy-play', mode: 'toy-play', position: [10.3, 0, -10.7], focus: [11.2, 0, -10.7], duration: 5.8 },
@@ -97,6 +100,7 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'conversation', mode: 'conversation', position: [14.6, 0, 5.2], focus: [13.6, 0, 5.2], duration: 5.3 },
     { activity: 'toy-play', mode: 'toy-play', position: [10.1, 0, -5.3], focus: [11.1, 0, -5.3], duration: 5.7 },
     { activity: 'dancing', mode: 'dancing', position: [14, 0, -4.8], focus: [13, 0, -4.8], duration: 5.4 },
+    { activity: 'pretend-play', mode: 'pretend-play', position: [11.5, 0, 12.1], focus: [12.5, 0, 12.1], duration: 5.5 },
   ],
   pickup: [
     { activity: 'picture-books', mode: 'reading', position: [-9.2, 0, -5.2], focus: [-10.2, 0, -5.2], duration: 5.8 },
@@ -109,6 +113,7 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'conversation', mode: 'conversation', position: [-12.8, 0, -2], focus: [-11.8, 0, -2], duration: 5.3 },
     { activity: 'pretend-play', mode: 'pretend-play', position: [-12.8, 0, 2], focus: [-11.8, 0, 2], duration: 5.4 },
     { activity: 'parallel-play', mode: 'playing', position: [-12.8, 0, 6], focus: [-11.8, 0, 6], duration: 5.6 },
+    { activity: 'picture-books', mode: 'reading', position: [-10.8, 0, 6.2], focus: [-9.8, 0, 6.2], duration: 5.8 },
   ],
 };
 
@@ -123,6 +128,7 @@ const RAINY_OUTDOOR_STATIONS: Station[] = [
   { activity: 'conversation', mode: 'conversation', position: [5, 0, -4.2], focus: [4, 0, -4.2], duration: 5.3 },
   { activity: 'blocks', mode: 'toy-play', position: [-4.6, 0, -5.85], focus: [-3.6, 0, -5.85], duration: 6 },
   { activity: 'singing', mode: 'singing', position: [-4.8, 0, -3.8], focus: [-3.8, 0, -3.8], duration: 5.3 },
+  { activity: 'picture-books', mode: 'reading', position: [0, 0, -6.8], focus: [0, 0, -5.8], duration: 5.9 },
 ];
 
 function activityHash(name: string) {

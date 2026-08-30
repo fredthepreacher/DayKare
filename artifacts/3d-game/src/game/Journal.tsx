@@ -1,6 +1,7 @@
 import { useGameStore } from './store';
 import {
   Backpack,
+  BookOpen,
   CheckCircle2,
   DollarSign,
   Heart,
@@ -11,6 +12,8 @@ import {
 } from 'lucide-react';
 import { HUB_ROUTES, isRouteUnlocked, requirementLabel } from './progression';
 import { getCurrentObjective, QUEST_DEFINITIONS } from './quests';
+import { RIVAL_CHAPTERS } from './storyProgression';
+import { useEffect, useState } from 'react';
 
 export function Journal() {
   const {
@@ -27,7 +30,21 @@ export function Journal() {
     buyStock,
     buyUpgrade,
     toggleJournal,
+    rivalStory,
+    dayNumber,
+    caper,
+    districtProgress,
+    optionalRewardBoostUntil,
+    activateOptionalRewardBoost,
   } = useGameStore();
+  const [boostNow, setBoostNow] = useState(() => Date.now());
+  const boostRemaining = Math.max(0, Math.ceil((optionalRewardBoostUntil - boostNow) / 1000));
+
+  useEffect(() => {
+    if (boostRemaining <= 0) return;
+    const timer = window.setInterval(() => setBoostNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [boostRemaining]);
 
   return (
     <div className="daykare-journal-shell absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-auto z-50 p-4">
@@ -35,7 +52,10 @@ export function Journal() {
         {/* Left Page */}
         <div className="flex-1 p-8 border-r border-[#d4c3b3] relative overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="font-serif text-4xl font-bold text-[#5c3a21]">My Journal</h2>
+            <div>
+              <h2 className="font-serif text-4xl font-bold text-[#5c3a21]">My Journal</h2>
+              <div className="text-xs font-black uppercase tracking-widest text-[#8b5a2b]/60">Day {dayNumber}</div>
+            </div>
             <div className="text-sm font-bold text-green-600 bg-green-100 px-3 py-1 rounded-full">Auto-Saved</div>
           </div>
 
@@ -118,9 +138,69 @@ export function Journal() {
                   </button>
                 </div>
               </div>
+              <div className="mt-3 p-3 rounded-lg bg-violet-50/80 border border-violet-200">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-black text-violet-950">Optional Helper Boost</div>
+                    <div className="text-xs text-violet-950/70">
+                      Player-chosen 15-second hook. It doubles Star Tokens from ordinary activities; no ad or purchase is used in this build.
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const now = Date.now();
+                      activateOptionalRewardBoost(now);
+                      setBoostNow(now);
+                    }}
+                    disabled={boostRemaining > 0}
+                    className="shrink-0 bg-violet-600 text-white px-3 py-2 rounded-lg text-xs font-black disabled:opacity-55"
+                  >
+                    {boostRemaining > 0 ? `${boostRemaining}s` : 'Start 15s'}
+                  </button>
+                </div>
+              </div>
               {progression.trustedHelperPass && (
                 <div className="mt-2 text-xs font-bold text-green-700 bg-green-100 px-3 py-2 rounded-lg">
-                  Trusted Helper Pass: storage access approved.
+                  Trusted Helper Pass: help at the Lost & Found shelf. The Storage Room remains adults-only.
+                </div>
+              )}
+            </div>
+
+            <div className="bg-violet-50/80 p-4 rounded-xl border border-violet-200">
+              <h3 className="font-bold text-xl mb-3 flex items-center gap-2 text-[#5c3a21]">
+                <BookOpen className="w-5 h-5 text-violet-600" /> Mae’s Story
+              </h3>
+              <div className="space-y-2">
+                {RIVAL_CHAPTERS.map((chapter) => {
+                  const complete = rivalStory.completedChapters.includes(chapter.id);
+                  const current = rivalStory.chapter === chapter.chapter && rivalStory.beat !== 'complete';
+                  const locked = !complete && !current;
+                  return (
+                    <div key={chapter.id} className={`p-3 rounded-lg border ${current ? 'bg-white border-violet-300' : 'bg-white/60 border-violet-100'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <strong className="text-sm text-violet-950">{chapter.chapter}. {chapter.title}</strong>
+                        <span className="text-[10px] font-black uppercase tracking-wide text-violet-700">
+                          {complete ? 'Complete' : current ? 'Current' : 'Locked'}
+                        </span>
+                      </div>
+                      {!locked && <div className="mt-1 text-xs text-violet-950/70">{chapter.summary}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+                <div className="rounded-lg bg-white/70 p-2">
+                  <div className="text-lg font-black text-violet-700">{rivalStory.trust}</div>
+                  <div className="text-[10px] uppercase font-bold text-violet-900/60">Mutual trust</div>
+                </div>
+                <div className="rounded-lg bg-white/70 p-2">
+                  <div className="text-lg font-black text-violet-700">{rivalStory.unlocks.length}</div>
+                  <div className="text-[10px] uppercase font-bold text-violet-900/60">Story keepsakes</div>
+                </div>
+              </div>
+              {rivalStory.unlocks.includes('bridge-builder') && (
+                <div className="mt-3 rounded-full bg-violet-600 px-3 py-2 text-center text-xs font-black text-white">
+                  Nickname: Bridge Builder
                 </div>
               )}
             </div>
@@ -148,6 +228,18 @@ export function Journal() {
                     </div>
                   );
                 })}
+              </div>
+              <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="text-sm text-orange-950">Sticker Parade Caper</strong>
+                  <span className="text-[10px] font-black uppercase tracking-wide text-orange-700">{caper.step.replace('-', ' ')}</span>
+                </div>
+                <div className="mt-1 text-xs text-orange-950/70">
+                  A nonviolent playground plan with public supplies, fair roles, and teacher approval.
+                </div>
+                {caper.consequence !== 'none' && (
+                  <div className="mt-2 text-xs font-bold text-green-700">Outcome: {caper.consequence.replace('-', ' ')}</div>
+                )}
               </div>
             </div>
 
@@ -218,7 +310,15 @@ export function Journal() {
                     </div>
                     <div className="min-w-0">
                       <div className="font-bold text-sm text-[#5c3a21]">{route.label}</div>
-                      <div className="text-xs text-muted-foreground">{unlocked ? 'Prepared for future expansion' : requirementLabel(route)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {unlocked
+                          ? route.id === 'maker-market'
+                            ? `Entrance foundation ${districtProgress.makerMarket}/3`
+                            : route.id === 'storybook-lane'
+                              ? `Entrance foundation ${districtProgress.storybookLane}/3`
+                              : 'Open connected route'
+                          : requirementLabel(route)}
+                      </div>
                     </div>
                   </div>
                 );
