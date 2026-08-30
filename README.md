@@ -15,7 +15,7 @@ pnpm install --frozen-lockfile
 PORT=5173 BASE_PATH=/ pnpm --filter @workspace/3d-game run dev
 ```
 
-`PORT` and `BASE_PATH` are **required** — the Vite config throws if either is missing, so that a deploy can never silently pick the wrong base path.
+`BASE_PATH` is **required** — it decides every asset URL in the build, and a wrong value fails silently at runtime, so a missing one fails loudly at build time. Use `/` for a root deployment. `PORT` is optional and only affects the dev and preview servers (default `5173`); a production build serves nothing, so it does not need one.
 
 ## Checks
 
@@ -73,10 +73,12 @@ A host needs:
 
 - build command: `pnpm --filter @workspace/3d-game run build`
 - output directory: `artifacts/3d-game/dist/public`
-- environment: `PORT` and `BASE_PATH` (use `BASE_PATH=/` for a root deploy)
+- environment: `BASE_PATH=/` for a root deploy
 - SPA rewrite: `/*` → `/index.html`
 
-These values are also recorded in the `.replit-artifact/artifact.toml` files, which are kept until the Vercel configuration replaces them.
+`vercel.json` at the repo root encodes exactly this: install command, build command, output directory and the SPA rewrite. Vercel's filesystem handler runs before rewrites, so real files (assets, textures) are served directly and only unmatched routes fall through to `index.html`.
+
+The same values are still recorded in the `.replit-artifact/artifact.toml` files. Those can be deleted once the Vercel setup is proven.
 
 ## Conventions
 

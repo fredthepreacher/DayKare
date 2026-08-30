@@ -3,20 +3,19 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+// PORT only affects the dev and preview servers. A production build does not
+// serve anything, so requiring it there (as the Replit config did) breaks any
+// static host - Vercel included - for no benefit.
 const rawPort = process.env.PORT;
-
-if (!rawPort) {
-  throw new Error(
-    'PORT environment variable is required but was not provided.',
-  );
-}
-
-const port = Number(rawPort);
+const port = rawPort ? Number(rawPort) : 5173;
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+// BASE_PATH stays required. It decides every asset URL in the build, and a
+// wrong value fails silently at runtime, so a missing one must fail loudly at
+// build time. Root deployments set BASE_PATH=/.
 const basePath = process.env.BASE_PATH;
 
 if (!basePath) {
