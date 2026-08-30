@@ -114,17 +114,31 @@ export function buildConflictReport(
  *
  * The last line is the whole point. Two real saves that disagree is a
  * question for the player, not a decision for the sync layer.
+ *
+ * `hasPersistedLocal` is the subtle one, and it is named at length because
+ * getting it wrong is what broke restore in the Phase 3 QA. It means: a save
+ * belonging to this player was on disk when the tab opened. It does NOT mean
+ * "the store currently holds state" - the store ALWAYS holds state, because
+ * Zustand rehydrates and the game writes a default save back before sync ever
+ * runs. Passing that in makes every wiped-storage player look like a conflict
+ * between the save they just lost and a default they never played.
+ *
+ * A freshly written default and a save played for a week are identical in
+ * shape, so only the boot-time reading can tell them apart. Callers must take
+ * it before any store is evaluated.
  */
 export type InitialAction = 'idle' | 'migrate' | 'restore' | 'conflict';
 
 export function decideInitialAction(input: {
   hasCloud: boolean;
-  hasLocal: boolean;
+  /** A real save existed on disk at boot. Not "the store has state". */
+  hasPersistedLocal: boolean;
   cloudHash: string | null;
   localHash: string | null;
 }): InitialAction {
-  if (!input.hasCloud) return input.hasLocal ? 'migrate' : 'idle';
-  if (!input.hasLocal) return 'restore';
+  if (!input.hasCloud) return input.hasPersistedLocal ? 'migrate' : 'idle';
+  // Nothing of the player's to lose, so the account's progress comes down.
+  if (!input.hasPersistedLocal) return 'restore';
   if (input.cloudHash && input.localHash && input.cloudHash === input.localHash) return 'idle';
   return 'conflict';
 }

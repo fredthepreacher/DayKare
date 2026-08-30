@@ -22,6 +22,13 @@ import {
   type SaveSummary,
   type SyncMeta,
 } from '@workspace/cloud-sync';
+import {
+  SAVE_KEYS,
+  bootSave,
+  captureBootSnapshot,
+  hadPersistedSaveAtBoot,
+  resetBootSnapshotForTests,
+} from './localSaveSnapshot';
 
 /**
  * Deterministic tests for the cloud sync layer. No network, no Supabase, no
@@ -261,32 +268,32 @@ for (const key of [ACCOUNT_SETTINGS_KEY, DEVICE_SETTINGS_KEY]) {
 // --- initial action decision ------------------------------------------------
 
 assert.equal(
-  decideInitialAction({ hasCloud: false, hasLocal: false, cloudHash: null, localHash: null }),
+  decideInitialAction({ hasCloud: false, hasPersistedLocal: false, cloudHash: null, localHash: null }),
   'idle',
   'a brand new player with nothing anywhere does nothing',
 );
 assert.equal(
-  decideInitialAction({ hasCloud: false, hasLocal: true, cloudHash: null, localHash: 'aaaa' }),
+  decideInitialAction({ hasCloud: false, hasPersistedLocal: true, cloudHash: null, localHash: 'aaaa' }),
   'migrate',
   'an existing local save with no cloud copy migrates up',
 );
 assert.equal(
-  decideInitialAction({ hasCloud: true, hasLocal: false, cloudHash: 'aaaa', localHash: null }),
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: false, cloudHash: 'aaaa', localHash: null }),
   'restore',
   'a cloud save with nothing local restores down',
 );
 assert.equal(
-  decideInitialAction({ hasCloud: true, hasLocal: true, cloudHash: 'aaaa', localHash: 'aaaa' }),
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: true, cloudHash: 'aaaa', localHash: 'aaaa' }),
   'idle',
   'identical local and cloud saves are already in sync',
 );
 assert.equal(
-  decideInitialAction({ hasCloud: true, hasLocal: true, cloudHash: 'aaaa', localHash: 'bbbb' }),
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: true, cloudHash: 'aaaa', localHash: 'bbbb' }),
   'conflict',
   'two saves that differ is a conflict, never an automatic overwrite',
 );
 assert.equal(
-  decideInitialAction({ hasCloud: true, hasLocal: true, cloudHash: null, localHash: 'bbbb' }),
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: true, cloudHash: null, localHash: 'bbbb' }),
   'conflict',
   'an unknown cloud hash is treated as a conflict, not as "probably the same"',
 );
@@ -317,3 +324,188 @@ for (const scope of ['story', 'online'] as const) {
     );
   }
 }
+
+// --- automatic cloud restore ------------------------------------------------
+//
+// The Phase 3 preview QA found restore was unreachable: by the time sync ran,
+// Zustand had rehydrated and the game had written a default save back, so
+// "is there a local save?" was true for everyone - including a player who had
+// just cleared their browser data. They were shown a conflict between the save
+// they had lost and a default they had never played.
+//
+// These assertions pin the distinction that fixes it. `hasPersistedLocal` means
+// a save was on disk at boot; it never means "the store has state".
+
+// 1. Wiped local storage + an existing cloud save -> restore, NOT conflict.
+assert.equal(
+  decideInitialAction({
+    hasCloud: true,
+    hasPersistedLocal: false,
+    cloudHash: 'cloud',
+    // A default the game wrote milliseconds ago. It hashes to something real,
+    // and that is exactly why the hash must not be what decides this.
+    localHash: 'freshly-written-default',
+  }),
+  'restore',
+  'a wiped device with a cloud save restores automatically and is never asked to choose',
+);
+
+// The same inputs under the old, broken reading produced a conflict. Proving
+// the two readings disagree is the regression test: if some future refactor
+// starts passing "the store has state" again, this is the line that fails.
+assert.notEqual(
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: false, cloudHash: 'cloud', localHash: 'default' }),
+  'conflict',
+  'a default written during hydration must never be treated as a save worth protecting',
+);
+
+// 2. A true divergence still conflicts. The fix must not buy restore by
+//    weakening the protection that made any of this safe.
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: true, cloudHash: 'cloud', localHash: 'local' }),
+  'conflict',
+  'two real saves that differ still stop and ask the player',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: true, cloudHash: null, localHash: 'local' }),
+  'conflict',
+  'an unknown cloud hash is still a conflict, never an assumption that they match',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: true, cloudHash: 'same', localHash: 'same' }),
+  'idle',
+  'a real local save identical to the cloud copy just continues',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: false, hasPersistedLocal: true, cloudHash: null, localHash: 'local' }),
+  'migrate',
+  'a real local save with no cloud copy still migrates up',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: false, hasPersistedLocal: false, cloudHash: null, localHash: null }),
+  'idle',
+  'nothing anywhere is a fresh game, not a restore and not a conflict',
+);
+
+// 3. Story and Online decide independently.
+//
+// The scopes share this function, so the guarantee is that the function is
+// pure in its inputs - one scope's answer cannot depend on the other's. Given
+// per-scope inputs, each gets its own verdict in the same breath.
+const storyDecision = decideInitialAction({
+  hasCloud: true, hasPersistedLocal: false, cloudHash: 'story-cloud', localHash: null,
+});
+const onlineDecision = decideInitialAction({
+  hasCloud: true, hasPersistedLocal: true, cloudHash: 'online-cloud', localHash: 'online-local',
+});
+assert.equal(storyDecision, 'restore', 'Story restores on its own evidence');
+assert.equal(onlineDecision, 'conflict', 'Online conflicts on its own evidence, in the same session');
+assert.notEqual(storyDecision, onlineDecision, 'the two scopes reach different verdicts independently');
+
+// 4. A restore must not spend a revision echoing itself back.
+//
+// After applying a cloud payload, cloudSync re-seeds the cached hash from what
+// the game is NOW holding rather than from the row, because normalising can
+// legitimately change a byte. writeCloudSave skips when the hash is unchanged,
+// so a correctly seeded cache means the next flush is a no-op. These two
+// assertions are the halves of that: normalising is hash-visible, and an
+// unchanged payload hashes identically.
+const restoredFromCloud = { dayNumber: 5, rep: 12 };
+const afterNormalising = { dayNumber: 5, rep: 12 };
+assert.equal(
+  payloadHash(restoredFromCloud),
+  payloadHash(afterNormalising),
+  'a payload the normalizer left alone hashes identically, so no write is scheduled',
+);
+assert.notEqual(
+  payloadHash(restoredFromCloud),
+  payloadHash({ dayNumber: 5, rep: 13 }),
+  'a payload the normalizer DID change hashes differently - which is why the cache is seeded from the game, not the row',
+);
+// And the concurrency guard still refuses a write against a revision that moved.
+assert.equal(
+  canWrite({ scope: 'story', revision: 9, saveVersion: 4, updatedAt: null, deviceLabel: null, payloadHash: null }, 9),
+  true,
+  'after a restore the client writes against the revision it just read',
+);
+assert.equal(
+  canWrite({ scope: 'story', revision: 9, saveVersion: 4, updatedAt: null, deviceLabel: null, payloadHash: null }, 10),
+  false,
+  'and still refuses if that revision moved underneath it',
+);
+
+
+// --- the boot snapshot ------------------------------------------------------
+//
+// The reading that makes automatic restore possible. Everything above depends
+// on this answering "was any of this the player's before we started?" rather
+// than "is there something in storage now?".
+
+const fakeStorage = (seed: Record<string, string>) => {
+  const map = new Map(Object.entries(seed));
+  return {
+    getItem: (k: string) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k: string, v: string) => { map.set(k, v); },
+    removeItem: (k: string) => { map.delete(k); },
+  };
+};
+const withStorage = (seed: Record<string, string>) => {
+  (globalThis as Record<string, unknown>).window = { localStorage: fakeStorage(seed) };
+  resetBootSnapshotForTests();
+  captureBootSnapshot();
+};
+
+// A player with a real Story save and no Online save.
+withStorage({ [SAVE_KEYS.story]: JSON.stringify({ state: { dayNumber: 9, rep: 40 }, version: 4 }) });
+assert.equal(hadPersistedSaveAtBoot('story'), true, 'a save on disk at boot is recognised as the player\'s');
+assert.equal(hadPersistedSaveAtBoot('online'), false, 'an absent key is absent - not an empty save');
+assert.deepEqual(
+  bootSave('story').payload,
+  { dayNumber: 9, rep: 40 },
+  'the inner state is unwrapped from the Zustand { state, version } envelope',
+);
+
+// Wiped storage. This is the case the whole change exists for.
+withStorage({});
+assert.equal(hadPersistedSaveAtBoot('story'), false, 'cleared site data reads as no save, so the cloud copy comes down');
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: hadPersistedSaveAtBoot('story'), cloudHash: 'c', localHash: 'default' }),
+  'restore',
+  'wiped storage plus a cloud save restores end to end through the real snapshot',
+);
+
+// A real save we cannot parse. `existed` must stay true: a corrupt save is
+// still the player's, and overwriting it with a cloud copy would destroy the
+// only thing that could be recovered from. It conflicts instead.
+withStorage({ [SAVE_KEYS.story]: '{ this is not json' });
+assert.equal(hadPersistedSaveAtBoot('story'), true, 'an unparseable save still counts as a real save');
+assert.equal(bootSave('story').payload, null, 'but its payload is null rather than a guess');
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasPersistedLocal: hadPersistedSaveAtBoot('story'), cloudHash: 'c', localHash: null }),
+  'conflict',
+  'a corrupt local save is never silently replaced by the cloud copy',
+);
+
+// Storage that throws outright - private mode, blocked site data.
+(globalThis as Record<string, unknown>).window = {
+  get localStorage(): never { throw new Error('blocked'); },
+};
+resetBootSnapshotForTests();
+captureBootSnapshot();
+assert.equal(hadPersistedSaveAtBoot('story'), false, 'unreadable storage claims nothing rather than inventing a save');
+
+// Idempotent: a later call cannot overwrite the boot reading with a
+// post-hydration one, which is the failure mode this guards.
+withStorage({});
+(globalThis as Record<string, unknown>).window = {
+  localStorage: fakeStorage({ [SAVE_KEYS.story]: JSON.stringify({ state: { dayNumber: 1 }, version: 4 }) }),
+};
+captureBootSnapshot();
+assert.equal(
+  hadPersistedSaveAtBoot('story'),
+  false,
+  'the first reading wins - a default written after boot cannot masquerade as a persisted save',
+);
+
+delete (globalThis as Record<string, unknown>).window;
+resetBootSnapshotForTests();

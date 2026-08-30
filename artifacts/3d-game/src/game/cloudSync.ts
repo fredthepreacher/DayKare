@@ -18,6 +18,7 @@ import {
   type SyncMeta,
   type SyncStatus,
 } from '@workspace/cloud-sync';
+import { bootSave } from './localSaveSnapshot';
 import { useGameStore, serializeGameState, normalizePersistedGameState } from './store';
 import { useModeStore, normalizeOnlinePreview } from './modeStore';
 import { PROGRESSION_VERSION } from './progression';
@@ -81,16 +82,6 @@ const deviceLabel = () => {
   if (/Mac/i.test(ua)) return 'Mac';
   if (/Windows/i.test(ua)) return 'Windows';
   return 'Browser';
-};
-
-const readLocal = (key: string): unknown => {
-  try {
-    if (typeof window === 'undefined') return null;
-    const raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
 };
 
 const flag = (key: string, value?: string): string | null => {
@@ -274,7 +265,7 @@ export async function resolveConflict(choice: 'keep-local' | 'keep-cloud'): Prom
   await pushScope(scope);
 }
 
-async function initialiseScope(scope: SaveScope, localKey: string): Promise<void> {
+async function initialiseScope(scope: SaveScope): Promise<void> {
   const { setStatus, setConflict } = useCloudSyncStore.getState();
   const { row, error } = await readCloudSave(client, scope);
   if (error) {
@@ -282,14 +273,25 @@ async function initialiseScope(scope: SaveScope, localKey: string): Promise<void
     return;
   }
 
-  const stored = readLocal(localKey) as { state?: unknown; version?: number } | null;
-  const localPayload = stored && typeof stored === 'object' ? stored.state ?? stored : null;
+  // The boot snapshot, NOT localStorage as it stands now.
+  //
+  // By this point the store has rehydrated and the game has already written a
+  // default save back, so reading the key here returns something for every
+  // player, including one who just cleared their browser data. That reading is
+  // what made restore unreachable and turned "I lost my save" into "pick one
+  // of these two saves". `hadPersistedSaveAtBoot` answers the question we
+  // actually mean: was any of this the player's before we started?
+  const boot = bootSave(scope);
+  const hasPersistedLocal = boot.existed;
+  const localPayload = boot.payload;
 
   const action = decideInitialAction({
     hasCloud: Boolean(row),
-    hasLocal: Boolean(localPayload),
+    hasPersistedLocal,
     cloudHash: row?.payload_hash ?? (row ? payloadHash(row.payload) : null),
-    localHash: localPayload ? payloadHash(scope === 'story' ? storyPayload() : onlinePayload()) : null,
+    // Hash what the game is holding, which is the boot save rehydrated. Only
+    // meaningful when there was a boot save to rehydrate.
+    localHash: hasPersistedLocal ? payloadHash(scope === 'story' ? storyPayload() : onlinePayload()) : null,
   });
 
   if (row) {
@@ -303,8 +305,21 @@ async function initialiseScope(scope: SaveScope, localKey: string): Promise<void
     };
 
     if (action === 'restore') {
-      // Nothing local to lose, so bring the account's progress down.
+      // Nothing of the player's to lose, so bring the account's progress down.
+      // applyCloudPayload runs the payload through the game's OWN normalizer,
+      // so a cloud save written by an older build is repaired on the way in
+      // exactly as a local one would be. Raw JSON is never injected.
       applyCloudPayload(scope, row.payload);
+
+      // Seed the cached hash from what the game is NOW holding, not from the
+      // row. Normalising can legitimately change a byte or two, and if the
+      // cached hash still said "cloud" the very next flush would push that
+      // difference straight back up and burn a revision echoing a save we had
+      // just finished reading. A restore should cost zero writes.
+      meta[scope] = {
+        ...meta[scope],
+        payloadHash: payloadHash(scope === 'story' ? storyPayload() : onlinePayload()),
+      };
       setStatus(scope, { state: 'idle', revision: row.revision, lastSyncedAt: Date.now() });
       return;
     }
@@ -425,8 +440,10 @@ export async function startCloudSync(env: Record<string, unknown> | undefined): 
     }
     useCloudSyncStore.getState().setSignedIn(true);
 
-    await initialiseScope('story', 'daykare-save');
-    await initialiseScope('online', 'daykare-online-preview');
+    // Storage keys now live in localSaveSnapshot, which is the one place that
+    // reads them - and the only place that reads them at the right moment.
+    await initialiseScope('story');
+    await initialiseScope('online');
 
     useGameStore.subscribe(() => schedulePush('story'));
     useModeStore.subscribe(() => schedulePush('online'));
