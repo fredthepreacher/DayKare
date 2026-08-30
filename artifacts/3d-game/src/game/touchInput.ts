@@ -17,7 +17,7 @@ export class TouchPointerOwnership {
   lookPointer: number | null = null;
 
   claimMovement(pointerId: number) {
-    if (this.movementPointer !== null) return false;
+    if (this.movementPointer !== null || pointerId === this.lookPointer) return false;
     this.movementPointer = pointerId;
     return true;
   }

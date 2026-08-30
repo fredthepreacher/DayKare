@@ -962,13 +962,38 @@ try {
   })()`);
   const lookPoint = await evaluate(client, `(() => {
     const rect = document.querySelector('.daykare-touch-look').getBoundingClientRect();
-    return { x: rect.left + rect.width * 0.6, y: rect.top + rect.height * 0.55 };
+    for (const yRatio of [0.55, 0.68, 0.42, 0.78, 0.3]) {
+      for (const xRatio of [0.6, 0.72, 0.48, 0.82, 0.36]) {
+        const point = { x: rect.left + rect.width * xRatio, y: rect.top + rect.height * yRatio };
+        if (document.elementFromPoint(point.x, point.y)?.tagName === 'CANVAS') return point;
+      }
+    }
+    return null;
   })()`);
+  assert.ok(lookPoint, 'portrait has exposed gameplay canvas available for free-look');
+  assert.deepEqual(
+    await evaluate(client, `(() => {
+      const hudButton = document.querySelector('.daykare-hud-left button');
+      const hudRect = hudButton.getBoundingClientRect();
+      const lookTarget = document.elementFromPoint(${lookPoint.x}, ${lookPoint.y});
+      const hudTarget = document.elementFromPoint(
+        hudRect.left + hudRect.width / 2,
+        hudRect.top + hudRect.height / 2
+      );
+      return {
+        lookTarget: lookTarget?.tagName,
+        hudTargetIsCanvas: hudTarget?.tagName === 'CANVAS',
+      };
+    })()`),
+    { lookTarget: 'CANVAS', hudTargetIsCanvas: false },
+    'free-look begins on gameplay canvas without covering HUD controls',
+  );
   const touchStartPosition = await evaluate(client, 'globalThis.__daykareMovementProbe.player');
   await client.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [{ x: padPoint.x, y: padPoint.y, id: 11, radiusX: 8, radiusY: 8 }],
   });
+  await sleep(100);
   await client.send('Input.dispatchTouchEvent', {
     type: 'touchMove',
     touchPoints: [{ x: padPoint.x + 34, y: padPoint.y - 52, id: 11, radiusX: 8, radiusY: 8 }],
@@ -984,6 +1009,7 @@ try {
       { x: lookPoint.x, y: lookPoint.y, id: 21, radiusX: 8, radiusY: 8 },
     ],
   });
+  await sleep(100);
   await client.send('Input.dispatchTouchEvent', {
     type: 'touchMove',
     touchPoints: [
@@ -1048,6 +1074,101 @@ try {
     { x: 0, y: 0, run: false, crouch: false },
     'touch cancellation releases pointer ownership and resets every movement mode',
   );
+
+  await evaluate(client, `(() => {
+    const store = globalThis.__daykareStore;
+    store.setState((state) => ({
+      progression: { ...state.progression, reputation: 10 },
+      activeDialogue: null,
+      journalOpen: false,
+      zoneTransitioning: false,
+      pendingZone: null,
+    }));
+    store.getState().enterGarden();
+  })()`);
+  await setViewport(client, 844, 390, true);
+  await waitFor(client, `globalThis.__daykareStore.getState().zone === 'garden'
+    && !globalThis.__daykareStore.getState().zoneTransitioning
+    && Boolean(document.querySelector('.daykare-touch-pad'))`, 'Garden landscape touch controls');
+  await sleep(320);
+  const gardenTouchPoints = await evaluate(client, `(() => {
+    const pad = document.querySelector('.daykare-touch-pad').getBoundingClientRect();
+    const canvas = document.querySelector('.daykare-app-shell canvas').getBoundingClientRect();
+    let look = null;
+    for (const yRatio of [0.52, 0.64, 0.4, 0.74, 0.3]) {
+      for (const xRatio of [0.62, 0.72, 0.5, 0.82, 0.4]) {
+        const point = { x: canvas.left + canvas.width * xRatio, y: canvas.top + canvas.height * yRatio };
+        if (document.elementFromPoint(point.x, point.y)?.tagName === 'CANVAS') {
+          look = point;
+          break;
+        }
+      }
+      if (look) break;
+    }
+    return {
+      pad: { x: pad.left + pad.width / 2, y: pad.top + pad.height / 2 },
+      look,
+    };
+  })()`);
+  assert.ok(gardenTouchPoints.look, 'Garden landscape has exposed gameplay canvas available for free-look');
+  const gardenOrbitBefore = await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    return cameraInput.getCameraInput().yaw;
+  })()`);
+  await evaluate(client, `(async () => {
+    const touch = await import(${touchModulePath});
+    const canvas = document.querySelector('.daykare-app-shell canvas');
+    touch.setTouchMove(0.68, -0.58);
+    canvas.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 42,
+      pointerType: 'touch',
+      button: 0,
+      clientX: ${gardenTouchPoints.look.x},
+      clientY: ${gardenTouchPoints.look.y},
+    }));
+    window.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 42,
+      pointerType: 'touch',
+      clientX: ${gardenTouchPoints.look.x + 96},
+      clientY: ${gardenTouchPoints.look.y - 28},
+    }));
+  })()`);
+  await sleep(320);
+  const gardenDualTouch = await evaluate(client, `(async () => {
+    const touch = await import(${touchModulePath});
+    const cameraInput = await import(${cameraInputModulePath});
+    return {
+      movementMagnitude: Math.hypot(touch.getTouchInput().x, touch.getTouchInput().y),
+      yawDelta: Math.abs(cameraInput.getCameraInput().yaw - ${gardenOrbitBefore}),
+    };
+  })()`);
+  assert.ok(
+    gardenDualTouch.movementMagnitude > 0.5,
+    `Garden landscape keeps joystick movement active: ${JSON.stringify(gardenDualTouch)}`,
+  );
+  assert.ok(
+    gardenDualTouch.yawDelta > 0.5,
+    `Garden landscape keeps independent camera orbit active: ${JSON.stringify(gardenDualTouch)}`,
+  );
+  await evaluate(client, `(async () => {
+    const touch = await import(${touchModulePath});
+    touch.resetTouchInput();
+    window.dispatchEvent(new PointerEvent('pointercancel', {
+      bubbles: true,
+      pointerId: 42,
+      pointerType: 'touch',
+    }));
+  })()`);
+  await evaluate(client, 'globalThis.__daykareStore.getState().returnToHub()');
+  await setViewport(client, 390, 844, true);
+  await waitFor(client, `globalThis.__daykareStore.getState().zone === 'hub'
+    && !globalThis.__daykareStore.getState().zoneTransitioning
+    && Boolean(document.querySelector('.daykare-touch-pad'))`, 'Hub portrait touch controls restored');
+  await sleep(320);
 
   await client.send('Input.dispatchTouchEvent', {
     type: 'touchStart',

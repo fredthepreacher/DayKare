@@ -150,6 +150,58 @@ export function TouchControls({
   }, [movementEnabled]);
 
   useEffect(() => {
+    if (!movementEnabled) return;
+    const canvas = document.querySelector<HTMLCanvasElement>('.daykare-app-shell canvas');
+    if (!canvas) return;
+
+    const releaseLook = (pointerId: number) => {
+      if (pointerOwnership.current.lookPointer !== pointerId) return;
+      try {
+        if (canvas.hasPointerCapture?.(pointerId)) canvas.releasePointerCapture(pointerId);
+      } catch {
+        // Pointer capture may already be gone after a browser-level cancellation.
+      }
+      pointerOwnership.current.releaseLook(pointerId);
+    };
+    const onLookStart = (event: PointerEvent) => {
+      if (
+        (event.pointerType !== 'touch' && event.pointerType !== 'pen')
+        || event.button !== 0
+        || event.target !== canvas
+        || !pointerOwnership.current.claimLook(event.pointerId)
+      ) return;
+      event.preventDefault();
+      lookPoint.current = { x: event.clientX, y: event.clientY };
+      try {
+        canvas.setPointerCapture?.(event.pointerId);
+      } catch {
+        // Some webviews reject capture for synthetic or already-cancelled pointers.
+      }
+    };
+    const onLookMove = (event: PointerEvent) => {
+      if (pointerOwnership.current.lookPointer !== event.pointerId) return;
+      event.preventDefault();
+      addCameraOrbit(event.clientX - lookPoint.current.x, event.clientY - lookPoint.current.y);
+      lookPoint.current = { x: event.clientX, y: event.clientY };
+    };
+    const onLookEnd = (event: PointerEvent) => {
+      releaseLook(event.pointerId);
+    };
+    canvas.addEventListener('pointerdown', onLookStart, { passive: false });
+    window.addEventListener('pointermove', onLookMove, { passive: false });
+    window.addEventListener('pointerup', onLookEnd);
+    window.addEventListener('pointercancel', onLookEnd);
+    return () => {
+      const pointerId = pointerOwnership.current.lookPointer;
+      if (pointerId !== null) releaseLook(pointerId);
+      canvas.removeEventListener('pointerdown', onLookStart);
+      window.removeEventListener('pointermove', onLookMove);
+      window.removeEventListener('pointerup', onLookEnd);
+      window.removeEventListener('pointercancel', onLookEnd);
+    };
+  }, [movementEnabled]);
+
+  useEffect(() => {
     return () => {
       if (holdTimer.current) clearTimeout(holdTimer.current);
       resetTouchInput();
@@ -197,7 +249,12 @@ export function TouchControls({
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!movementEnabled || !pointerOwnership.current.claimMovement(event.pointerId)) return;
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic checks and a few webviews can reject capture while still
+      // delivering a valid pointer stream to the owning control.
+    }
     startPoint.current = { x: event.clientX, y: event.clientY };
     maxTravel.current = 0;
     holdTriggered.current = false;
@@ -272,36 +329,11 @@ export function TouchControls({
     setCrouchEnabled(false);
   };
 
-  const startLook = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!movementEnabled || !pointerOwnership.current.claimLook(event.pointerId)) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    lookPoint.current = { x: event.clientX, y: event.clientY };
-  };
-
-  const moveLook = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (pointerOwnership.current.lookPointer !== event.pointerId) return;
-    event.preventDefault();
-    addCameraOrbit(event.clientX - lookPoint.current.x, event.clientY - lookPoint.current.y);
-    lookPoint.current = { x: event.clientX, y: event.clientY };
-  };
-
-  const finishLook = (event: ReactPointerEvent<HTMLDivElement>) => {
-    pointerOwnership.current.releaseLook(event.pointerId);
-  };
-
   return (
     <div ref={touchUiRef} className="daykare-touch-ui" aria-label="Touch game controls">
       {movementEnabled && (
-        <div
-          className="daykare-touch-look"
-          onPointerDown={startLook}
-          onPointerMove={moveLook}
-          onPointerUp={finishLook}
-          onPointerCancel={finishLook}
-          role="application"
-           aria-label="Drag to orbit the camera."
-        >
+        <>
+          <div className="daykare-touch-look" aria-hidden="true" />
           <button
             type="button"
             className="daykare-touch-recenter"
@@ -315,7 +347,7 @@ export function TouchControls({
             <LocateFixed aria-hidden="true" size={21} strokeWidth={2.5} />
             <span className="sr-only">Center camera</span>
           </button>
-        </div>
+        </>
       )}
       {movementEnabled && (
         <div className="daykare-touch-movement">

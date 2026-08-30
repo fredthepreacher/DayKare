@@ -211,9 +211,8 @@
 
   .daykare-touch-look {
     position: absolute;
-    inset: 18% 0 24% 40%;
-    pointer-events: auto;
-    touch-action: none;
+    inset: 0;
+    pointer-events: none;
   }
 
   .daykare-touch-recenter {
@@ -541,10 +540,6 @@
 }
 
 @media (max-width: 520px) {
-  .daykare-touch-look {
-    left: 34%;
-  }
-
   .daykare-touch-pad {
     width: 124px;
     height: 124px;
