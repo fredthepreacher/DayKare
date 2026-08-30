@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
 import { isGameplayBlocked } from './gameplayGate';
-import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetry';
+import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetryPanel';
 import { GameFrontEnd } from './GameFrontEnd';
 import { useModeStore } from './modeStore';
 
