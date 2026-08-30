@@ -18,6 +18,7 @@ import { GameFrontEnd } from './GameFrontEnd';
 import { useModeStore } from './modeStore';
 import { GraphicsUnavailable } from './GraphicsUnavailable';
 import { probeWebGL, watchContextLoss, type WebGLStatus } from './webglSupport';
+import { startCloudSync } from './cloudSync';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
 
@@ -121,6 +122,16 @@ export function DayKareApp() {
   useEffect(() => () => {
     unwatchRef.current?.();
     unwatchRef.current = null;
+  }, []);
+
+  // Deliberately after first paint and deliberately not awaited. Cloud sync is
+  // never allowed to delay the menu, and a failure inside it never reaches the
+  // game: with no configuration or no network, DayKare simply plays locally.
+  useEffect(() => {
+    const idle = window.setTimeout(() => {
+      void startCloudSync(import.meta.env as unknown as Record<string, unknown>);
+    }, 0);
+    return () => window.clearTimeout(idle);
   }, []);
 
   const handleCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {

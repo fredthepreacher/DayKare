@@ -51,3 +51,8 @@ Thumbs.db
 
 # Local scratch: files staged for deletion when permissions allow
 _to_delete/
+
+# Local environment
+.env
+.env.local
+.env.*.local

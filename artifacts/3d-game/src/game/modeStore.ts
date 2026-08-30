@@ -40,10 +40,6 @@ export interface ModeStore {
   menuOpen: boolean;
   panel: FrontEndPanel;
   online: OnlinePreviewState;
-  reducedMotion: boolean;
-  highContrast: boolean;
-  largerText: boolean;
-  audioEnabled: boolean;
   openMenu: () => void;
   closeMenu: () => void;
   enterStory: () => void;
@@ -53,10 +49,6 @@ export interface ModeStore {
   setOnlineVisibility: (visibility: OnlineVisibility) => void;
   cycleOnlineOutfit: () => void;
   cycleOnlineAccessory: () => void;
-  toggleReducedMotion: () => void;
-  toggleHighContrast: () => void;
-  toggleLargerText: () => void;
-  toggleAudioEnabled: () => void;
 }
 
 export const createInitialOnlinePreview = (): OnlinePreviewState => ({
@@ -113,10 +105,6 @@ export const useModeStore = create<ModeStore>()(
       menuOpen: !storySessionIsActive(),
       panel: 'menu',
       online: createInitialOnlinePreview(),
-      reducedMotion: false,
-      highContrast: false,
-      largerText: false,
-      audioEnabled: true,
       openMenu: () => {
         setStorySessionActive(false);
         set({ menuOpen: true, panel: 'menu' });
@@ -147,10 +135,6 @@ export const useModeStore = create<ModeStore>()(
       cycleOnlineAccessory: () => set((state) => ({
         online: { ...state.online, selectedAccessory: (state.online.selectedAccessory + 1) % 4 },
       })),
-      toggleReducedMotion: () => set((state) => ({ reducedMotion: !state.reducedMotion })),
-      toggleHighContrast: () => set((state) => ({ highContrast: !state.highContrast })),
-      toggleLargerText: () => set((state) => ({ largerText: !state.largerText })),
-      toggleAudioEnabled: () => set((state) => ({ audioEnabled: !state.audioEnabled })),
     }),
     {
       name: ONLINE_STORAGE_KEY,
@@ -159,20 +143,16 @@ export const useModeStore = create<ModeStore>()(
           ? { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }
           : window.localStorage
       )),
+      // Accessibility and audio preferences deliberately left out: they are
+      // player/device settings, not Online progression, and now live in
+      // settingsStore. Legacy payloads may still contain them; the merge below
+      // simply ignores those fields rather than deleting anything.
       partialize: (state) => ({
         online: serializeOnlinePreview(state.online),
-        reducedMotion: state.reducedMotion,
-        highContrast: state.highContrast,
-        largerText: state.largerText,
-        audioEnabled: state.audioEnabled,
       }),
       merge: (persisted, current) => ({
         ...current,
         online: normalizeOnlinePreview((persisted as Partial<ModeStore> | null)?.online),
-        reducedMotion: (persisted as Partial<ModeStore> | null)?.reducedMotion === true,
-        highContrast: (persisted as Partial<ModeStore> | null)?.highContrast === true,
-        largerText: (persisted as Partial<ModeStore> | null)?.largerText === true,
-        audioEnabled: (persisted as Partial<ModeStore> | null)?.audioEnabled !== false,
       }),
     },
   ),

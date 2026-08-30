@@ -21,7 +21,7 @@ PORT=5173 BASE_PATH=/ pnpm --filter @workspace/3d-game run dev
 
 ```bash
 pnpm run typecheck                                                # all packages
-pnpm --filter @workspace/3d-game run test                         # foundation + audio suites
+pnpm --filter @workspace/3d-game run test                         # foundation + audio + cloud sync suites
 PORT=5173 BASE_PATH=/ pnpm --filter @workspace/3d-game run build  # production build
 
 # browser regression suite — needs a `chromium` on PATH and the dev server running
@@ -49,6 +49,7 @@ pnpm workspace monorepo.
 | `artifacts/api-server` | `@workspace/api-server` | Express skeleton (one health route). **Not used by the game.** |
 | `lib/db` | `@workspace/db` | Drizzle schema scaffold. **Not used by the game.** |
 | `lib/api-spec`, `lib/api-zod`, `lib/api-client-react` | | OpenAPI/Zod/codegen scaffold. **Not used by the game.** |
+| `lib/cloud-sync` | `@workspace/cloud-sync` | Supabase adapter plus the pure sync logic (hashing, conflict rules, migration state machine, settings split). Pure parts are unit-tested without a network. |
 | `scripts` | `@workspace/scripts` | Workspace helper scripts. |
 
 Inside `artifacts/3d-game/src/game/`:
@@ -59,7 +60,42 @@ Inside `artifacts/3d-game/src/game/`:
 - `NPCs.tsx`, `npcActivities.ts`, `teacherInterventions.ts`, `activitySessions.ts` — living-daycare behaviour
 - `TouchControls.tsx`, `touchInput.ts`, `cameraRig.ts`, `cameraInput.ts` — mobile multitouch and camera
 - `storyProgression.ts` — story chapters, caper state machine, district progress
-- `foundations.test.ts`, `audio.test.ts` — deterministic test suites
+- `settingsStore.ts` — account-synced vs device-local settings
+- `cloudSync.ts` — cloud sync orchestration; started after first paint, never on the frame path
+- `foundations.test.ts`, `audio.test.ts`, `cloudSync.test.ts` — deterministic test suites
+
+## Cloud sync (Phase 3)
+
+Optional. DayKare is fully playable with no account and no configuration — that is the default, not a degraded mode.
+
+```bash
+# .env.local (never commit real values)
+VITE_SUPABASE_URL=https://<project>.supabase.co
+VITE_SUPABASE_ANON_KEY=<anon key>
+```
+
+Both are required together; setting only one logs an error and falls back to local-only. `SUPABASE_SERVICE_ROLE_KEY` must **never** be set in a Vite/client environment — it belongs to server-side code only, arriving in Phase 7.
+
+Behaviour:
+
+- **Anonymous by default.** No email, no birth date, no name, no social login. A guardian-controlled identity can be attached later to the *same* auth user, so linking never moves, replaces or duplicates a save.
+- **Optimistic concurrency, never last-write-wins.** Each write carries the revision it expects. If another device moved the save on, the write is refused and a conflict is reported — nothing is overwritten and nothing is auto-merged.
+- **Migration keeps the local save.** Validate → back up → upload → verify by reading back → mark migrated. The local copy is retained, not deleted. Migration is idempotent via a stored token, so a refresh mid-migration cannot duplicate anything.
+- **Failure is not fatal.** No config, no network, no session, a rejected write — all end with the game running on its local save.
+- **Zero cost when unused.** `@supabase/supabase-js` is dynamically imported and is not in the entry chunk.
+
+Database schema, RLS and functions live in `supabase/migrations/`. Apply with `supabase db push` against a project you own.
+
+Use **separate Supabase projects for production and preview**. Preview deployments must never write to production player data.
+
+## Settings
+
+Split by what they belong to, and neither belongs in a progression save:
+
+- **Account-synced** (`daykare-account-settings`, and the `account_settings` table) — reduced motion, high contrast, larger text, captions. These follow the player to a new device.
+- **Device-local** (`daykare-device-settings`) — graphics quality, render scale, camera and touch sensitivity, audio toggle, HUD safe-area offset. Meaningless or harmful on different hardware, so never synced.
+
+The four accessibility flags previously lived inside the Online preview store, which meant a Story-only player's accessibility choices were filed under "online". They are lifted out automatically on first load; the legacy Online save is read, never modified.
 
 ## Saves
 
