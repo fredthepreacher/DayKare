@@ -43,6 +43,29 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Split the 3D engine into its own chunk. Three.js and its React
+        // bindings are the bulk of the bundle and they change far less often
+        // than gameplay code, so isolating them means a gameplay patch no
+        // longer invalidates the engine download in every player's cache.
+        //
+        // Deliberately conservative: this is a chunking change only. React
+        // stays with the app, because splitting it introduces module
+        // initialisation ordering risk for no cache benefit here.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (
+            id.includes('/three/')
+            || id.includes('/three-stdlib/')
+            || id.includes('/@react-three/')
+          ) {
+            return 'three';
+          }
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,

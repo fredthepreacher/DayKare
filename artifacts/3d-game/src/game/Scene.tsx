@@ -1,6 +1,6 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky, KeyboardControls } from '@react-three/drei';
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Player } from './Player';
 import { Environment } from './Environment';
 import { NPCs } from './NPCs';
@@ -16,6 +16,8 @@ import { isGameplayBlocked } from './gameplayGate';
 import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetryPanel';
 import { GameFrontEnd } from './GameFrontEnd';
 import { useModeStore } from './modeStore';
+import { GraphicsUnavailable } from './GraphicsUnavailable';
+import { probeWebGL, watchContextLoss, type WebGLStatus } from './webglSupport';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
 
@@ -100,6 +102,44 @@ export function DayKareApp() {
     : typeof window === 'undefined'
       ? 1
       : window.devicePixelRatio;
+
+  // Ask the browser for a throwaway WebGL context before mounting the real
+  // renderer. Without this the Canvas mounts regardless and a failure surfaces
+  // as a raw crash instead of something a player can act on.
+  const [webglStatus, setWebglStatus] = useState<WebGLStatus>('checking');
+  const [contextLost, setContextLost] = useState(false);
+  const unwatchRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    const result = probeWebGL();
+    if (!result.available) {
+      console.error(`DayKare: WebGL is unavailable (${result.reason ?? 'unknown'}).`);
+    }
+    setWebglStatus(result.available ? 'available' : 'unavailable');
+  }, []);
+
+  useEffect(() => () => {
+    unwatchRef.current?.();
+    unwatchRef.current = null;
+  }, []);
+
+  const handleCanvasCreated = useCallback(({ gl }: { gl: THREE.WebGLRenderer }) => {
+    unwatchRef.current?.();
+    unwatchRef.current = watchContextLoss(gl.domElement, {
+      onLost: () => {
+        console.error('DayKare: the WebGL context was lost.');
+        setContextLost(true);
+      },
+      onRestored: () => {
+        console.warn('DayKare: the WebGL context was restored.');
+        setContextLost(false);
+      },
+    });
+  }, []);
+
+  if (webglStatus === 'checking') return null;
+  if (webglStatus === 'unavailable') return <GraphicsUnavailable />;
+
   return (
     <KeyboardControls map={keyMap}>
       <div className="daykare-app-shell w-full relative bg-black overflow-hidden">
@@ -107,12 +147,15 @@ export function DayKareApp() {
           dpr={initialDpr}
           shadows={quality === 'high'}
           camera={{ position: [0, 5, 8], fov: 60 }}
+          onCreated={handleCanvasCreated}
         >
           <GameScene />
         </Canvas>
         <UI />
         <PerformanceTelemetryPanel />
         <GameFrontEnd />
+        {/* The canvas stays mounted so the browser can restore the context. */}
+        {contextLost && <GraphicsUnavailable variant="lost" />}
       </div>
     </KeyboardControls>
   );
