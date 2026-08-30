@@ -98,3 +98,33 @@ export function buildConflictReport(
   const { choice, reason } = suggestResolution(local, cloud);
   return { scope, local, cloud, suggested: choice, reason };
 }
+
+
+/**
+ * What to do when sync first starts for a scope.
+ *
+ * Kept pure and separate so the decision is testable, and so the rule is
+ * written down in one place rather than implied by the order of a few ifs:
+ *
+ *   no cloud, no local   -> nothing to do
+ *   no cloud, local      -> migrate the local save up
+ *   cloud, no local      -> restore the cloud save down
+ *   cloud + local, same  -> already in sync
+ *   cloud + local, differ-> CONFLICT. Never auto-pick, never merge.
+ *
+ * The last line is the whole point. Two real saves that disagree is a
+ * question for the player, not a decision for the sync layer.
+ */
+export type InitialAction = 'idle' | 'migrate' | 'restore' | 'conflict';
+
+export function decideInitialAction(input: {
+  hasCloud: boolean;
+  hasLocal: boolean;
+  cloudHash: string | null;
+  localHash: string | null;
+}): InitialAction {
+  if (!input.hasCloud) return input.hasLocal ? 'migrate' : 'idle';
+  if (!input.hasLocal) return 'restore';
+  if (input.cloudHash && input.localHash && input.cloudHash === input.localHash) return 'idle';
+  return 'conflict';
+}

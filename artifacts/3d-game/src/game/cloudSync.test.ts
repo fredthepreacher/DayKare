@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   ACCOUNT_SETTINGS_KEY,
+  decideInitialAction,
   DEVICE_SETTINGS_KEY,
   MIGRATED_FLAG_KEY,
   accountSettingsFromLegacyOnlineSave,
@@ -255,5 +256,38 @@ for (const key of [ACCOUNT_SETTINGS_KEY, DEVICE_SETTINGS_KEY]) {
     `settings key ${key} must not collide with a progression save key`,
   );
 }
+
+// --- initial action decision ------------------------------------------------
+
+assert.equal(
+  decideInitialAction({ hasCloud: false, hasLocal: false, cloudHash: null, localHash: null }),
+  'idle',
+  'a brand new player with nothing anywhere does nothing',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: false, hasLocal: true, cloudHash: null, localHash: 'aaaa' }),
+  'migrate',
+  'an existing local save with no cloud copy migrates up',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasLocal: false, cloudHash: 'aaaa', localHash: null }),
+  'restore',
+  'a cloud save with nothing local restores down',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasLocal: true, cloudHash: 'aaaa', localHash: 'aaaa' }),
+  'idle',
+  'identical local and cloud saves are already in sync',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasLocal: true, cloudHash: 'aaaa', localHash: 'bbbb' }),
+  'conflict',
+  'two saves that differ is a conflict, never an automatic overwrite',
+);
+assert.equal(
+  decideInitialAction({ hasCloud: true, hasLocal: true, cloudHash: null, localHash: 'bbbb' }),
+  'conflict',
+  'an unknown cloud hash is treated as a conflict, not as "probably the same"',
+);
 
 console.log('cloud sync tests passed');
