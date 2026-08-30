@@ -644,31 +644,82 @@ try {
   );
 
   const questModulePath = JSON.stringify(new URL('src/game/quests.ts', targetUrl).href);
+  const tidyCameraInputModulePath = JSON.stringify(new URL('src/game/cameraInput.ts', targetUrl).href);
+  const tidyInteractionFocusModulePath = JSON.stringify(new URL('src/game/interactionFocus.ts', targetUrl).href);
+  const tidyThreeModulePath = JSON.stringify(new URL('node_modules/.vite/deps/three.js', targetUrl).href);
+  await setViewport(client, 390, 844, true);
   await evaluate(client, `(async () => {
     const quests = await import(${questModulePath});
     const store = globalThis.__daykareStore;
     let tidyQuests = quests.activateQuest(quests.createInitialQuests(), 'rainbow-tidy-up');
-    tidyQuests = quests.advanceObjective(tidyQuests, 'rainbow-tidy-up', 'collect-blue-block');
     const state = store.getState();
     store.setState({
       quests: tidyQuests,
-      inventory: ['blue-block'],
+      inventory: [],
       tidyPlacedItems: [],
       activeDialogue: null,
       journalOpen: false,
       zone: 'hub',
       pendingZone: null,
       zoneTransitioning: false,
-      playerPosition: [0, 0, -2.8],
-      hubPosition: [0, 0, -2.8],
+      playerPosition: [-3, 0, -2],
+      hubPosition: [-3, 0, -2],
       teleportTrigger: state.teleportTrigger + 1,
     });
   })()`);
   await waitFor(
     client,
+    `globalThis.__daykareStore.getState().activeInteractable === 'blue-block'
+      && document.querySelector('.daykare-touch-interact strong')?.textContent === 'Pick up Toy'`,
+    'mobile player can target the blue block',
+  );
+  await evaluate(client, `document.querySelector('.daykare-touch-interact').click()`);
+  await waitFor(
+    client,
+    `globalThis.__daykareStore.getState().inventory.includes('blue-block')
+      && globalThis.__daykareStore.getState().quests['rainbow-tidy-up'].currentObjectiveId === 'place-blue-block'`,
+    'mobile player picks up the required blue block',
+  );
+  await waitFor(client, `Boolean(document.querySelector('.daykare-dialogue-close'))`, 'pickup dialogue close action');
+  await evaluate(client, `document.querySelector('.daykare-dialogue-close').click()`);
+  await waitFor(client, `globalThis.__daykareStore.getState().activeDialogue === null`, 'pickup dialogue closes');
+  await evaluate(client, `(async () => {
+    const store = globalThis.__daykareStore;
+    const state = store.getState();
+    store.setState({
+      playerPosition: [0, 0, 0.3],
+      hubPosition: [0, 0, 0.3],
+      teleportTrigger: state.teleportTrigger + 1,
+    });
+  })()`);
+  await sleep(250);
+  const adverseTidyCameraYaw = await evaluate(client, `(async () => {
+    const cameraInput = await import(${tidyCameraInputModulePath});
+    const interactions = await import(${tidyInteractionFocusModulePath});
+    const { Vector3 } = await import(${tidyThreeModulePath});
+    cameraInput.recenterCamera();
+    cameraInput.addCameraOrbit(Math.PI / 0.008, 0);
+    globalThis.__daykareTidyCompetitorCleanup?.();
+    globalThis.__daykareTidyCompetitorCleanup = interactions.registerInteractionCandidate({
+      id: 'browser-competing-quest-target',
+      position: new Vector3(0, 0, -0.2),
+      range: 2,
+      priority: 100,
+      questPriority: true,
+      valid: true,
+    });
+    return cameraInput.getCameraInput().yaw;
+  })()`);
+  assert.ok(
+    Math.abs(adverseTidyCameraYaw - Math.PI) < 0.001,
+    `mobile tidy regression keeps its adverse camera yaw: ${adverseTidyCameraYaw}`,
+  );
+  await waitFor(
+    client,
     `globalThis.__daykareStore.getState().activeInteractable === 'activity-rainbow-tidy-up'
-      && document.querySelector('.daykare-touch-interact strong')?.textContent === 'Place Blue Block'`,
-    'carried blue block exposes its mobile station action',
+      && document.querySelector('.daykare-touch-interact strong')?.textContent === 'Place Blue Block'
+      && document.querySelector('.daykare-touch-interact-mark')?.textContent?.trim() === 'PLACE'`,
+    'carried blue block exposes its explicit mobile Place action despite unfavorable camera focus',
   );
   await evaluate(client, `document.querySelector('.daykare-touch-interact').click()`);
   await waitFor(
@@ -688,6 +739,10 @@ try {
     { inventory: [], placed: ['blue-block'], objective: 'collect-red-block' },
     'mobile placement consumes and records the blue block atomically',
   );
+  await evaluate(client, `(() => {
+    globalThis.__daykareTidyCompetitorCleanup?.();
+    globalThis.__daykareTidyCompetitorCleanup = null;
+  })()`);
   await client.send('Page.reload', { ignoreCache: true });
   await waitFor(client, 'document.readyState === "complete"', 'blue-block placement reload');
   await waitFor(client, 'Boolean(document.querySelector("canvas"))', '3D canvas remount after blue-block placement');

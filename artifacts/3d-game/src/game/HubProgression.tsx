@@ -7,6 +7,8 @@ import { useGameStore } from './store';
 import { playGameSound } from './audio';
 import { getWorldSolidTransform, WORLD_INTERACTION_TARGETS } from './world';
 
+export const RAINBOW_TIDY_PLACEMENT_RANGE = 3.25;
+
 export function HubProgression({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
     <group>
@@ -92,9 +94,10 @@ function RainbowTidyUp({ playerRef }: { playerRef: React.RefObject<THREE.Group |
     id,
     position,
     approach,
-    range: 2.25,
+    range: RAINBOW_TIDY_PLACEMENT_RANGE,
     priority: 70,
-    questPriority: true,
+    questPriority: canPlace,
+    forcePriority: canPlace,
     valid: canPlace,
   }), [id, position, approach, canPlace]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
@@ -105,7 +108,14 @@ function RainbowTidyUp({ playerRef }: { playerRef: React.RefObject<THREE.Group |
     }
   }, [placedSignature]);
   useFrame((_, delta) => {
-    updateInteractionCandidate(id, { position, approach, questPriority: true, valid: canPlace });
+    updateInteractionCandidate(id, {
+      position,
+      approach,
+      range: RAINBOW_TIDY_PLACEMENT_RANGE,
+      questPriority: canPlace,
+      forcePriority: canPlace,
+      valid: canPlace,
+    });
     if (!ref.current) return;
     const scale = THREE.MathUtils.lerp(ref.current.scale.x, active ? 1.06 : 1, 1 - Math.exp(-8 * delta));
     ref.current.scale.setScalar(scale);

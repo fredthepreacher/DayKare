@@ -427,8 +427,11 @@ export function TouchControls({
           className="daykare-touch-interact"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={onInteract}
+          aria-label={interactionLabel}
         >
-          <span className="daykare-touch-interact-mark">ACT</span>
+          <span className="daykare-touch-interact-mark">
+            {interactionLabel.startsWith('Place ') ? 'PLACE' : 'ACT'}
+          </span>
           <span className="daykare-touch-interact-copy">
             <strong>{interactionLabel}</strong>
             {interactionDetail && <small>{interactionDetail}</small>}

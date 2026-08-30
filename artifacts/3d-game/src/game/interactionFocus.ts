@@ -8,6 +8,12 @@ export interface InteractionCandidate {
   valid: boolean;
   approach?: THREE.Vector3;
   questPriority?: boolean;
+  /**
+   * A quest action that must remain available once the player is in range,
+   * even when the player/camera is aimed elsewhere. This is intentionally
+   * narrower than questPriority so ordinary quest targets retain focus scoring.
+   */
+  forcePriority?: boolean;
   urgentPriority?: boolean;
 }
 
@@ -43,8 +49,32 @@ export function resolveInteractionCandidate(
   forwardScratch.copy(playerForward).setY(0).normalize();
   cameraIntentScratch.copy(cameraForward ?? playerForward).setY(0).normalize();
   let best: { candidate: InteractionCandidate; score: number } | null = null;
+  let forcedQuestCandidate: InteractionCandidate | null = null;
+  let forcedQuestDistance = Number.POSITIVE_INFINITY;
   let hasQuestCandidate = false;
   let hasUrgentCandidate = false;
+  for (const candidate of candidates.values()) {
+    if (
+      candidate.valid
+      && candidate.forcePriority
+      && candidate.questPriority
+      && playerPosition.distanceTo(interactionPoint(candidate)) <= candidate.range
+    ) {
+      const distance = playerPosition.distanceTo(interactionPoint(candidate));
+      if (
+        forcedQuestCandidate === null
+        || distance < forcedQuestDistance
+        || (distance === forcedQuestDistance && candidate.id < forcedQuestCandidate.id)
+      ) {
+        forcedQuestCandidate = candidate;
+        forcedQuestDistance = distance;
+      }
+    }
+  }
+  if (forcedQuestCandidate) {
+    lastResolvedId = forcedQuestCandidate.id;
+    return forcedQuestCandidate;
+  }
   for (const candidate of candidates.values()) {
     if (
       candidate.valid

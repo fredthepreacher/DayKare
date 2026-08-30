@@ -65,7 +65,11 @@ import { KID_CAST, facingAngleForDirection, kidActivityMode, kidDestination, res
 import { isGameplayBlocked } from './gameplayGate';
 import { isTouchDoubleTap, isTouchTap } from './TouchControls';
 import { GARDEN_CAST, GARDEN_LANDMARKS, gardenNpcDestination } from './Garden';
-import { ROUTE_FOCUS_RING_Y, getRouteGateInteractionPosition } from './HubProgression';
+import {
+  RAINBOW_TIDY_PLACEMENT_RANGE,
+  ROUTE_FOCUS_RING_Y,
+  getRouteGateInteractionPosition,
+} from './HubProgression';
 import { artworkBackingSize, validateArtworkSurfaceAnchor, type ArtworkSurfaceAnchor } from './Artwork';
 import { dialogueDismissLabel } from './dialogueActions';
 import { getSharedActivitySession, reportSessionArrival, resetActivitySessions } from './activitySessions';
@@ -204,6 +208,11 @@ useGameStore.setState({
   inventory: ['red-block'],
   tidyPlacedItems: [],
 });
+assert.equal(
+  useGameStore.getState().completeTidyToy('red-block'),
+  false,
+  'the station rejects a carried block that does not match the active placement objective',
+);
 assert.equal(
   useGameStore.getState().completeTidyToy('blue-block'),
   false,
@@ -1686,27 +1695,33 @@ registerInteractionCandidate({
   id: 'approach-priority-station',
   position: new THREE.Vector3(0, 0, -4),
   approach: new THREE.Vector3(0, 0, -2.8),
-  range: 2.25,
+  range: RAINBOW_TIDY_PLACEMENT_RANGE,
   priority: 70,
   questPriority: true,
+  forcePriority: true,
   valid: true,
 });
 registerInteractionCandidate({
-  id: 'nearby-toy',
-  position: new THREE.Vector3(0.2, 0, -1),
+  id: 'competing-quest-target',
+  position: new THREE.Vector3(0, 0, -0.7),
   range: 2,
-  priority: 12,
+  priority: 100,
+  questPriority: true,
   valid: true,
 });
 assert.equal(
-  resolveInteractionCandidate(new THREE.Vector3(0, 0, -0.6), new THREE.Vector3(0, 0, 1))?.id,
+  resolveInteractionCandidate(
+    new THREE.Vector3(0, 0, 0.3),
+    new THREE.Vector3(0, 0, 1),
+    new THREE.Vector3(0, 0, 1),
+  )?.id,
   'approach-priority-station',
-  'the active station resolves throughout its authored approach area regardless of facing',
+  'the carried-block station overrides quest focus competition and unfavorable player/camera facing',
 );
 assert.notEqual(
-  resolveInteractionCandidate(new THREE.Vector3(0, 0, -0.54), new THREE.Vector3(0, 0, -1))?.id,
+  resolveInteractionCandidate(new THREE.Vector3(0, 0, 0.46), new THREE.Vector3(0, 0, -1))?.id,
   'approach-priority-station',
-  'the station remains unavailable just outside the authored approach range',
+  'the station remains unavailable just outside its forgiving placement range',
 );
 clearInteractionCandidates();
 const fartherQuestTarget = {
