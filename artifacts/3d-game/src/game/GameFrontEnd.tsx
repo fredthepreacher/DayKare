@@ -13,6 +13,8 @@ import { GameMenu } from './GameMenu';
 import { OnlineLobby } from './OnlineLobby';
 import { useGameStore } from './store';
 import { useModeStore, type FrontEndPanel } from './modeStore';
+import { useSettingsStore } from './settingsStore';
+import { useCloudSyncStore } from './cloudSync';
 import { setGameAudioEnabled } from './audio';
 
 const panelCopy: Record<Exclude<FrontEndPanel, 'menu'>, { title: string; eyebrow: string }> = {
@@ -100,8 +102,8 @@ function BookMarkIcon() {
 function SettingsPanel() {
   const quality = useGameStore((state) => state.quality);
   const setQuality = useGameStore((state) => state.setQuality);
-  const audioEnabled = useModeStore((state) => state.audioEnabled);
-  const toggleAudioEnabled = useModeStore((state) => state.toggleAudioEnabled);
+  const audioEnabled = useSettingsStore((state) => state.device.audioEnabled);
+  const toggleAudioEnabled = useSettingsStore((state) => state.toggleAudioEnabled);
   return (
     <div className="daykare-front-panel-content">
       <div className="daykare-setting-row">
@@ -116,19 +118,46 @@ function SettingsPanel() {
         <Check aria-hidden="true" />
         <div><strong>Save boundaries protected</strong><p>Story progression uses its existing save. Online preview data uses a separate namespace.</p></div>
       </div>
+      <CloudSyncStatus />
+    </div>
+  );
+}
+
+/**
+ * Truthful about what is actually happening. "Disabled" is not an error and is
+ * not dressed up as one: DayKare plays perfectly well without an account.
+ */
+function CloudSyncStatus() {
+  const story = useCloudSyncStore((state) => state.story);
+  const conflict = useCloudSyncStore((state) => state.conflict);
+
+  const copy: Record<string, { title: string; detail: string }> = {
+    disabled: { title: 'Playing on this device', detail: 'Your progress is saved here in this browser.' },
+    offline: { title: 'Cloud save unavailable', detail: 'Playing from this device. Progress is safe and will sync when the connection returns.' },
+    idle: { title: 'Cloud save on', detail: 'Your progress is backed up to your DayKare account.' },
+    syncing: { title: 'Saving to the cloud…', detail: 'Keep playing — this happens in the background.' },
+    conflict: { title: 'Two versions of your save', detail: 'This device and another one both have progress. Nothing has been overwritten.' },
+    error: { title: 'Cloud save paused', detail: 'Playing from this device. Your local progress is untouched.' },
+  };
+  const shown = copy[story.state] ?? copy.disabled;
+
+  return (
+    <div className="daykare-lockup-card" data-testid={`status-cloud-sync-${story.state}`}>
+      <div>
+        <strong>{shown.title}</strong>
+        <p>{conflict ? `${copy.conflict.detail} ${conflict.reason}` : shown.detail}</p>
+      </div>
     </div>
   );
 }
 
 function AccessibilityPanel() {
-  const {
-    reducedMotion,
-    highContrast,
-    largerText,
-    toggleReducedMotion,
-    toggleHighContrast,
-    toggleLargerText,
-  } = useModeStore();
+  const reducedMotion = useSettingsStore((state) => state.account.reducedMotion);
+  const highContrast = useSettingsStore((state) => state.account.highContrast);
+  const largerText = useSettingsStore((state) => state.account.largerText);
+  const toggleReducedMotion = useSettingsStore((state) => state.toggleReducedMotion);
+  const toggleHighContrast = useSettingsStore((state) => state.toggleHighContrast);
+  const toggleLargerText = useSettingsStore((state) => state.toggleLargerText);
   const options = [
     { label: 'Reduce motion', detail: 'Shorter transitions and calmer menu movement', icon: Sparkles, value: reducedMotion, toggle: toggleReducedMotion, id: 'motion' },
     { label: 'Higher contrast', detail: 'Stronger edges around panels and controls', icon: Eye, value: highContrast, toggle: toggleHighContrast, id: 'contrast' },
@@ -138,7 +167,7 @@ function AccessibilityPanel() {
     <div className="daykare-front-panel-content">
       <div className="daykare-feature-card daykare-feature-card-blue">
         <Accessibility aria-hidden="true" />
-        <div><p className="daykare-eyebrow">Comfort controls</p><h2>Make the campus feel right.</h2><p>These preferences stay with this device and do not alter Story or Online progression.</p></div>
+        <div><p className="daykare-eyebrow">Comfort controls</p><h2>Make the campus feel right.</h2><p>These preferences follow your account across devices and never alter Story or Online progression.</p></div>
       </div>
       {options.map((option) => {
         const Icon = option.icon;
@@ -162,10 +191,10 @@ export function GameFrontEnd() {
   const openPanel = useModeStore((state) => state.openPanel);
   const closeMenu = useModeStore((state) => state.closeMenu);
   const online = useModeStore((state) => state.online);
-  const reducedMotion = useModeStore((state) => state.reducedMotion);
-  const highContrast = useModeStore((state) => state.highContrast);
-  const largerText = useModeStore((state) => state.largerText);
-  const audioEnabled = useModeStore((state) => state.audioEnabled);
+  const reducedMotion = useSettingsStore((state) => state.account.reducedMotion);
+  const highContrast = useSettingsStore((state) => state.account.highContrast);
+  const largerText = useSettingsStore((state) => state.account.largerText);
+  const audioEnabled = useSettingsStore((state) => state.device.audioEnabled);
 
   useEffect(() => {
     document.documentElement.classList.toggle('daykare-reduce-motion', reducedMotion);
