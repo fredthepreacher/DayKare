@@ -52,6 +52,7 @@ create table if not exists public.profiles (
   )
 );
 
+drop trigger if exists profiles_touch_updated_at on public.profiles;
 create trigger profiles_touch_updated_at
   before update on public.profiles
   for each row execute function public.touch_updated_at();
@@ -75,6 +76,7 @@ create table if not exists public.account_settings (
   updated_at timestamptz not null default now()
 );
 
+drop trigger if exists account_settings_touch_updated_at on public.account_settings;
 create trigger account_settings_touch_updated_at
   before update on public.account_settings
   for each row execute function public.touch_updated_at();
@@ -134,10 +136,12 @@ begin
 end;
 $$;
 
+drop trigger if exists story_saves_guard on public.story_saves;
 create trigger story_saves_guard
   before update on public.story_saves
   for each row execute function public.guard_save_version();
 
+drop trigger if exists online_saves_guard on public.online_saves;
 create trigger online_saves_guard
   before update on public.online_saves
   for each row execute function public.guard_save_version();
@@ -256,6 +260,7 @@ begin
 end;
 $$;
 
+drop trigger if exists on_auth_user_created on auth.users;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
@@ -561,7 +566,7 @@ begin
   insert into public.resources (user_id, scope, resource_key, amount)
   values (v_user, p_scope, p_resource_key, greatest(p_delta, 0))
   on conflict (user_id, scope, resource_key) do update
-    set amount = greatest(public.resources.amount + p_delta, 0),
+    set amount = greatest(resources.amount + p_delta, 0),
         updated_at = now()
   returning amount into v_amount;
 
@@ -584,36 +589,47 @@ alter table public.equipped_items    enable row level security;
 alter table public.resources         enable row level security;
 alter table public.claimed_migrations enable row level security;
 
+drop policy if exists profiles_select_own on public.profiles;
 create policy profiles_select_own on public.profiles
   for select using (auth.uid() = id);
+drop policy if exists profiles_update_own on public.profiles;
 create policy profiles_update_own on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
 
+drop policy if exists account_settings_all_own on public.account_settings;
 create policy account_settings_all_own on public.account_settings
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Saves are readable and insertable by their owner, but UPDATES go through the
 -- write functions so optimistic concurrency and backups cannot be bypassed.
+drop policy if exists story_saves_select_own on public.story_saves;
 create policy story_saves_select_own on public.story_saves
   for select using (auth.uid() = user_id);
+drop policy if exists online_saves_select_own on public.online_saves;
 create policy online_saves_select_own on public.online_saves
   for select using (auth.uid() = user_id);
 
+drop policy if exists save_backups_select_own on public.save_backups;
 create policy save_backups_select_own on public.save_backups
   for select using (auth.uid() = user_id);
 
+drop policy if exists catalog_read_authenticated on public.catalog_items;
 create policy catalog_read_authenticated on public.catalog_items
   for select to authenticated using (true);
 
+drop policy if exists ownership_select_own on public.item_ownership;
 create policy ownership_select_own on public.item_ownership
   for select using (auth.uid() = user_id);
 
+drop policy if exists equipped_all_own on public.equipped_items;
 create policy equipped_all_own on public.equipped_items
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists resources_select_own on public.resources;
 create policy resources_select_own on public.resources
   for select using (auth.uid() = user_id);
 
+drop policy if exists claimed_migrations_select_own on public.claimed_migrations;
 create policy claimed_migrations_select_own on public.claimed_migrations
   for select using (auth.uid() = user_id);
 

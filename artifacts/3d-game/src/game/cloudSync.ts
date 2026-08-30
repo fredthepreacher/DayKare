@@ -4,6 +4,7 @@ import {
   MIGRATION_TOKEN_KEY,
   buildConflictReport,
   claimLocalMigration,
+  decideInitialAction,
   ensureSession,
   getCloudClient,
   payloadHash,
@@ -18,7 +19,7 @@ import {
   type SyncStatus,
 } from '@workspace/cloud-sync';
 import { useGameStore, serializeGameState, normalizePersistedGameState } from './store';
-import { useModeStore } from './modeStore';
+import { useModeStore, normalizeOnlinePreview } from './modeStore';
 import { PROGRESSION_VERSION } from './progression';
 
 /**
@@ -202,13 +203,94 @@ export function flushCloudSync() {
   }
 }
 
+/**
+ * Applies a cloud payload to the live game.
+ *
+ * Runs through the game's OWN normalizer, so a malformed or older cloud
+ * payload is repaired exactly the way a malformed local one would be. There is
+ * no separate cloud validation path to drift out of sync with the local one.
+ */
+function applyCloudPayload(scope: SaveScope, payload: unknown) {
+  try {
+    if (scope === 'story') {
+      const normalized = normalizePersistedGameState(payload);
+      if (normalized && typeof normalized === 'object') {
+        useGameStore.setState(normalized as Partial<ReturnType<typeof useGameStore.getState>>);
+      }
+      return;
+    }
+    const online = (payload && typeof payload === 'object')
+      ? (payload as { appearance?: { outfitIndex?: number; accessoryIndex?: number }; visibility?: unknown; inviteCode?: unknown })
+      : null;
+    if (!online) return;
+    useModeStore.setState((state) => ({
+      online: normalizeOnlinePreview({
+        ...state.online,
+        visibility: online.visibility ?? state.online.visibility,
+        inviteCode: online.inviteCode ?? state.online.inviteCode,
+        selectedOutfit: online.appearance?.outfitIndex ?? state.online.selectedOutfit,
+        selectedAccessory: online.appearance?.accessoryIndex ?? state.online.selectedAccessory,
+      }),
+    }));
+  } catch (error) {
+    // A cloud payload we cannot apply is reported and ignored. The local save
+    // keeps playing; we never half-apply a save.
+    console.error(`DayKare: could not apply the cloud ${scope} save.`, error);
+  }
+}
+
+/**
+ * Resolves a reported conflict. Exposed so it can be driven from the console
+ * during preview testing and wired to a chooser UI later.
+ *
+ * Either way the losing side is preserved: keeping local overwrites the cloud
+ * row, and the write function backs the old payload up first; keeping cloud
+ * applies the cloud payload over the running game, and the local save is still
+ * on disk under its own key.
+ */
+export async function resolveConflict(choice: 'keep-local' | 'keep-cloud'): Promise<void> {
+  const report = useCloudSyncStore.getState().conflict;
+  if (!report) return;
+  const scope = report.scope;
+  const { setStatus, setConflict } = useCloudSyncStore.getState();
+
+  if (choice === 'keep-cloud') {
+    const { row } = await readCloudSave(client, scope);
+    if (row) {
+      applyCloudPayload(scope, row.payload);
+      meta[scope] = { ...meta[scope], revision: row.revision, payloadHash: row.payload_hash };
+      setStatus(scope, { state: 'idle', revision: row.revision, lastSyncedAt: Date.now(), lastError: null });
+    }
+    setConflict(null);
+    return;
+  }
+
+  // Keep local: adopt the server's revision so the next write is accepted,
+  // then push. The server backs up what it is replacing.
+  const { row } = await readCloudSave(client, scope);
+  if (row) meta[scope] = { ...meta[scope], revision: row.revision, payloadHash: null };
+  setStatus(scope, { state: 'idle', lastError: null });
+  setConflict(null);
+  await pushScope(scope);
+}
+
 async function initialiseScope(scope: SaveScope, localKey: string): Promise<void> {
-  const { setStatus } = useCloudSyncStore.getState();
+  const { setStatus, setConflict } = useCloudSyncStore.getState();
   const { row, error } = await readCloudSave(client, scope);
   if (error) {
     setStatus(scope, { state: 'error', lastError: error });
     return;
   }
+
+  const stored = readLocal(localKey) as { state?: unknown; version?: number } | null;
+  const localPayload = stored && typeof stored === 'object' ? stored.state ?? stored : null;
+
+  const action = decideInitialAction({
+    hasCloud: Boolean(row),
+    hasLocal: Boolean(localPayload),
+    cloudHash: row?.payload_hash ?? (row ? payloadHash(row.payload) : null),
+    localHash: localPayload ? payloadHash(scope === 'story' ? storyPayload() : onlinePayload()) : null,
+  });
 
   if (row) {
     meta[scope] = {
@@ -219,13 +301,35 @@ async function initialiseScope(scope: SaveScope, localKey: string): Promise<void
       deviceLabel: row.device_label,
       payloadHash: row.payload_hash,
     };
+
+    if (action === 'restore') {
+      // Nothing local to lose, so bring the account's progress down.
+      applyCloudPayload(scope, row.payload);
+      setStatus(scope, { state: 'idle', revision: row.revision, lastSyncedAt: Date.now() });
+      return;
+    }
+
+    if (action === 'conflict') {
+      // Two real saves that disagree. Report it and stop writing this scope.
+      // Nothing is applied and nothing is overwritten until the player picks.
+      const gameState = useGameStore.getState();
+      setConflict(buildConflictReport(scope, {
+        scope,
+        saveVersion: scope === 'story' ? PROGRESSION_VERSION : 1,
+        revision: row.revision,
+        updatedAt: Date.now(),
+        dayNumber: scope === 'story' ? gameState.dayNumber : undefined,
+        rep: scope === 'story' ? gameState.progression?.reputation : undefined,
+        deviceLabel: deviceLabel(),
+      }, row));
+      setStatus(scope, { state: 'conflict', revision: row.revision, lastError: 'local and cloud saves differ' });
+      return;
+    }
+
     setStatus(scope, { state: 'idle', revision: row.revision, lastSyncedAt: Date.now() });
     return;
   }
 
-  // No cloud save yet. If this device has local progress, migrate it.
-  const stored = readLocal(localKey) as { state?: unknown; version?: number } | null;
-  const localPayload = stored && typeof stored === 'object' ? stored.state ?? stored : null;
   if (!localPayload) {
     setStatus(scope, { state: 'idle', revision: 0 });
     return;

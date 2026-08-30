@@ -8,13 +8,13 @@ import {
   TextCursorInput,
   Volume2,
 } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { GameMenu } from './GameMenu';
 import { OnlineLobby } from './OnlineLobby';
 import { useGameStore } from './store';
 import { useModeStore, type FrontEndPanel } from './modeStore';
 import { useSettingsStore } from './settingsStore';
-import { useCloudSyncStore } from './cloudSync';
+import { useCloudSyncStore, resolveConflict } from './cloudSync';
 import { setGameAudioEnabled } from './audio';
 
 const panelCopy: Record<Exclude<FrontEndPanel, 'menu'>, { title: string; eyebrow: string }> = {
@@ -127,6 +127,85 @@ function SettingsPanel() {
  * Truthful about what is actually happening. "Disabled" is not an error and is
  * not dressed up as one: DayKare plays perfectly well without an account.
  */
+function ConflictChooser() {
+  const conflict = useCloudSyncStore((state) => state.conflict);
+  const [busy, setBusy] = useState<'keep-local' | 'keep-cloud' | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  if (!conflict) return null;
+
+  const choose = async (choice: 'keep-local' | 'keep-cloud') => {
+    if (busy) return;
+    setBusy(choice);
+    setFailed(false);
+    try {
+      await resolveConflict(choice);
+    } catch {
+      // Nothing was destroyed - both saves still exist. Let the player retry.
+      setFailed(true);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const dayOf = (side: { dayNumber?: number; rep?: number }) =>
+    side.dayNumber === undefined ? null : `Day ${side.dayNumber}, ${side.rep ?? 0} REP`;
+
+  const localLine = dayOf(conflict.local);
+  const cloudLine = dayOf(conflict.cloud);
+  const otherDevice = conflict.cloud.deviceLabel;
+
+  return (
+    <div className="daykare-lockup-card" data-testid="panel-cloud-conflict">
+      <div>
+        <strong>Which save do you want to keep?</strong>
+        <p>
+          Nothing has been overwritten. {conflict.reason} Pick one to carry on with - the other
+          one is kept as a backup, not deleted.
+        </p>
+      </div>
+      <div className="daykare-conflict-choices">
+        <button
+          type="button"
+          className={`daykare-setting-row daykare-setting-button ${conflict.suggested === 'keep-local' ? 'is-on' : ''}`}
+          onClick={() => void choose('keep-local')}
+          disabled={busy !== null}
+          data-testid="button-conflict-keep-local"
+        >
+          <span>
+            <strong>Keep this device{"\u2019"}s save</strong>
+            <span>{localLine ?? 'The progress on this device'}</span>
+          </span>
+          {conflict.suggested === 'keep-local' ? <Check aria-hidden="true" /> : null}
+        </button>
+        <button
+          type="button"
+          className={`daykare-setting-row daykare-setting-button ${conflict.suggested === 'keep-cloud' ? 'is-on' : ''}`}
+          onClick={() => void choose('keep-cloud')}
+          disabled={busy !== null}
+          data-testid="button-conflict-keep-cloud"
+        >
+          <span>
+            <strong>Use the other save</strong>
+            <span>{cloudLine ?? 'The progress saved to your account'}{otherDevice ? ` (from ${otherDevice})` : ''}</span>
+          </span>
+          {conflict.suggested === 'keep-cloud' ? <Check aria-hidden="true" /> : null}
+        </button>
+      </div>
+      {busy ? <p data-testid="status-conflict-busy">Applying your choice{"\u2026"}</p> : null}
+      {failed ? (
+        <p data-testid="status-conflict-failed">
+          That did not go through. Both saves are still safe - try again in a moment.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Truthful about what is actually happening. "Disabled" is not an error and is
+ * not dressed up as one: DayKare plays perfectly well without an account.
+ */
 function CloudSyncStatus() {
   const story = useCloudSyncStore((state) => state.story);
   const conflict = useCloudSyncStore((state) => state.conflict);
@@ -135,19 +214,22 @@ function CloudSyncStatus() {
     disabled: { title: 'Playing on this device', detail: 'Your progress is saved here in this browser.' },
     offline: { title: 'Cloud save unavailable', detail: 'Playing from this device. Progress is safe and will sync when the connection returns.' },
     idle: { title: 'Cloud save on', detail: 'Your progress is backed up to your DayKare account.' },
-    syncing: { title: 'Saving to the cloud…', detail: 'Keep playing — this happens in the background.' },
+    syncing: { title: 'Saving to the cloud\u2026', detail: 'Keep playing - this happens in the background.' },
     conflict: { title: 'Two versions of your save', detail: 'This device and another one both have progress. Nothing has been overwritten.' },
     error: { title: 'Cloud save paused', detail: 'Playing from this device. Your local progress is untouched.' },
   };
   const shown = copy[story.state] ?? copy.disabled;
 
   return (
-    <div className="daykare-lockup-card" data-testid={`status-cloud-sync-${story.state}`}>
-      <div>
-        <strong>{shown.title}</strong>
-        <p>{conflict ? `${copy.conflict.detail} ${conflict.reason}` : shown.detail}</p>
+    <>
+      <div className="daykare-lockup-card" data-testid={`status-cloud-sync-${story.state}`}>
+        <div>
+          <strong>{shown.title}</strong>
+          <p>{conflict ? `${copy.conflict.detail} ${conflict.reason}` : shown.detail}</p>
+        </div>
       </div>
-    </div>
+      <ConflictChooser />
+    </>
   );
 }
 
