@@ -140,6 +140,7 @@ function Binky({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }
 
 function ShinyRock() {
   const visual = useRef<THREE.Group>(null);
+  const marker = useRef<THREE.Group>(null);
   const quests = useGameStore((state) => state.quests);
   const collectibles = useGameStore((state) => state.collectibles);
   const zone = useGameStore((state) => state.zone);
@@ -148,30 +149,65 @@ function ShinyRock() {
   const position = useMemo(() => new THREE.Vector3(...SHINY_ROCK_SPAWN), []);
   useCandidate('shiny-rock', position, visible, 1.7, 95, visible);
   useFrame((state, delta) => {
-    if (!visual.current) return;
-    visual.current.rotation.y += delta * (active ? 1.8 : 0.35);
-    visual.current.position.y = Math.sin(state.clock.elapsedTime * 2.8) * (active ? 0.045 : 0.018);
+    if (visual.current) {
+      visual.current.rotation.y += delta * (active ? 1.8 : 0.55);
+      visual.current.position.y = Math.sin(state.clock.elapsedTime * 2.8) * (active ? 0.045 : 0.025);
+    }
+    if (marker.current) {
+      const pulse = 1 + Math.sin(state.clock.elapsedTime * 4.2) * 0.08;
+      marker.current.rotation.y -= delta * 0.8;
+      marker.current.position.y = 1.18 + Math.sin(state.clock.elapsedTime * 2.2) * 0.1;
+      marker.current.scale.setScalar(pulse);
+    }
   });
   if (!visible) return null;
   return (
     <group name="shiny-rock-world" position={position}>
       <group ref={visual} rotation={[0.08, 0, -0.12]}>
         <mesh castShadow>
-          <dodecahedronGeometry args={[0.28, 0]} />
+          <dodecahedronGeometry args={[0.36, 0]} />
           <meshStandardMaterial
             color="#79d7ff"
             emissive="#46bde8"
-            emissiveIntensity={active ? 0.42 : 0.16}
+            emissiveIntensity={active ? 0.75 : 0.52}
             roughness={0.28}
             metalness={0.08}
           />
         </mesh>
-        <mesh position={[0.05, 0.08, 0.2]} rotation={[0.2, 0.1, -0.35]}>
-          <planeGeometry args={[0.12, 0.035]} />
+        <mesh position={[0.07, 0.1, 0.27]} rotation={[0.2, 0.1, -0.35]}>
+          <planeGeometry args={[0.17, 0.045]} />
           <meshBasicMaterial color="#ffffff" transparent opacity={0.82} />
         </mesh>
       </group>
-      <FocusHalo active={active} radius={0.48} color="#72d8ff" />
+      <group ref={marker} position={[0, 1.18, 0]}>
+        <mesh rotation={[0, 0, Math.PI / 4]}>
+          <octahedronGeometry args={[0.2, 0]} />
+          <meshBasicMaterial color="#fff08a" toneMapped={false} />
+        </mesh>
+        {([
+          [0.34, 0.03, 0.08],
+          [-0.3, 0.14, -0.06],
+          [0.06, 0.34, 0.04],
+        ] as [number, number, number][]).map((sparkle, index) => (
+          <mesh key={index} position={sparkle}>
+            <sphereGeometry args={[index === 2 ? 0.055 : 0.04, 8, 8]} />
+            <meshBasicMaterial color="#ffffff" toneMapped={false} />
+          </mesh>
+        ))}
+      </group>
+      <mesh position={[0, 0.62, 0]}>
+        <cylinderGeometry args={[0.04, 0.22, 1.05, 12, 1, true]} />
+        <meshBasicMaterial
+          color="#7ee7ff"
+          transparent
+          opacity={0.24}
+          depthWrite={false}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
+      <FocusHalo active radius={0.7} color="#72d8ff" />
     </group>
   );
 }

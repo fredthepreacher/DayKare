@@ -26,7 +26,7 @@ export interface ProgressionState {
   trustedHelperPass: boolean;
 }
 
-export const PROGRESSION_VERSION = 3;
+export const PROGRESSION_VERSION = 4;
 export const MAX_TOKENS = 999_999;
 export const MAX_ACTIVITY_RUNS = 99_999;
 

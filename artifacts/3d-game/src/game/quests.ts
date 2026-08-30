@@ -32,7 +32,11 @@ export const QUEST_DEFINITIONS: QuestDefinition[] = [
     objectives: [
       { id: 'talk-to-leo', label: 'Talk to Leo', guidance: 'Leo is waiting in the main classroom.' },
       { id: 'ask-mia', label: 'Ask Mia what she saw', guidance: 'Mia remembers something near the playground.' },
-      { id: 'trade-with-sam', label: 'Trade Sam a Shiny Rock', guidance: 'Sam is exploring near the playground.' },
+      {
+        id: 'trade-with-sam',
+        label: 'Trade Sam a Shiny Rock',
+        guidance: 'Find the sparkling blue rock just inside the playground doorway, then bring it to Sam.',
+      },
       { id: 'search-storage', label: 'Find Binky in Storage', guidance: 'Follow the hallway to the storage boxes.' },
       { id: 'return-binky', label: 'Return Binky to Leo', guidance: 'Carry Binky back to Leo. Do not drop him.' },
     ],

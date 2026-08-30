@@ -14,3 +14,9 @@ In software-rendered Chromium, a `touchMove` sent immediately after `touchStart`
 **Why:** Single-frame assertions intermittently saw a centered joystick even though the same sequence passed once the pointer-down event had time to settle.
 
 **How to apply:** Leave a short settling interval after each CDP `touchStart`, wait for real transition curtains to finish, and use deterministic controller tests for ownership combinations that CDP cannot preserve reliably.
+
+Synthetic `PointerEvent` drags can also report a clipped first movement even when the pointer was accepted.
+
+**Why:** A single large scripted camera move intermittently produced only a fraction of its requested yaw while the same control passed with real multi-touch earlier in the run.
+
+**How to apply:** Model scripted drags as a short sequence of increasing pointer positions separated by animation frames. Keep the final behavior threshold unchanged rather than compensating with a lower assertion.

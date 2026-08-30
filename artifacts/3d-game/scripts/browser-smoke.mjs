@@ -414,7 +414,7 @@ try {
 
   await evaluate(client, `(() => {
     localStorage.setItem('daykare-save', JSON.stringify({
-      version: 3,
+      version: 4,
       state: {
         quality: 'ultra',
         timeOfDay: 'noon',
@@ -483,7 +483,7 @@ try {
     waitingCustomers: [],
     activeCustomer: null,
     progression: {
-      version: 3,
+      version: 4,
       reputation: 0,
       tokens: 0,
       routeUnlocks: [],
@@ -504,6 +504,49 @@ try {
     repairedSave,
     'repeated hydration of the same corrupt payload stays deterministic',
   );
+
+  await evaluate(client, `(() => {
+    const store = globalThis.__daykareStore;
+    store.getState().resetGame();
+    store.getState().advanceQuestObjective('where-binky', 'talk-to-leo');
+    store.getState().advanceQuestObjective('where-binky', 'ask-mia');
+    const legacy = JSON.parse(localStorage.getItem('daykare-save'));
+    legacy.version = 3;
+    legacy.state.collectibles = ['Shiny Rock'];
+    legacy.state.progression = {
+      ...legacy.state.progression,
+      version: 3,
+      collectibleProgress: {},
+    };
+    localStorage.setItem('daykare-save', JSON.stringify(legacy));
+    return true;
+  })()`);
+  await client.send('Page.reload', { ignoreCache: true });
+  await waitFor(client, 'document.readyState === "complete"', 'legacy Shiny Rock reload');
+  const migratedLegacyRock = await evaluate(client, `(async () => {
+    const { useGameStore } = await import(${modulePath});
+    const interactables = await import(${JSON.stringify(new URL('src/game/Interactables.tsx', targetUrl).href)});
+    globalThis.__daykareStore = useGameStore;
+    const started = performance.now();
+    while (!useGameStore.persist.hasHydrated() && performance.now() - started < 5000) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const state = useGameStore.getState();
+    return {
+      collectibles: state.collectibles,
+      objective: state.quests['where-binky'].currentObjectiveId,
+      pickupCount: state.progression.collectibleProgress['Shiny Rock'] ?? 0,
+      worldVisible: interactables.shouldSpawnShinyRock(state.quests, state.collectibles, state.zone),
+      saveVersion: JSON.parse(localStorage.getItem('daykare-save')).version,
+    };
+  })()`);
+  assert.deepEqual(migratedLegacyRock, {
+    collectibles: [],
+    objective: 'trade-with-sam',
+    pickupCount: 0,
+    worldVisible: true,
+    saveVersion: 4,
+  }, 'a legacy pre-granted rock is removed and replaced by the visible world pickup');
 
   const shinyRockPickup = await evaluate(client, `(async () => {
     const store = globalThis.__daykareStore;
@@ -1128,14 +1171,17 @@ try {
       clientX: ${gardenTouchPoints.look.x},
       clientY: ${gardenTouchPoints.look.y},
     }));
-    window.dispatchEvent(new PointerEvent('pointermove', {
-      bubbles: true,
-      cancelable: true,
-      pointerId: 42,
-      pointerType: 'touch',
-      clientX: ${gardenTouchPoints.look.x + 96},
-      clientY: ${gardenTouchPoints.look.y - 28},
-    }));
+    for (const [deltaX, deltaY] of [[52, -14], [104, -28], [156, -18]]) {
+      window.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 42,
+        pointerType: 'touch',
+        clientX: ${gardenTouchPoints.look.x} + deltaX,
+        clientY: ${gardenTouchPoints.look.y} + deltaY,
+      }));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
   })()`);
   await sleep(320);
   const gardenDualTouch = await evaluate(client, `(async () => {

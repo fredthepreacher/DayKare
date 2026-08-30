@@ -703,7 +703,7 @@ assert.equal(corruptSave.timeOfDay, 9);
 assert.equal(corruptSave.schedule, 'morning-play');
 assert.equal(corruptSave.isRainy, false);
 assert.deepEqual(corruptSave.inventory, []);
-assert.deepEqual(corruptSave.collectibles, ['Shiny Rock']);
+assert.deepEqual(corruptSave.collectibles, []);
 assert.deepEqual(Object.keys(corruptSave.friends), Object.keys(useGameStore.getState().friends));
 assert.equal(corruptSave.friends.Leo.friendship, 10);
 assert.equal(corruptSave.teacherSuspicion, 0);
@@ -727,8 +727,37 @@ const tradedRockSave = normalizePersistedGameState({
   quests: advanceObjective(shinyRockQuest, 'where-binky', 'trade-with-sam'),
   binkyStatus: 'traded-info',
   collectibles: ['Shiny Rock'],
+  progression: { collectibleProgress: { 'Shiny Rock': 1 } },
 });
 assert.deepEqual(tradedRockSave.collectibles, [], 'a traded Shiny Rock cannot reappear from a contradictory save');
+
+const legacyPreGrantedRockSave = normalizePersistedGameState({
+  quests: shinyRockQuest,
+  binkyStatus: 'found-clue',
+  collectibles: ['Shiny Rock'],
+  progression: { version: 3, collectibleProgress: {} },
+});
+assert.deepEqual(
+  legacyPreGrantedRockSave.collectibles,
+  [],
+  'legacy pre-granted ownership is removed so the active world pickup can appear',
+);
+assert.equal(
+  shouldSpawnShinyRock(legacyPreGrantedRockSave.quests, legacyPreGrantedRockSave.collectibles, 'hub'),
+  true,
+);
+
+const genuineRockPickupSave = normalizePersistedGameState({
+  quests: shinyRockQuest,
+  binkyStatus: 'found-clue',
+  collectibles: ['Shiny Rock'],
+  progression: { version: 3, collectibleProgress: { 'Shiny Rock': 1 } },
+});
+assert.deepEqual(
+  genuineRockPickupSave.collectibles,
+  ['Shiny Rock'],
+  'recorded world pickup ownership survives migration while the trade remains active',
+);
 
 const forgedKnownActivity = normalizePersistedGameState({
   quests: {

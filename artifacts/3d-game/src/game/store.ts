@@ -537,7 +537,6 @@ export function normalizePersistedGameState(value: unknown) {
   const inventory = savedItems.inventory;
   const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory);
   const normalizedCollectibles = normalizeKnownStrings(persisted.collectibles, AUTHORED_COLLECTIBLES, 8);
-  const shinyRockAlreadyTraded = quests['where-binky']?.objectiveStates['trade-with-sam'] === 'complete';
   const juiceClubCustomersServed = safeInteger(
     persisted.juiceClubCustomersServed,
     initialState.juiceClubCustomersServed,
@@ -549,6 +548,10 @@ export function normalizePersistedGameState(value: unknown) {
     normalizeProgression(persisted.progression),
     quests,
     juiceClubCustomersServed,
+  );
+  const shinyRockGenuinelyCollected = (
+    quests['where-binky']?.currentObjectiveId === 'trade-with-sam'
+    && (progression.collectibleProgress['Shiny Rock'] ?? 0) > 0
   );
   const binkyStatus = safeBinkyStatus(persisted.binkyStatus, quests);
   const needsBinkyRecovery = (
@@ -579,9 +582,12 @@ export function normalizePersistedGameState(value: unknown) {
     isRainy: persisted.isRainy === true,
     isImaginationMode: false,
     inventory,
-    collectibles: shinyRockAlreadyTraded
-      ? normalizedCollectibles.filter((item) => item !== 'Shiny Rock')
-      : normalizedCollectibles,
+    // Early builds pre-granted the rock without recording a world pickup. Keep
+    // ownership only when the active trade stage and pickup history corroborate
+    // each other; every other save should rediscover or have consumed the rock.
+    collectibles: shinyRockGenuinelyCollected
+      ? normalizedCollectibles
+      : normalizedCollectibles.filter((item) => item !== 'Shiny Rock'),
     isRiding: false,
     friends: normalizeFriends(persisted.friends),
     teacherSuspicion: safeNumber(persisted.teacherSuspicion, 0, 0, 100),
