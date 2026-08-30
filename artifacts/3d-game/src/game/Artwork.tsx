@@ -1,5 +1,5 @@
 import { useLoader } from '@react-three/fiber';
-import { useMemo } from 'react';
+import { Component, Suspense, useMemo, type ErrorInfo, type ReactNode } from 'react';
 import { MultiplyBlending, Path, Shape, TextureLoader } from 'three';
 import {
   getWorldSolidSurfaceTransform,
@@ -58,7 +58,7 @@ function createFrameShape(width: number, height: number, trim: number) {
   return frame;
 }
 
-export function SuppliedArtwork({
+function ArtworkMesh({
   fileName,
   position = [0, 0, 0],
   size,
@@ -148,5 +148,134 @@ export function SuppliedArtwork({
         />
       </mesh>
     </group>
+  );
+}
+
+
+interface ArtworkBoundaryProps {
+  fileName: string;
+  fallback: ReactNode;
+  children: ReactNode;
+}
+
+/**
+ * Keeps one failed piece of artwork from taking down the app.
+ *
+ * `useLoader` throws when a texture cannot be fetched, and an authored mount
+ * that fails validation throws too. Without a boundary here those throws walk
+ * all the way to the app root, and a single missing PNG blanks the entire
+ * DayKare front end - menu, HUD and all. That was observed with one absent
+ * mural texture. It matters more every time the asset count grows.
+ */
+class ArtworkBoundary extends Component<ArtworkBoundaryProps, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    // Logged once per failed piece, named, so a missing asset is obvious in the
+    // console instead of silently vanishing from the room.
+    console.error(
+      `DayKare: artwork "${this.props.fileName}" failed to render and was skipped.`,
+      error,
+      info.componentStack,
+    );
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+/**
+ * A quiet stand-in for artwork that could not load: the backing board without
+ * its picture. Keeps the room's geometry and silhouette intact rather than
+ * leaving a hole where a frame should be.
+ */
+function ArtworkFallback({
+  position,
+  rotation,
+  size,
+  semanticRole,
+  backingColor,
+  surfaceAnchor,
+}: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  size: [number, number];
+  semanticRole: ArtworkRole;
+  backingColor: string;
+  surfaceAnchor?: ArtworkSurfaceAnchor;
+}) {
+  // Floor markers are painted onto the floor; a blank card lying there would
+  // look far more wrong than nothing at all.
+  if (semanticRole === 'floor-marker') return null;
+
+  // Anchored artwork gets its transform from the wall it is mounted on, so the
+  // raw position prop is meaningless for it. Resolve the anchor if we still
+  // can; if that is what failed, render nothing rather than dropping a blank
+  // board at the world origin.
+  let placement: { position: [number, number, number]; rotation: [number, number, number] } = {
+    position,
+    rotation,
+  };
+  if (surfaceAnchor) {
+    try {
+      const anchored = getWorldSolidSurfaceTransform(
+        surfaceAnchor.solidId,
+        surfaceAnchor.face,
+        surfaceAnchor.height,
+        surfaceAnchor.along,
+        surfaceAnchor.offset,
+      );
+      if (!anchored) return null;
+      placement = anchored;
+    } catch {
+      return null;
+    }
+  }
+
+  const backingSize = artworkBackingSize(size);
+  return (
+    <group position={placement.position} rotation={placement.rotation}>
+      <mesh position={[0, 0, -0.006]}>
+        <boxGeometry args={[backingSize[0], backingSize[1], 0.012]} />
+        <meshStandardMaterial color={backingColor} roughness={0.9} />
+      </mesh>
+    </group>
+  );
+}
+
+export function SuppliedArtwork(props: Parameters<typeof ArtworkMesh>[0]) {
+  const {
+    fileName,
+    position = [0, 0, 0],
+    rotation = [0, 0, 0],
+    size,
+    semanticRole = 'wall-display',
+    backingColor = '#fff0c7',
+    surfaceAnchor,
+  } = props;
+
+  return (
+    <ArtworkBoundary
+      fileName={fileName}
+      fallback={
+        <ArtworkFallback
+          position={position}
+          rotation={rotation}
+          size={size}
+          semanticRole={semanticRole}
+          backingColor={backingColor}
+          surfaceAnchor={surfaceAnchor}
+        />
+      }
+    >
+      <Suspense fallback={null}>
+        <ArtworkMesh {...props} />
+      </Suspense>
+    </ArtworkBoundary>
   );
 }

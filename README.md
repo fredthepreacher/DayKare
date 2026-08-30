@@ -28,7 +28,14 @@ PORT=5173 BASE_PATH=/ pnpm --filter @workspace/3d-game run build  # production b
 DAYKARE_TEST_URL=http://127.0.0.1:5173/ pnpm --filter @workspace/3d-game run test:browser
 ```
 
-The browser suite renders through SwiftShader and asserts on captured frame counts, so it needs a reasonably fast machine. On a slow or heavily throttled runner it can fail on frame-count assertions even when nothing is wrong with the game.
+The browser suite renders through SwiftShader and asserts on captured frame counts and elapsed sampling time, so it needs a reasonably fast machine. On a slow or throttled runner it fails on those timing assertions even when nothing is wrong with the game — and the assertion it stops at varies between runs. Treat a red browser suite as a prompt to look, not as proof of a defect, until those thresholds are made frame-budget aware.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every pull request and every push to `main`.
+
+- **Verify** (blocking) — frozen-lockfile install, typecheck, foundation and audio tests, production build. Runs on **both Ubuntu and Windows**. The Windows job is not decorative: three separate Linux-only bugs shipped in this repository (a `sh -c` preinstall hook, 79 overrides that pruned every non-Linux binary, and two modules whose names differed only in case), and none of them could fail on a Linux runner.
+- **Browser smoke** (informational, `continue-on-error`) — the SwiftShader suite. It does not block merges while its timing assertions remain environment-sensitive.
 
 ## Repository layout
 
@@ -80,8 +87,18 @@ A host needs:
 
 The same values are still recorded in the `.replit-artifact/artifact.toml` files. Those can be deleted once the Vercel setup is proven.
 
+## Resilience
+
+Two failure modes are handled explicitly, because both are things a player can hit through no fault of their own:
+
+- **A missing texture does not blank the game.** `SuppliedArtwork` wraps every piece of artwork in an error boundary. A failed load logs the file name and drops that one item (or its blank backing board), leaving the rest of the daycare intact. Before this, one absent PNG replaced the entire front end with an error card.
+- **WebGL failure shows a real screen.** `probeWebGL()` runs before the canvas mounts; if the browser cannot give us a context, the player gets an explanatory DayKare screen with a retry rather than a raw crash. Context loss — common on phones after backgrounding or under memory pressure — is caught and recovered from, with the canvas left mounted so the browser can restore it.
+
+When you add a system that loads assets at runtime, give it a defined failure mode. "It will always be there" stops being true the moment assets move off the bundle.
+
 ## Conventions
 
 - `main` is the source of truth; do feature work on a branch and open a PR.
+- `main` is protected: changes land through pull requests, and CI must be green.
 - Don't rewrite or squash published history.
 - Preserve gameplay first. Infrastructure changes should not alter what the player experiences.

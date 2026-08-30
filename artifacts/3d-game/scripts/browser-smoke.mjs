@@ -1299,6 +1299,96 @@ try {
     'touch cancellation releases pointer ownership and resets every movement mode',
   );
 
+  // --- Center Camera: a real touch, not a synthetic click ---------------------
+  //
+  // The suite above clicks the control with element.click(). That proves the
+  // handler works, but not that a finger landing on the control behaves
+  // correctly: a HUD touch must recenter the camera and must NOT also be
+  // treated as a look gesture. Those are different failures, and only a
+  // dispatched touch sequence can tell them apart.
+  const recenterHit = await evaluate(client, `(() => {
+    const rect = document.querySelector('.daykare-touch-recenter').getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    return { x, y, hitsControl: document.elementFromPoint(x, y)?.closest('.daykare-touch-recenter') !== null };
+  })()`);
+  assert.equal(recenterHit.hitsControl, true, 'Center Camera control is hit-testable in compact portrait');
+
+  // Orbit away from neutral first, so a recenter has something to undo.
+  await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    cameraInput.addCameraOrbit(140, 30);
+    return true;
+  })()`);
+  const orbitBeforeRecenterTouch = await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    return { ...cameraInput.getCameraInput() };
+  })()`);
+  assert.ok(
+    Math.abs(orbitBeforeRecenterTouch.yaw) > 0.1,
+    'camera is off-centre before the Center Camera touch',
+  );
+
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: recenterHit.x, y: recenterHit.y, id: 31, radiusX: 8, radiusY: 8 }],
+  });
+  // A finger is never perfectly still. This drift would orbit the camera if the
+  // control leaked its touch through to the look handler.
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: recenterHit.x + 6, y: recenterHit.y + 4, id: 31, radiusX: 8, radiusY: 8 }],
+  });
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  });
+  await sleep(260);
+
+  const orbitAfterRecenterTouch = await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    return { ...cameraInput.getCameraInput() };
+  })()`);
+  assert.equal(orbitAfterRecenterTouch.yaw, 0, 'a real touch on Center Camera recentres yaw in compact portrait');
+  assert.ok(
+    Math.abs(orbitAfterRecenterTouch.pitch - 0.22) < 1e-6,
+    'a real touch on Center Camera restores the neutral pitch',
+  );
+
+  // --- HUD touches must not become camera touches -----------------------------
+  const hudHit = await evaluate(client, `(() => {
+    const button = document.querySelector('.daykare-hud-left button');
+    if (!button) return null;
+    const rect = button.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()`);
+  if (hudHit) {
+    const orbitBeforeHudDrag = await evaluate(client, `(async () => {
+      const cameraInput = await import(${cameraInputModulePath});
+      return { ...cameraInput.getCameraInput() };
+    })()`);
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: hudHit.x, y: hudHit.y, id: 41, radiusX: 8, radiusY: 8 }],
+    });
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: hudHit.x + 120, y: hudHit.y + 40, id: 41, radiusX: 8, radiusY: 8 }],
+    });
+    await sleep(160);
+    const orbitAfterHudDrag = await evaluate(client, `(async () => {
+      const cameraInput = await import(${cameraInputModulePath});
+      return { ...cameraInput.getCameraInput() };
+    })()`);
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    assert.equal(
+      orbitAfterHudDrag.yaw,
+      orbitBeforeHudDrag.yaw,
+      'a drag that starts on a HUD control never orbits the camera',
+    );
+  }
+  await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+
   const repeatedOrbit = await evaluate(client, `(async () => {
     const cameraInput = await import(${cameraInputModulePath});
     cameraInput.recenterCamera();

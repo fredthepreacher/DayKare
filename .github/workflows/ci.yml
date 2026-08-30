@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The blocking gate. Everything here is deterministic: no rendering, no
+  # timing assertions, no network beyond the package registry.
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows is not optional. Three separate Linux-only bugs shipped in
+        # this repository - a `sh -c` preinstall hook, 79 overrides that pruned
+        # every non-Linux binary, and two modules whose names differed only in
+        # case - and none of them could fail on a Linux runner. A green Linux
+        # build is not evidence that a contributor can clone this repo.
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # pnpm comes from the `packageManager` field in package.json, so CI, the
+      # owner's machine and Vercel all resolve the same version as the lockfile.
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Foundation and audio tests
+        run: pnpm --filter @workspace/3d-game run test
+
+      - name: Production build
+        env:
+          BASE_PATH: /
+        run: pnpm --filter @workspace/3d-game run build
+
+  # Non-blocking. The browser suite renders through SwiftShader and asserts on
+  # captured frame counts, so a slow runner fails it even when the game is
+  # fine. It runs for information until those assertions are made frame-budget
+  # aware; until then a red mark here is a prompt to look, not a stop signal.
+  browser-smoke:
+    name: Browser smoke (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    needs: verify
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: |
+          npx --yes playwright install --with-deps chromium
+          echo "$(dirname "$(node -e "console.log(require('playwright-core').chromium.executablePath())")")" >> "$GITHUB_PATH"
+
+      - name: Link chromium onto PATH
+        run: |
+          CHROME="$(node -e "console.log(require('playwright-core').chromium.executablePath())")"
+          sudo ln -sf "$CHROME" /usr/local/bin/chromium
+          chromium --version
+
+      - name: Start dev server
+        env:
+          PORT: 5173
+          BASE_PATH: /
+        run: |
+          pnpm --filter @workspace/3d-game run dev > /tmp/dev.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:5173/; then exit 0; fi
+            sleep 1
+          done
+          echo "dev server did not start"; cat /tmp/dev.log; exit 1
+
+      - name: Browser smoke suite
+        env:
+          DAYKARE_TEST_URL: http://127.0.0.1:5173/
+        run: pnpm --filter @workspace/3d-game run test:browser
