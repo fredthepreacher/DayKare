@@ -982,13 +982,27 @@ function sessionActivityMode(participant: SharedActivityParticipant): NonNullabl
 }
 
 function SessionProp({ participant }: { participant: SharedActivityParticipant }) {
+  const prop = useRef<THREE.Group>(null);
+  const liftedBlock = useRef<THREE.Mesh>(null);
+  const lastAnimationAt = useRef(0);
+  const phase = namePhase(participant.name);
+  useFrame((state) => {
+    if (!prop.current || !shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)) return;
+    const elapsed = state.clock.elapsedTime;
+    prop.current.rotation.y = Math.sin(elapsed * 0.85 + phase) * 0.08;
+    if (liftedBlock.current) {
+      const lift = Math.pow(Math.max(0, Math.sin(elapsed * 2.2 + phase)), 3);
+      liftedBlock.current.position.y = 0.22 + lift * 0.28;
+      liftedBlock.current.rotation.y = lift * 0.7;
+    }
+  });
   const color = participant.activity === 'drawing' || participant.activity === 'coloring'
     ? '#e76f8c'
     : participant.activity === 'teacher-help' || participant.activity === 'teacher-praise' || participant.activity === 'teacher-observation'
       ? '#68a9a7'
       : '#71d4b4';
   return (
-    <group position={[0.4, 0.78, -0.3]}>
+    <group ref={prop} position={[0.4, 0.78, -0.3]}>
       {participant.activity === 'drawing' || participant.activity === 'coloring' ? (
         <group rotation={[0, 0.2, -0.18]}>
           <mesh><boxGeometry args={[0.42, 0.34, 0.035]} /><meshStandardMaterial color="#fff1cf" /></mesh>
@@ -1002,7 +1016,11 @@ function SessionProp({ participant }: { participant: SharedActivityParticipant }
             [0.13, 0, '#4c82d4'],
             [0, 0.22, '#ffd166'],
           ].map(([x, y, blockColor], index) => (
-            <mesh key={index} position={[x as number, y as number, 0]}>
+            <mesh
+              key={index}
+              ref={index === 2 ? liftedBlock : undefined}
+              position={[x as number, y as number, 0]}
+            >
               <boxGeometry args={[0.22, 0.22, 0.22]} />
               <meshStandardMaterial color={blockColor as string} roughness={0.82} />
             </mesh>
@@ -1064,11 +1082,40 @@ function ActivityProp({
   phase: number;
 }) {
   const prop = useRef<THREE.Group>(null);
+  const scribbleCrayon = useRef<THREE.Mesh>(null);
+  const turningPage = useRef<THREE.Mesh>(null);
+  const sippingCup = useRef<THREE.Group>(null);
+  const liftedToy = useRef<THREE.Mesh>(null);
   const lastAnimationAt = useRef(0);
   useFrame((state) => {
     if (!prop.current || !shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)) return;
-    prop.current.position.y = 0.75 + Math.sin(state.clock.elapsedTime * 2.2 + phase) * 0.035;
-    prop.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.8 + phase) * 0.18;
+    const elapsed = state.clock.elapsedTime;
+    const bob = Math.sin(elapsed * 2.2 + phase);
+    if (activity === 'singing') prop.current.position.y = 1.08 + bob * 0.055;
+    else if (activity === 'pretend-play') prop.current.position.y = 0.75 + bob * 0.04;
+    else if (activity === 'conversation' || activity === 'following') prop.current.position.y = 1.2 + bob * 0.025;
+    else if (activity !== 'circle-time' && activity !== 'dancing' && activity !== 'reacting') prop.current.position.y = 0.75;
+    prop.current.rotation.y = Math.sin(elapsed * 0.8 + phase) * 0.08;
+    if (scribbleCrayon.current) {
+      scribbleCrayon.current.position.x = 0.08 + Math.sin(elapsed * 7.2 + phase) * 0.1;
+      scribbleCrayon.current.position.z = -0.04 + Math.cos(elapsed * 5.8 + phase) * 0.035;
+    }
+    if (turningPage.current) {
+      const pageTurn = Math.pow(Math.max(0, Math.sin(elapsed * 1.45 + phase)), 2);
+      turningPage.current.rotation.z = -0.12 - pageTurn * 0.7;
+      turningPage.current.position.y = pageTurn * 0.08;
+    }
+    if (sippingCup.current) {
+      const sip = Math.pow(Math.max(0, Math.sin(elapsed * 1.35 + phase)), 5);
+      sippingCup.current.position.y = sip * 0.45;
+      sippingCup.current.position.x = -sip * 0.22;
+      sippingCup.current.rotation.z = -sip * 0.22;
+    }
+    if (liftedToy.current) {
+      const lift = Math.pow(Math.max(0, Math.sin(elapsed * 2 + phase)), 3);
+      liftedToy.current.position.y = -0.5 + lift * 0.55;
+      liftedToy.current.rotation.y = lift * 0.9;
+    }
   });
 
   if (activity === 'drawing' || activity === 'coloring') {
@@ -1077,7 +1124,7 @@ function ActivityProp({
         <mesh position={[-0.24, -0.04, 0]}><boxGeometry args={[0.52, 0.38, 0.035]} /><meshStandardMaterial color="#fff1cf" roughness={0.92} /></mesh>
         <mesh position={[-0.22, -0.03, -0.024]} rotation={[0, 0, 0.45]}><boxGeometry args={[0.3, 0.026, 0.018]} /><meshBasicMaterial color="#4c82d4" /></mesh>
         <mesh position={[-0.29, -0.11, -0.026]} rotation={[0, 0, -0.3]}><boxGeometry args={[0.23, 0.024, 0.018]} /><meshBasicMaterial color="#ffd166" /></mesh>
-        <mesh position={[0.08, 0.08, -0.04]} rotation={[0, 0, -0.35]}><cylinderGeometry args={[0.025, 0.025, 0.48, 6]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
+        <mesh ref={scribbleCrayon} position={[0.08, 0.08, -0.04]} rotation={[0, 0, -0.35]}><cylinderGeometry args={[0.025, 0.025, 0.48, 6]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
         <mesh position={[-0.01, -0.13, -0.04]} rotation={[0, 0, 0.35]}><coneGeometry args={[0.055, 0.14, 6]} /><meshStandardMaterial color="#e8613c" /></mesh>
       </group>
     );
@@ -1086,7 +1133,7 @@ function ActivityProp({
     return (
       <group ref={prop} position={[0, 0.75, -0.42]} rotation={[0.18, 0, 0]}>
         <mesh position={[-0.22, 0, 0]} rotation={[0, 0, 0.12]}><boxGeometry args={[0.42, 0.045, 0.48]} /><meshStandardMaterial color="#4c82d4" /></mesh>
-        <mesh position={[0.22, 0, 0]} rotation={[0, 0, -0.12]}><boxGeometry args={[0.42, 0.045, 0.48]} /><meshStandardMaterial color="#f2b85b" /></mesh>
+        <mesh ref={turningPage} position={[0.22, 0, 0]} rotation={[0, 0, -0.12]}><boxGeometry args={[0.42, 0.045, 0.48]} /><meshStandardMaterial color="#f2b85b" /></mesh>
         <mesh position={[0, 0.035, 0]}><boxGeometry args={[0.035, 0.035, 0.48]} /><meshStandardMaterial color="#fff1cf" /></mesh>
       </group>
     );
@@ -1094,8 +1141,10 @@ function ActivityProp({
   if (activity === 'snacking') {
     return (
       <group ref={prop} position={[0.34, 0.75, -0.3]}>
-        <mesh><cylinderGeometry args={[0.11, 0.09, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.88} /></mesh>
-        <mesh position={[0.02, 0.19, 0]} rotation={[0, 0, -0.18]}><cylinderGeometry args={[0.012, 0.012, 0.25, 5]} /><meshBasicMaterial color="#d76f78" /></mesh>
+        <group ref={sippingCup}>
+          <mesh><cylinderGeometry args={[0.11, 0.09, 0.28, 8]} /><meshStandardMaterial color="#f2b85b" transparent opacity={0.88} /></mesh>
+          <mesh position={[0.02, 0.19, 0]} rotation={[0, 0, -0.18]}><cylinderGeometry args={[0.012, 0.012, 0.25, 5]} /><meshBasicMaterial color="#d76f78" /></mesh>
+        </group>
         <mesh position={[0.24, -0.08, 0]}><boxGeometry args={[0.18, 0.08, 0.14]} /><meshStandardMaterial color="#dfb976" /></mesh>
       </group>
     );
@@ -1104,7 +1153,7 @@ function ActivityProp({
     return (
       <group ref={prop} position={[0.42, 0.75, -0.32]}>
         <mesh><sphereGeometry args={[0.2, 10, 8]} /><meshStandardMaterial color="#e8613c" roughness={0.8} /></mesh>
-        <mesh position={[-0.2, -0.5, 0.12]}><boxGeometry args={[0.18, 0.18, 0.18]} /><meshStandardMaterial color="#71d4b4" /></mesh>
+        <mesh ref={liftedToy} position={[-0.2, -0.5, 0.12]}><boxGeometry args={[0.18, 0.18, 0.18]} /><meshStandardMaterial color="#71d4b4" /></mesh>
       </group>
     );
   }

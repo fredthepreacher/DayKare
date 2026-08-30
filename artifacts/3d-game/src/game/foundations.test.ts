@@ -82,7 +82,12 @@ import {
   teacherInterventionDestination,
   updateChildBehavior,
 } from './teacherInterventions';
-import { activityIsSocial, getChildActivityPlan } from './npcActivities';
+import {
+  MAX_CHILD_ACTIVITY_DWELL_SECONDS,
+  MIN_CHILD_ACTIVITY_DWELL_SECONDS,
+  activityIsSocial,
+  getChildActivityPlan,
+} from './npcActivities';
 
 const migratedFound = normalizeQuestStates(undefined, 'found', []);
 assert.equal(migratedFound['where-binky'].currentObjectiveId, 'return-binky');
@@ -1035,14 +1040,14 @@ for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-p
           true,
           `${kid.name} ${scheduleName} ${rainy ? 'rainy' : 'dry'} activity ${plan.activity} must be reachable`,
         );
-        const expectedMinimum = scheduleName === 'juice-club'
-          ? 4
-          : scheduleName === 'outdoor-play'
-            ? 4.8
-            : 5;
         assert.ok(
-          plan.duration >= expectedMinimum && plan.duration < 7,
-          'authored toddler activities remain visible long enough to read while staying bounded',
+          scheduleName === 'juice-club'
+            ? plan.duration >= 4 && plan.duration < 5
+            : plan.duration >= MIN_CHILD_ACTIVITY_DWELL_SECONDS
+              && plan.duration <= MAX_CHILD_ACTIVITY_DWELL_SECONDS,
+          scheduleName === 'juice-club'
+            ? 'Juice Club keeps its original customer turnover timing'
+            : 'authored toddler activities remain visible long enough to notice while staying bounded',
         );
         assert.equal(plan.soloFallback, true, 'every authored activity can continue without a missing partner');
         if (cycle === 0) firstCyclePositions.add(plan.position.join(','));
@@ -1050,6 +1055,22 @@ for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-p
     }
     assert.ok(firstCyclePositions.size >= 4, `${scheduleName} spreads the cast across multiple first-cycle stations`);
   }
+}
+for (const [scheduleName, expectedPosition, expectedFocus] of [
+  ['morning-play', [-2.8, 0, 1.4], [-1.8, 0, 1.4]],
+  ['art-time', [-14.5, 0, -10.5], [-13.5, 0, -10.5]],
+  ['juice-club', [5.2, 0, -3.8], [4.4, 0, -3.2]],
+  ['outdoor-play', [10.3, 0, -10.7], [11.2, 0, -10.7]],
+  ['pickup', [-9.2, 0, -5.2], [-10.2, 0, -5.2]],
+] as const) {
+  const plan = getChildActivityPlan('Leo', scheduleName, false, 0, 0);
+  assert.deepEqual(plan.position, expectedPosition, `${scheduleName} begins at its authored activity station`);
+  assert.deepEqual(plan.focus, expectedFocus, `${scheduleName} faces the authored activity focus`);
+  assert.deepEqual(
+    getChildActivityPlan('Leo', scheduleName, false, 0, 999),
+    plan,
+    `${scheduleName} plan stays deterministic when frame timing differs`,
+  );
 }
 for (const requiredActivity of ['picture-books', 'singing', 'dancing', 'pretend-play', 'circle-time', 'snacking', 'following', 'reacting']) {
   assert.equal(authoredActivityKinds.has(requiredActivity), true, `${requiredActivity} appears in the rotating authored routine`);
@@ -1185,6 +1206,26 @@ assert.ok(
   sharedBlockCenter.distanceTo(new THREE.Vector3(-2.8, 0, 1.4)) < 0.05,
   'shared block play is visibly centered on the authored block station',
 );
+for (const [scheduleName, expectedCenter] of [
+  ['morning-play', [-2.8, 0, 1.4]],
+  ['art-time', [-14.7, 0, -11.4]],
+  ['outdoor-play', [10, 0, -10.7]],
+] as const) {
+  resetActivitySessions();
+  const alignedSession = getSharedActivitySession('hub', scheduleName, 0);
+  assert.ok(alignedSession);
+  const center = alignedSession.participants
+    .reduce(
+      (sum, participant) => sum.add(new THREE.Vector3(...participant.slot)),
+      new THREE.Vector3(),
+    )
+    .multiplyScalar(1 / alignedSession.participants.length);
+  assert.deepEqual(
+    center.toArray(),
+    expectedCenter,
+    `${scheduleName} shared activity slots stay centered on their authored station`,
+  );
+}
 reportSessionArrival('hub', 'morning-play', gatheringSession.id, 'Leo', 1);
 assert.equal(getSharedActivitySession('hub', 'morning-play', 1)?.phase, 'gathering', 'one participant cannot start the pair activity');
 const activeSession = reportSessionArrival('hub', 'morning-play', gatheringSession.id, 'Mia', 2);

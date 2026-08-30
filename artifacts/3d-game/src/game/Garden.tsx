@@ -347,9 +347,9 @@ function gardenSessionActivity(participant: SharedActivityParticipant): GardenAc
 
 function GardenSessionProp({ participant }: { participant: SharedActivityParticipant }) {
   if (participant.activity === 'teacher-help' || participant.activity === 'teacher-observation') {
-    return <mesh position={[0.4, 0.9, -0.3]}><boxGeometry args={[0.34, 0.46, 0.07]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
+    return <mesh position={[0.35, 0.55, -0.3]} rotation={[-0.4, 0, 0]}><boxGeometry args={[0.34, 0.46, 0.07]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
   }
-  return <mesh position={[0.42, 0.82, -0.28]}><boxGeometry args={[0.42, 0.3, 0.06]} /><meshStandardMaterial color="#fff1cf" /></mesh>;
+  return <mesh position={[0.35, 0.55, -0.3]} rotation={[-0.4, 0, 0]}><boxGeometry args={[0.42, 0.3, 0.06]} /><meshStandardMaterial color="#fff1cf" /></mesh>;
 }
 
 function GardenTeacherCue() {
@@ -395,6 +395,11 @@ function gardenActivityFocus(activity: GardenActivity, position: THREE.Vector3) 
     return new THREE.Vector3(position.x < 0 ? -10.8 : 10.8, 0, position.z);
   }
   if (activity === 'supervise') return new THREE.Vector3(0, 0, 5.5);
+  if (activity === 'social-walk') return new THREE.Vector3(0, 0, -3.1);
+  if (activity === 'circle') return new THREE.Vector3(0, 0, 5.2);
+  if (activity === 'play') return new THREE.Vector3(5, 0, 1.4);
+  if (activity === 'pretend') return new THREE.Vector3(0.8, 0, -3.1);
+  if (activity === 'sing' || activity === 'snack') return new THREE.Vector3(0, 0, 8);
   return position.clone().add(new THREE.Vector3(1, 0, -0.5));
 }
 
@@ -414,42 +419,42 @@ function gardenActivityMode(activity: GardenActivity | null): NonNullable<Charac
 function GardenActivityProp({ activity, role }: { activity: GardenActivity; role: GardenNpcDefinition['role'] }) {
   if (activity === 'water') {
     return (
-      <group position={[0.42, 0.72, -0.28]} rotation={[0, 0, -0.18]}>
+      <group position={[0.36, 0.45, -0.25]} rotation={[-0.4, 0, -0.18]}>
         <mesh><cylinderGeometry args={[0.11, 0.13, 0.28, 8]} /><meshStandardMaterial color="#4c82d4" /></mesh>
         <mesh position={[0.16, 0.03, 0]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.04, 0.06, 0.28, 7]} /><meshStandardMaterial color="#4c82d4" /></mesh>
       </group>
     );
   }
   if (activity === 'inspect') {
-    return <mesh position={[0.38, 0.86, -0.32]}><torusGeometry args={[0.11, 0.025, 8, 18]} /><meshStandardMaterial color="#e6ae2f" /></mesh>;
+    return <mesh position={[0.3, 0.5, -0.35]}><torusGeometry args={[0.11, 0.025, 8, 18]} /><meshStandardMaterial color="#e6ae2f" /></mesh>;
   }
   if (activity === 'pond-watch') {
-    return <mesh position={[0.36, 0.88, -0.32]}><boxGeometry args={[0.3, 0.18, 0.12]} /><meshStandardMaterial color="#355272" /></mesh>;
+    return <mesh position={[0, 1.4, -0.45]}><boxGeometry args={[0.3, 0.18, 0.12]} /><meshStandardMaterial color="#355272" /></mesh>;
   }
   if (activity === 'play') {
-    return <mesh position={[0.5, 0.2, -0.4]}><sphereGeometry args={[0.18, 10, 8]} /><meshStandardMaterial color="#e8613c" /></mesh>;
+    return <mesh position={[0, 0.18, -0.4]}><sphereGeometry args={[0.18, 10, 8]} /><meshStandardMaterial color="#e8613c" /></mesh>;
   }
   if (activity === 'sing') {
     return (
-      <group position={[0.42, 1.08, -0.3]}>
+      <group position={[0.2, 1.05, -0.3]} rotation={[0.4, 0, -0.4]}>
         <mesh><sphereGeometry args={[0.08, 8, 6]} /><meshStandardMaterial color="#e76f8c" /></mesh>
-        <mesh position={[0.04, 0.16, 0]}><cylinderGeometry args={[0.018, 0.018, 0.28, 5]} /><meshStandardMaterial color="#e76f8c" /></mesh>
+        <mesh position={[0, -0.12, 0]}><cylinderGeometry args={[0.018, 0.018, 0.28, 5]} /><meshStandardMaterial color="#e76f8c" /></mesh>
       </group>
     );
   }
   if (activity === 'snack') {
     return (
-      <group position={[0.36, 0.78, -0.3]}>
-        <mesh><cylinderGeometry args={[0.1, 0.08, 0.26, 8]} /><meshStandardMaterial color="#f2b85b" /></mesh>
-        <mesh position={[0.22, -0.08, 0]}><boxGeometry args={[0.18, 0.08, 0.14]} /><meshStandardMaterial color="#dfb976" /></mesh>
+      <group position={[0.2, 0, -0.3]}>
+        <mesh position={[-0.1, 0.13, 0]}><cylinderGeometry args={[0.1, 0.08, 0.26, 8]} /><meshStandardMaterial color="#f2b85b" /></mesh>
+        <mesh position={[0.2, 0.04, 0]}><boxGeometry args={[0.18, 0.08, 0.14]} /><meshStandardMaterial color="#dfb976" /></mesh>
       </group>
     );
   }
   if (activity === 'pretend') {
     return (
-      <group position={[0.42, 0.82, -0.3]}>
+      <group position={[0, 1.9, -0.05]} rotation={[-0.1, 0, 0]}>
         <mesh><coneGeometry args={[0.14, 0.32, 8]} /><meshStandardMaterial color="#55b89b" /></mesh>
-        <mesh position={[0, 0.22, 0]}><sphereGeometry args={[0.11, 8, 6]} /><meshStandardMaterial color="#fff0b8" /></mesh>
+        <mesh position={[0, 0.16, 0]}><sphereGeometry args={[0.11, 8, 6]} /><meshStandardMaterial color="#fff0b8" /></mesh>
       </group>
     );
   }
@@ -457,7 +462,7 @@ function GardenActivityProp({ activity, role }: { activity: GardenActivity; role
     return <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}><circleGeometry args={[0.38, 18]} /><meshStandardMaterial color="#8fd0c5" transparent opacity={0.72} /></mesh>;
   }
   if (role === 'teacher' && activity === 'supervise') {
-    return <mesh position={[0.4, 0.9, -0.3]}><boxGeometry args={[0.24, 0.34, 0.06]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
+    return <mesh position={[0.35, 0.55, -0.3]} rotation={[-0.4, 0, 0]}><boxGeometry args={[0.24, 0.34, 0.06]} /><meshStandardMaterial color="#68a9a7" /></mesh>;
   }
   return null;
 }

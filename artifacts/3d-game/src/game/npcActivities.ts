@@ -46,6 +46,8 @@ type Station = Omit<ChildActivityPlan, 'duration' | 'soloFallback'> & {
 };
 
 const CHILD_ORDER = ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max'];
+export const MIN_CHILD_ACTIVITY_DWELL_SECONDS = 7.2;
+export const MAX_CHILD_ACTIVITY_DWELL_SECONDS = 8.5;
 
 const HUB_STATIONS: Record<string, Station[]> = {
   'morning-play': [
@@ -148,12 +150,15 @@ export function getChildActivityPlan(
   const station = rotateStations(stations, name, cycle, phase);
   const position = [...station.position] as [number, number, number];
   const focus = [...station.focus] as [number, number, number];
+  const deterministicOffset = (activityHash(name) % 3) * 0.18;
   return {
     activity: station.activity,
     mode: station.mode,
     position,
     focus,
-    duration: station.duration + (activityHash(name) % 3) * 0.18,
+    duration: schedule === 'juice-club'
+      ? station.duration + deterministicOffset
+      : Math.max(MIN_CHILD_ACTIVITY_DWELL_SECONDS, station.duration * 1.25) + deterministicOffset,
     soloFallback: true,
   };
 }
