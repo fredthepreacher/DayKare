@@ -142,6 +142,7 @@ export function SuppliedArtwork({
           map={texture}
           toneMapped={false}
           blending={semanticRole === 'floor-marker' ? MultiplyBlending : undefined}
+          premultipliedAlpha={semanticRole === 'floor-marker'}
           transparent={semanticRole === 'floor-marker'}
           depthWrite={semanticRole !== 'floor-marker'}
         />
