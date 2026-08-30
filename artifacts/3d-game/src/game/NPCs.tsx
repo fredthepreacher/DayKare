@@ -354,6 +354,8 @@ function Teacher({
         patrol.current.dwellUntil = 0;
         stuckFor.current = 0;
       }
+    } else if (interventionTarget || scanTarget) {
+      smoothTurn(ref.current, interventionTarget ?? scanTarget ?? destination, delta);
     }
     lastPosition.current.copy(ref.current.position);
     mirror.copy(ref.current.position);
@@ -409,6 +411,7 @@ function Teacher({
           idleEnergy={0.55}
           idleVariant={interventionIsActive(intervention) ? 'fidget' : name === 'Mr. Davis' ? 'look-around' : 'sway'}
            activityMode={interventionIsActive(intervention) ? 'intervening' : isSupervising ? 'gathering' : 'standing'}
+           activitySignal={interventionIsActive(intervention) ? intervention.phase : isSupervising ? 'supervising' : 'patrolling'}
         />
       </group>
       {isSupervising && (
@@ -416,6 +419,7 @@ function Teacher({
           ? <InterventionProp phase={intervention.phase} />
           : <TeacherProp name={name} schedule={schedule} />
       )}
+       {isSupervising && !interventionIsActive(intervention) && <TeacherScanCue />}
     </group>
   );
 }
@@ -468,6 +472,7 @@ function Kid({
   const phase = useMemo(() => namePhase(name), [name]);
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const activityTarget = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
+  const activityFocus = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const activityState = useRef({
     key: '',
     dwellUntil: 0,
@@ -510,6 +515,8 @@ function Kid({
       participant,
       activityState.current.fallbackSessionId,
     ) ? participant : null;
+    if (movementParticipant) activityFocus.set(...movementParticipant.focus);
+    else activityFocus.set(...currentPlan.focus);
     if (
       visibleParticipant?.activity !== sessionVisualRef.current?.activity
       || visibleParticipant?.reaction !== sessionVisualRef.current?.reaction
@@ -601,8 +608,10 @@ function Kid({
           : childActivityPosition(getChildActivityPlan(name, schedule, isRainy, activityState.current.cycle, phase)),
       );
     }
+    if (!active && distanceToActivity < 0.48) {
+      smoothTurn(ref.current, activityFocus, delta);
+    }
     if (movementParticipant && distanceToActivity < 0.48 && !active) {
-      smoothTurn(ref.current, new THREE.Vector3(...movementParticipant.focus), delta);
       if (sharedSession?.phase === 'gathering') {
         reportSessionArrival('hub', schedule, sharedSession.id, name, state.clock.elapsedTime);
       }
@@ -734,6 +743,8 @@ function Kid({
             : settled
               ? renderedPlan.mode
               : 'walking'}
+         activitySignal={childIntervention?.phase
+           ?? (settled ? sessionVisual?.activity ?? renderedPlan.activity : 'walking')}
         socialReaction={childIntervention?.reaction === 'sad'
           ? undefined
           : childIntervention?.reaction ?? (settled
@@ -745,6 +756,9 @@ function Kid({
         <ActivityProp activity={renderedPlan.activity} phase={phase} />
       )}
       {!childIntervention && settled && !questPriorityForKid(name, quests) && <SocialGameMarker schedule={schedule} phase={phase} cycle={activityState.current.cycle} />}
+      {!childIntervention && settled && !questPriorityForKid(name, quests) && (
+        <ActivityCue activity={sessionVisual?.activity ?? renderedPlan.activity} phase={phase} cycle={activityState.current.cycle} />
+      )}
     </group>
   );
 }
@@ -976,9 +990,24 @@ function SessionProp({ participant }: { participant: SharedActivityParticipant }
   return (
     <group position={[0.4, 0.78, -0.3]}>
       {participant.activity === 'drawing' || participant.activity === 'coloring' ? (
-        <mesh rotation={[0, 0.2, -0.25]}><boxGeometry args={[0.25, 0.32, 0.035]} /><meshStandardMaterial color="#fff1cf" /></mesh>
+        <group rotation={[0, 0.2, -0.18]}>
+          <mesh><boxGeometry args={[0.42, 0.34, 0.035]} /><meshStandardMaterial color="#fff1cf" /></mesh>
+          <mesh position={[0.03, 0, -0.025]} rotation={[0, 0, -0.45]}><boxGeometry args={[0.25, 0.025, 0.018]} /><meshBasicMaterial color="#e76f8c" /></mesh>
+          <mesh position={[-0.08, -0.08, -0.026]} rotation={[0, 0, 0.3]}><boxGeometry args={[0.16, 0.022, 0.018]} /><meshBasicMaterial color="#4c82d4" /></mesh>
+        </group>
       ) : participant.activity === 'toy-play' || participant.activity === 'blocks' ? (
-        <mesh position={[0, -0.5, 0]}><sphereGeometry args={[0.13, 10, 8]} /><meshStandardMaterial color="#e8613c" /></mesh>
+        <group position={[0, -0.54, 0]}>
+          {[
+            [-0.13, 0, '#e8613c'],
+            [0.13, 0, '#4c82d4'],
+            [0, 0.22, '#ffd166'],
+          ].map(([x, y, blockColor], index) => (
+            <mesh key={index} position={[x as number, y as number, 0]}>
+              <boxGeometry args={[0.22, 0.22, 0.22]} />
+              <meshStandardMaterial color={blockColor as string} roughness={0.82} />
+            </mesh>
+          ))}
+        </group>
       ) : (
         <mesh><boxGeometry args={[0.2, 0.27, 0.06]} /><meshStandardMaterial color={color} /></mesh>
       )}
@@ -1044,17 +1073,21 @@ function ActivityProp({
 
   if (activity === 'drawing' || activity === 'coloring') {
     return (
-      <group ref={prop} position={[0.42, 0.75, -0.32]} rotation={[0, 0, -0.35]}>
-        <mesh><cylinderGeometry args={[0.025, 0.025, 0.58, 6]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
-        <mesh position={[0, -0.31, 0]}><coneGeometry args={[0.07, 0.16, 6]} /><meshStandardMaterial color="#e8613c" /></mesh>
+      <group ref={prop} position={[0.28, 0.75, -0.4]} rotation={[0.12, 0, -0.2]}>
+        <mesh position={[-0.24, -0.04, 0]}><boxGeometry args={[0.52, 0.38, 0.035]} /><meshStandardMaterial color="#fff1cf" roughness={0.92} /></mesh>
+        <mesh position={[-0.22, -0.03, -0.024]} rotation={[0, 0, 0.45]}><boxGeometry args={[0.3, 0.026, 0.018]} /><meshBasicMaterial color="#4c82d4" /></mesh>
+        <mesh position={[-0.29, -0.11, -0.026]} rotation={[0, 0, -0.3]}><boxGeometry args={[0.23, 0.024, 0.018]} /><meshBasicMaterial color="#ffd166" /></mesh>
+        <mesh position={[0.08, 0.08, -0.04]} rotation={[0, 0, -0.35]}><cylinderGeometry args={[0.025, 0.025, 0.48, 6]} /><meshStandardMaterial color="#8b5a2b" /></mesh>
+        <mesh position={[-0.01, -0.13, -0.04]} rotation={[0, 0, 0.35]}><coneGeometry args={[0.055, 0.14, 6]} /><meshStandardMaterial color="#e8613c" /></mesh>
       </group>
     );
   }
   if (activity === 'picture-books') {
     return (
       <group ref={prop} position={[0, 0.75, -0.42]} rotation={[0.18, 0, 0]}>
-        <mesh position={[-0.18, 0, 0]}><boxGeometry args={[0.34, 0.04, 0.42]} /><meshStandardMaterial color="#4c82d4" /></mesh>
-        <mesh position={[0.18, 0, 0]}><boxGeometry args={[0.34, 0.04, 0.42]} /><meshStandardMaterial color="#f2b85b" /></mesh>
+        <mesh position={[-0.22, 0, 0]} rotation={[0, 0, 0.12]}><boxGeometry args={[0.42, 0.045, 0.48]} /><meshStandardMaterial color="#4c82d4" /></mesh>
+        <mesh position={[0.22, 0, 0]} rotation={[0, 0, -0.12]}><boxGeometry args={[0.42, 0.045, 0.48]} /><meshStandardMaterial color="#f2b85b" /></mesh>
+        <mesh position={[0, 0.035, 0]}><boxGeometry args={[0.035, 0.035, 0.48]} /><meshStandardMaterial color="#fff1cf" /></mesh>
       </group>
     );
   }
@@ -1122,6 +1155,68 @@ function ActivityProp({
     <group ref={prop} position={[0.4, 0.75, -0.3]}>
       <mesh position={[0, -0.08, 0]}><boxGeometry args={[0.22, 0.22, 0.22]} /><meshStandardMaterial color="#4c82d4" /></mesh>
       <mesh position={[0, 0.15, 0]} rotation={[0, 0.4, 0]}><boxGeometry args={[0.18, 0.18, 0.18]} /><meshStandardMaterial color="#e6ae2f" /></mesh>
+    </group>
+  );
+}
+
+function ActivityCue({
+  activity,
+  phase,
+  cycle,
+}: {
+  activity: SharedActivityParticipant['activity'] | ChildActivityPlan['activity'];
+  phase: number;
+  cycle: number;
+}) {
+  const alwaysVisible = activity === 'conversation' || activity === 'singing' || activity === 'dancing';
+  if (!alwaysVisible && (Math.floor(phase * 10) + cycle) % 3 !== 0) return null;
+  const color = activity === 'coloring' || activity === 'drawing'
+    ? '#e76f8c'
+    : activity === 'blocks' || activity === 'toy-play'
+      ? '#4c82d4'
+      : activity === 'snacking'
+        ? '#f2b85b'
+        : '#71d4b4';
+  return (
+    <group position={[0.34, 1.58, -0.18]} scale={0.82}>
+      <mesh>
+        <sphereGeometry args={[0.17, 10, 8]} />
+        <meshStandardMaterial color="#fff8df" roughness={0.84} />
+      </mesh>
+      <mesh position={[-0.16, -0.16, 0]} scale={0.56}>
+        <sphereGeometry args={[0.11, 8, 6]} />
+        <meshStandardMaterial color="#fff8df" roughness={0.84} />
+      </mesh>
+      {activity === 'conversation' || activity === 'singing' ? (
+        <>
+          <mesh position={[-0.055, 0.02, -0.16]}><sphereGeometry args={[0.035, 7, 5]} /><meshBasicMaterial color={color} /></mesh>
+          <mesh position={[0.055, 0.02, -0.16]}><sphereGeometry args={[0.035, 7, 5]} /><meshBasicMaterial color={color} /></mesh>
+        </>
+      ) : activity === 'picture-books' ? (
+        <mesh position={[0, 0.01, -0.16]}><boxGeometry args={[0.18, 0.12, 0.025]} /><meshBasicMaterial color={color} /></mesh>
+      ) : (
+        <mesh position={[0, 0.01, -0.16]} rotation={[0, 0, Math.PI / 4]}>
+          <boxGeometry args={[0.13, 0.13, 0.025]} />
+          <meshBasicMaterial color={color} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function TeacherScanCue() {
+  return (
+    <group position={[0, 1.72, -0.16]} scale={0.86}>
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.2, 0.035, 7, 18, Math.PI]} />
+        <meshBasicMaterial color="#ffd166" />
+      </mesh>
+      {[-0.16, 0, 0.16].map((x, index) => (
+        <mesh key={x} position={[x, -0.12 - Math.abs(index - 1) * 0.04, 0]}>
+          <sphereGeometry args={[0.035, 7, 5]} />
+          <meshBasicMaterial color="#68a9a7" />
+        </mesh>
+      ))}
     </group>
   );
 }

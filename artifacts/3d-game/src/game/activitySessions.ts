@@ -21,7 +21,9 @@ export interface SharedActivitySession {
 }
 
 const HUB_SESSIONS: Record<string, { anchor: [number, number, number]; kinds: SharedActivityKind[]; groups: string[][] }> = {
-  'morning-play': { anchor: [-1.1, 0, 1.4], kinds: ['blocks', 'toy-play'], groups: [['Leo', 'Mia'], ['Finn', 'Ruby']] },
+  // Center the pair on the authored block station so the shared animation reads
+  // as building together rather than a generic conversation elsewhere on the rug.
+  'morning-play': { anchor: [-2.8, 0, 1.4], kinds: ['blocks', 'toy-play'], groups: [['Leo', 'Mia'], ['Finn', 'Ruby']] },
   // The art table occupies -13.7..-10.3 on both axes, so this is its west
   // side rather than an apparently seated pair inside its collider.
   'art-time': { anchor: [-14.7, 0, -11.4], kinds: ['drawing', 'coloring'], groups: [['Leo', 'Mia'], ['Ruby', 'Max']] },

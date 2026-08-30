@@ -16,6 +16,7 @@ export function HubDetails() {
       <WindowRow imaginationMode={isImaginationMode} />
       <Cubbies imaginationMode={isImaginationMode} />
       <ReadingNook />
+      <ActivityStationDressing imaginationMode={isImaginationMode} />
       <ArtGallery imaginationMode={isImaginationMode} />
       <RoomFinishing imaginationMode={isImaginationMode} />
       <PlaygroundDetails />
@@ -35,8 +36,56 @@ export function HubDetails() {
       <SuppliedArtwork fileName="19_attendance_chart.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.7, along: -4.5 }} size={[2.3, 1.72]} semanticRole="wayfinding" support="corkboard" />
       <SuppliedArtwork fileName="08_floor_decals.png" position={[3.8, 0.026, 4.9]} size={[2.4, 1.8]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="floor-marker" support="none" />
       <SuppliedArtwork fileName="15_wayfinding_floor_markers.png" position={[6.55, 0.027, -0.2]} size={[1.9, 1.35]} rotation={[-Math.PI / 2, 0, -Math.PI / 2]} semanticRole="floor-marker" support="none" />
-      <SuppliedArtwork fileName="16_material_textures.png" position={[-12, 0.028, -5.5]} size={[2.1, 1.55]} rotation={[-Math.PI / 2, 0, 0]} semanticRole="floor-marker" support="none" />
+      <SuppliedArtwork fileName="16_material_textures.png" surfaceAnchor={{ solidId: 'north-boundary', face: 'south', height: 1.55, along: 12 }} size={[1.65, 1.15]} support="corkboard" />
       {storageOrganizer && <LostAndFoundOrganizer />}
+    </group>
+  );
+}
+
+function ActivityStationDressing({ imaginationMode }: { imaginationMode: boolean }) {
+  const warm = imaginationMode ? '#ff4da6' : '#e76f51';
+  const sunny = imaginationMode ? '#ffd166' : '#f4a261';
+  const cool = imaginationMode ? '#52e7ff' : '#2a9d8f';
+  return (
+    <group>
+      {/* Shared block station: a grounded tray and enough pieces to read from the camera. */}
+      <group position={[-2.8, 0, 1.4]}>
+        <mesh position={[0, 0.055, 0]} receiveShadow>
+          <cylinderGeometry args={[0.68, 0.72, 0.1, 16]} />
+          <meshStandardMaterial color="#f4dfb6" roughness={0.94} />
+        </mesh>
+        {[
+          [-0.3, 0.18, -0.12, warm],
+          [0.02, 0.18, 0.16, cool],
+          [0.31, 0.18, -0.06, sunny],
+          [-0.12, 0.4, 0.02, '#4c82d4'],
+        ].map(([x, y, z, color], index) => (
+          <mesh key={index} position={[x as number, y as number, z as number]} rotation={[0, index * 0.28, 0]}>
+            <boxGeometry args={[0.26, 0.26, 0.26]} />
+            <meshStandardMaterial color={color as string} roughness={0.86} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Story station: open books stay on a real floor mat beside the reading nook. */}
+      <group position={[4.05, 0, -5.05]}>
+        <mesh position={[0, 0.018, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.82, 18]} />
+          <meshStandardMaterial color={imaginationMode ? '#5a47a8' : '#a8dadc'} roughness={0.94} />
+        </mesh>
+        {[-0.3, 0.28].map((x, index) => (
+          <group key={x} position={[x, 0.07, 0.05 + index * 0.08]} rotation={[0, index ? -0.45 : 0.35, 0]}>
+            <mesh position={[-0.13, 0, 0]}><boxGeometry args={[0.25, 0.045, 0.34]} /><meshStandardMaterial color={index ? sunny : '#4c82d4'} /></mesh>
+            <mesh position={[0.13, 0, 0]}><boxGeometry args={[0.25, 0.045, 0.34]} /><meshStandardMaterial color="#fff1cf" /></mesh>
+          </group>
+        ))}
+      </group>
+
+      {/* Circle-time boundary keeps small groups readable without becoming a collider. */}
+      <mesh position={[0, 0.024, 2.3]} rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[1.15, 0.055, 8, 28]} />
+        <meshBasicMaterial color={cool} transparent opacity={0.72} />
+      </mesh>
     </group>
   );
 }

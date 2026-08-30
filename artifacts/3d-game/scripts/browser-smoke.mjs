@@ -625,7 +625,7 @@ try {
   await dispatchKey(client, 'rawKeyDown', 'ShiftLeft', 'Shift');
   await dispatchKey(client, 'rawKeyDown', 'KeyD', 'd');
   await dispatchKey(client, 'rawKeyDown', 'KeyW', 'w');
-  await sleep(650);
+  await sleep(850);
   await dispatchKey(client, 'keyUp', 'KeyW', 'w');
   await dispatchKey(client, 'keyUp', 'KeyD', 'd');
   await dispatchKey(client, 'keyUp', 'ShiftLeft', 'Shift');
@@ -762,6 +762,10 @@ try {
     })`);
     await setViewport(client, viewport.width, viewport.height, true);
     await waitFor(client, 'Boolean(document.querySelector(".daykare-touch-interact"))', `${viewport.label} interaction control`);
+    // ResizeObserver, visualViewport, and scaled HUD rects settle on different
+    // frames in software-rendered Chromium. Assert the converged layout, not the
+    // transient frame immediately after the emulation override.
+    await sleep(320);
     const controlLayout = await evaluate(client, `(() => {
       const visual = window.visualViewport ?? {
         offsetLeft: 0,

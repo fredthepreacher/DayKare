@@ -27,6 +27,7 @@ export interface CharacterModelProps {
   idleEnergy?: number;
   accessory?: Accessory;
   activityMode?: ActivityMode;
+  activitySignal?: string;
   socialReaction?: SocialReaction;
   idleVariant?: IdleVariant;
 }
@@ -54,6 +55,7 @@ export function CharacterModel({
   idleEnergy = 1,
   accessory = 'none',
   activityMode = 'standing',
+  activitySignal,
   socialReaction,
   idleVariant = 'sway',
 }: CharacterModelProps) {
@@ -71,13 +73,14 @@ export function CharacterModel({
   const currentPosition = useRef(new THREE.Vector3());
   const movementBlend = useRef(0);
   const runningBlend = useRef(0);
-  const previousActivity = useRef(activityMode);
+  const previousActivity = useRef(activitySignal ?? activityMode);
   const activityChangedAt = useRef(-10);
 
   useFrame((state, delta) => {
     if (!rig.current) return;
-    if (previousActivity.current !== activityMode) {
-      previousActivity.current = activityMode;
+    const nextActivitySignal = activitySignal ?? activityMode;
+    if (previousActivity.current !== nextActivitySignal) {
+      previousActivity.current = nextActivitySignal;
       activityChangedAt.current = state.clock.elapsedTime;
     }
 
@@ -105,11 +108,11 @@ export function CharacterModel({
       ? Math.sin((transitionAge / 0.72) * Math.PI) * 0.26
       : 0;
     const activityGesture = activityMode === 'coloring'
-      ? 0.24 + Math.sin(state.clock.elapsedTime * 2.8 + motionSeed) * 0.08
+      ? 0.3 + Math.sin(state.clock.elapsedTime * 6.2 + motionSeed) * 0.12
       : activityMode === 'toy-play' || activityMode === 'playing'
-        ? -0.16 + Math.sin(state.clock.elapsedTime * 4 + motionSeed) * 0.12
+        ? -0.12 + Math.sin(state.clock.elapsedTime * 4.4 + motionSeed) * 0.2
         : activityMode === 'reading'
-          ? 0.28 + Math.sin(state.clock.elapsedTime * 2.4 + motionSeed) * 0.06
+          ? 0.38 + Math.max(0, Math.sin(state.clock.elapsedTime * 1.7 + motionSeed)) * 0.12
           : activityMode === 'singing'
             ? -0.04 + Math.sin(state.clock.elapsedTime * 4.8 + motionSeed) * 0.28
             : activityMode === 'dancing'
@@ -127,17 +130,51 @@ export function CharacterModel({
                         : activityMode === 'intervening'
                           ? -0.34
                           : 0;
+    const drawingStroke = activityMode === 'coloring'
+      ? Math.sin(state.clock.elapsedTime * 7.2 + motionSeed) * 0.16
+      : 0;
+    const pageTurn = activityMode === 'reading'
+      ? Math.max(0, Math.sin(state.clock.elapsedTime * 1.8 + motionSeed)) * 0.22
+      : 0;
+    const snackLift = activityMode === 'snacking'
+      ? (Math.sin(state.clock.elapsedTime * 2.6 + motionSeed) + 1) * 0.15
+      : 0;
+    const danceOpen = activityMode === 'dancing'
+      ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.34
+      : 0;
+    const focusedHands = activityMode === 'coloring'
+      || activityMode === 'reading'
+      || activityMode === 'snacking';
     const blink = Math.pow(Math.max(0, Math.sin(state.clock.elapsedTime * 0.62 + motionSeed * 0.7)), 30);
 
     if (leftArm.current && rightArm.current && leftLeg.current && rightLeg.current) {
       const wave = socialReaction === 'wave' ? Math.sin(state.clock.elapsedTime * 6 + motionSeed) * 0.5 : 0;
       const cheer = socialReaction === 'cheer' ? -0.7 : 0;
-      leftArm.current.rotation.x = stride * 0.8 + idleGesture * 0.045 + cheer + activityGesture + activityTransition;
-      rightArm.current.rotation.x = -stride * 0.8 - idleGesture * 0.045 + wave + cheer + activityGesture * 0.7 + activityTransition * 0.55;
+      leftArm.current.rotation.x = stride * 0.8
+        + idleGesture * 0.045
+        + cheer
+        + activityGesture
+        + activityTransition
+        + pageTurn * 0.35;
+      rightArm.current.rotation.x = -stride * 0.8
+        - idleGesture * 0.045
+        + wave
+        + cheer
+        + activityGesture * 0.72
+        + activityTransition * 0.55
+        + drawingStroke
+        - pageTurn
+        - snackLift;
       leftLeg.current.rotation.x = -stride * 0.7;
       rightLeg.current.rotation.x = stride * 0.7;
-      leftArm.current.rotation.z = -0.08 - idleGesture * 0.025 - talkGesture;
-      rightArm.current.rotation.z = 0.08 + idleGesture * 0.025 + talkGesture;
+      leftArm.current.rotation.z = (focusedHands ? 0.28 : -0.08)
+        - idleGesture * 0.025
+        - talkGesture
+        + danceOpen;
+      rightArm.current.rotation.z = (focusedHands ? -0.28 : 0.08)
+        + idleGesture * 0.025
+        + talkGesture
+        - danceOpen;
     }
 
     if (head.current) {
@@ -187,6 +224,18 @@ export function CharacterModel({
         : activityMode === 'dancing'
           ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.09
           : activityTransition * 0.16;
+      const targetLean = activityMode === 'coloring'
+        ? 0.16
+        : activityMode === 'reading' || activityMode === 'snacking'
+          ? 0.1
+          : activityMode === 'intervening'
+            ? 0.06
+            : 0;
+      rig.current.rotation.x = THREE.MathUtils.lerp(
+        rig.current.rotation.x,
+        targetLean,
+        1 - Math.exp(-9 * delta),
+      );
     }
   });
 

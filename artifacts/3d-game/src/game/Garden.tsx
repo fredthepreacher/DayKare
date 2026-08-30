@@ -246,7 +246,7 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
           ? 2.5
           : definition.role === 'teacher'
             ? teacherProfile.patrolDwell
-            : 2.8 + (definition.name.length % 3) * 0.2);
+            : 4.8 + (definition.name.length % 3) * 0.35);
     } else if (!visibleParticipant && !scanTarget && arrived && state.clock.elapsedTime >= routeState.current.dwellUntil) {
       if (gatheringParticipant && session) routeState.current.fallbackSessionId = session.id;
       routeState.current.index = (routeState.current.index + 1) % route.length;
@@ -327,6 +327,7 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
           )}
           imaginationMode={imagination}
           activityMode={gardenActivityMode(settledActivity)}
+           activitySignal={sharedParticipant?.activity ?? settledActivity ?? 'walking'}
           motionSeed={definition.name.length * 0.71}
           idleEnergy={0.65}
         />
@@ -334,6 +335,7 @@ function GardenNpc({ definition }: { definition: GardenNpcDefinition }) {
        {settledActivity && sharedParticipant && <GardenSessionProp participant={sharedParticipant} />}
        {settledActivity && !sharedParticipant && <GardenActivityProp activity={settledActivity} role={definition.role} />}
        {definition.role === 'teacher' && settledActivity === 'supervise' && <GardenTeacherCue />}
+        {definition.role === 'kid' && settledActivity && <GardenActionCue activity={settledActivity} seed={definition.name.length} />}
     </group>
   );
 }
@@ -355,6 +357,25 @@ function GardenTeacherCue() {
     <group position={[0.46, 1.5, -0.28]}>
       <mesh><torusGeometry args={[0.16, 0.035, 8, 16]} /><meshBasicMaterial color="#ffd166" /></mesh>
       <mesh position={[0.15, -0.15, 0]} rotation={[0, 0, -0.7]}><cylinderGeometry args={[0.025, 0.025, 0.28, 6]} /><meshBasicMaterial color="#ffd166" /></mesh>
+    </group>
+  );
+}
+
+function GardenActionCue({ activity, seed }: { activity: GardenActivity; seed: number }) {
+  if ((seed + activity.length) % 3 !== 0 && activity !== 'gazebo-talk' && activity !== 'sing') return null;
+  const color = activity === 'water' || activity === 'pond-watch'
+    ? '#62b8c7'
+    : activity === 'snack'
+      ? '#f2b85b'
+      : '#71d4b4';
+  return (
+    <group position={[0.34, 1.58, -0.18]} scale={0.78}>
+      <mesh><sphereGeometry args={[0.17, 10, 8]} /><meshStandardMaterial color="#fff8df" roughness={0.86} /></mesh>
+      <mesh position={[-0.16, -0.16, 0]} scale={0.56}><sphereGeometry args={[0.11, 8, 6]} /><meshStandardMaterial color="#fff8df" /></mesh>
+      <mesh position={[0, 0.01, -0.16]} rotation={[0, 0, activity === 'water' ? -0.5 : 0.2]}>
+        <boxGeometry args={[0.14, 0.1, 0.025]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
     </group>
   );
 }
@@ -619,6 +640,42 @@ function GardenDetails() {
         </mesh>
       </group>
       <SuppliedArtwork fileName="12_garden_signage.png" surfaceAnchor={{ solidId: 'garden-sign', face: 'south', height: 0.98 }} size={[3.55, 1.3]} support="none" />
+      <GardenLearningMarkers />
+    </group>
+  );
+}
+
+function GardenLearningMarkers() {
+  const markers = [
+    [-10.8, 4.2, '#e8613c'],
+    [10.8, 7.9, '#ffd166'],
+    [5.25, -1.7, '#62b8c7'],
+  ] as const;
+  return (
+    <group>
+      {markers.map(([x, z, color], index) => (
+        <group key={`${x}:${z}`} position={[x, 0, z]} rotation={[0, index === 2 ? -0.9 : x < 0 ? 0.18 : -0.18, 0]}>
+          <mesh position={[0, 0.48, 0]}>
+            <cylinderGeometry args={[0.04, 0.055, 0.96, 7]} />
+            <meshStandardMaterial color="#8b5a2b" roughness={0.92} />
+          </mesh>
+          <mesh position={[0, 0.91, 0]}>
+            <boxGeometry args={[0.72, 0.42, 0.08]} />
+            <meshStandardMaterial color="#fff0c7" roughness={0.88} />
+          </mesh>
+          <mesh position={[0, 0.92, -0.045]}>
+            {index === 2
+              ? <circleGeometry args={[0.12, 12]} />
+              : <boxGeometry args={[0.2, 0.2, 0.025]} />}
+            <meshBasicMaterial color={color} />
+          </mesh>
+        </group>
+      ))}
+      {[-5.4, -2.7, 0, 2.7, 5.4].map((z, index) => (
+        <group key={z} position={[index % 2 ? 0.16 : -0.16, 0.055, z]} rotation={[0, index % 2 ? 0.22 : -0.22, 0]}>
+          <mesh scale={[0.65, 0.2, 1]}><sphereGeometry args={[0.18, 9, 6]} /><meshBasicMaterial color={index % 2 ? '#f4a261' : '#4c82d4'} /></mesh>
+        </group>
+      ))}
     </group>
   );
 }

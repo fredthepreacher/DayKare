@@ -7,4 +7,4 @@ Treat resize and orientation events as an early notification, not proof that `vi
 
 **Why:** Chromium device-metrics changes can update `innerHeight` and the app shell before `visualViewport` listeners expose the new height. Immediate-only logic can leave controls positioned against the previous viewport even though the document has resized.
 
-**How to apply:** For fixed mobile overlays that use `visualViewport`, pair event listeners with a delayed post-layout update and a CSS `100dvh`/`100vw` upper bound. Keep the compact portrait smoke case in the viewport matrix.
+**How to apply:** For fixed mobile overlays that use `visualViewport`, pair event listeners with a delayed post-layout update and a CSS `100dvh`/`100vw` upper bound. Keep the compact portrait smoke case in the viewport matrix, and make automation assert rectangle separation only after the post-resize layout converges.

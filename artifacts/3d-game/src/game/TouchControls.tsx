@@ -63,27 +63,45 @@ export function TouchControls({
       const preferredTop = Math.max(offsetTop + 8, hudBottom + 8);
       const latestVisibleTop = Math.max(offsetTop + 8, visibleBottom - recenterSize - 8);
 
-       const root = document.documentElement;
-       root.style.setProperty('--daykare-visual-left', `${offsetLeft}px`);
-       root.style.setProperty('--daykare-visual-top', `${offsetTop}px`);
-       root.style.setProperty('--daykare-visual-width', `${width}px`);
-       root.style.setProperty('--daykare-visual-height', `${height}px`);
-       root.style.setProperty('--daykare-hud-bottom', `${hudBottom}px`);
-       root.style.setProperty('--daykare-touch-recenter-left', `${offsetLeft + width / 2}px`);
-       root.style.setProperty(
-        '--daykare-touch-recenter-top',
-        `${Math.min(preferredTop, latestVisibleTop)}px`,
-      );
+      const root = document.documentElement;
+      const values = {
+        '--daykare-visual-left': `${offsetLeft}px`,
+        '--daykare-visual-top': `${offsetTop}px`,
+        '--daykare-visual-width': `${width}px`,
+        '--daykare-visual-height': `${height}px`,
+        '--daykare-hud-bottom': `${hudBottom}px`,
+        '--daykare-touch-recenter-left': `${offsetLeft + width / 2}px`,
+        '--daykare-touch-recenter-top': `${Math.min(preferredTop, latestVisibleTop)}px`,
+      };
+      for (const [property, value] of Object.entries(values)) {
+        if (root.style.getPropertyValue(property) !== value) {
+          root.style.setProperty(property, value);
+        }
+      }
+      return `${width}:${height}:${offsetLeft}:${offsetTop}:${hudBottom}`;
     };
 
     let viewportFrame = 0;
     let viewportTimer: ReturnType<typeof setTimeout> | null = null;
+    let settlePass = 0;
+    let lastLayoutSignature = '';
+    const settleViewportLayout = () => {
+      const signature = updateViewportLayout();
+      const changed = signature !== lastLayoutSignature;
+      lastLayoutSignature = signature;
+      settlePass += 1;
+      if ((changed || settlePass < 3) && settlePass < 7) {
+        viewportTimer = setTimeout(settleViewportLayout, 70);
+      }
+    };
     const scheduleViewportLayout = () => {
       updateViewportLayout();
       cancelAnimationFrame(viewportFrame);
       viewportFrame = requestAnimationFrame(updateViewportLayout);
       if (viewportTimer) clearTimeout(viewportTimer);
-      viewportTimer = setTimeout(updateViewportLayout, 80);
+      settlePass = 0;
+      lastLayoutSignature = '';
+      viewportTimer = setTimeout(settleViewportLayout, 70);
     };
 
     scheduleViewportLayout();
@@ -101,8 +119,8 @@ export function TouchControls({
     window.addEventListener('resize', scheduleViewportLayout);
     window.addEventListener('orientationchange', scheduleViewportLayout);
     viewport?.addEventListener('resize', scheduleViewportLayout);
-     viewport?.addEventListener('scroll', scheduleViewportLayout);
-     document.fonts?.ready.then(scheduleViewportLayout).catch(() => undefined);
+    viewport?.addEventListener('scroll', scheduleViewportLayout);
+    document.fonts?.ready.then(scheduleViewportLayout).catch(() => undefined);
 
     return () => {
       resizeObserver.disconnect();

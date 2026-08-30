@@ -911,7 +911,15 @@ for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-p
           true,
           `${kid.name} ${scheduleName} ${rainy ? 'rainy' : 'dry'} activity ${plan.activity} must be reachable`,
         );
-        assert.ok(plan.duration >= 2.5 && plan.duration < 4.5, 'authored toddler activities stay short and bounded');
+        const expectedMinimum = scheduleName === 'juice-club'
+          ? 4
+          : scheduleName === 'outdoor-play'
+            ? 4.8
+            : 5;
+        assert.ok(
+          plan.duration >= expectedMinimum && plan.duration < 7,
+          'authored toddler activities remain visible long enough to read while staying bounded',
+        );
         assert.equal(plan.soloFallback, true, 'every authored activity can continue without a missing partner');
         if (cycle === 0) firstCyclePositions.add(plan.position.join(','));
       }
@@ -1043,6 +1051,16 @@ resetActivitySessions();
 const gatheringSession = getSharedActivitySession('hub', 'morning-play', 0);
 assert.equal(gatheringSession?.phase, 'gathering', 'a shared activity waits at an arrival barrier');
 assert.ok(gatheringSession);
+const sharedBlockCenter = gatheringSession.participants
+  .reduce(
+    (center, participant) => center.add(new THREE.Vector3(...participant.slot)),
+    new THREE.Vector3(),
+  )
+  .multiplyScalar(1 / gatheringSession.participants.length);
+assert.ok(
+  sharedBlockCenter.distanceTo(new THREE.Vector3(-2.8, 0, 1.4)) < 0.05,
+  'shared block play is visibly centered on the authored block station',
+);
 reportSessionArrival('hub', 'morning-play', gatheringSession.id, 'Leo', 1);
 assert.equal(getSharedActivitySession('hub', 'morning-play', 1)?.phase, 'gathering', 'one participant cannot start the pair activity');
 const activeSession = reportSessionArrival('hub', 'morning-play', gatheringSession.id, 'Mia', 2);
