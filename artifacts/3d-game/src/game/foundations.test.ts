@@ -2019,3 +2019,108 @@ assert.equal(
 clearInteractionCandidates();
 
 console.log('DayKare foundation checks passed');
+// --- Juice Club: out of stock -> restock -> serve ----------------------------
+//
+// The regression this proves is a soft-lock, not a cosmetic bug. The Journal's
+// only restock button is labelled "Restock (5 Juice & Crackers) - $2" but used
+// to call buyStock('juice'), which added juice alone. serveCustomer requires
+// juice AND crackers, and nothing anywhere restocked crackers. A player who ran
+// both to zero paid, saw juice refill, still could not serve, and could repeat
+// that until the cash was gone - ending the Juice Club permanently for that
+// save. The purchase always "registered"; it bought half of what it promised.
+
+useGameStore.getState().resetGame();
+useGameStore.setState({
+  schedule: 'juice-club',
+  zone: 'hub',
+  juiceStock: 0,
+  crackerStock: 0,
+  juiceClubCash: 10,
+  waitingCustomers: ['Max'],
+  juiceClubActiveCustomer: 'Max',
+  juiceClubCustomerPhase: 'ordering',
+});
+
+// 1. Out of stock: the customer cannot be served, and nothing is consumed.
+const strandedBefore = useGameStore.getState().juiceClubCustomersServed;
+useGameStore.getState().serveCustomer();
+assert.equal(
+  useGameStore.getState().juiceClubCustomersServed,
+  strandedBefore,
+  'with no stock nobody can be served - this is the state the player was stuck in',
+);
+
+// 2. Restock through the same call the Journal button makes.
+const cashBeforeRestock = useGameStore.getState().juiceClubCash;
+useGameStore.getState().buyStock('supplies', 2, 5);
+const afterRestock = useGameStore.getState();
+
+// 3. Charged exactly once, for exactly the authored price.
+assert.equal(afterRestock.juiceClubCash, cashBeforeRestock - 2, 'one restock deducts the price exactly once');
+
+// 4. BOTH stocks are usable. Juice alone is what made this a soft-lock.
+assert.ok(afterRestock.juiceStock > 0, 'restocking makes juice available');
+assert.ok(
+  afterRestock.crackerStock > 0,
+  'restocking makes CRACKERS available too - serving needs both, and nothing else in the game restocks them',
+);
+
+// 5. The next customer can now actually be served.
+const servedBefore = afterRestock.juiceClubCustomersServed;
+const juiceBefore = afterRestock.juiceStock;
+const crackerBefore = afterRestock.crackerStock;
+useGameStore.getState().serveCustomer();
+const afterServe = useGameStore.getState();
+assert.equal(
+  afterServe.juiceClubCustomersServed,
+  servedBefore + 1,
+  'out of stock -> restock -> stock > 0 -> the next customer IS served',
+);
+assert.equal(afterServe.juiceStock, juiceBefore - 1, 'serving consumes one juice');
+assert.equal(afterServe.crackerStock, crackerBefore - 1, 'serving consumes one cracker');
+
+// 6. Repeated purchases charge per purchase and never duplicate a single one.
+useGameStore.getState().resetGame();
+useGameStore.setState({ juiceClubCash: 10, juiceStock: 0, crackerStock: 0 });
+useGameStore.getState().buyStock('supplies', 2, 5);
+useGameStore.getState().buyStock('supplies', 2, 5);
+const twice = useGameStore.getState();
+assert.equal(twice.juiceClubCash, 6, 'two restocks cost exactly two prices - never double-charged for one');
+assert.equal(twice.juiceStock, 10, 'two restocks add exactly two lots of juice');
+assert.equal(twice.crackerStock, 10, 'two restocks add exactly two lots of crackers');
+
+// 7. A purchase that cannot afford itself changes nothing at all.
+useGameStore.getState().resetGame();
+useGameStore.setState({ juiceClubCash: 1, juiceStock: 0, crackerStock: 0 });
+useGameStore.getState().buyStock('supplies', 2, 5);
+const broke = useGameStore.getState();
+assert.equal(broke.juiceClubCash, 1, 'an unaffordable restock takes no money');
+assert.equal(broke.juiceStock, 0, 'and grants no stock');
+assert.equal(broke.crackerStock, 0, 'and grants no crackers');
+
+// 8. Full shelves are not charged for. Paying for stock that cannot be added is
+//    how a player ends up broke AND unable to serve.
+useGameStore.getState().resetGame();
+useGameStore.setState({ juiceClubCash: 10, juiceStock: 99, crackerStock: 99 });
+useGameStore.getState().buyStock('supplies', 2, 5);
+assert.equal(useGameStore.getState().juiceClubCash, 10, 'a restock that cannot add anything is not charged');
+
+// 9. Stock survives the save round trip, so a restock is not undone by a reload.
+useGameStore.getState().resetGame();
+useGameStore.setState({ juiceStock: 7, crackerStock: 4, juiceClubCash: 9 });
+const restocked = normalizePersistedGameState(serializeGameState(useGameStore.getState())) as {
+  juiceStock: number; crackerStock: number; juiceClubCash: number;
+};
+assert.equal(restocked.juiceStock, 7, 'juice stock is persisted and restored');
+assert.equal(restocked.crackerStock, 4, 'cracker stock is persisted and restored');
+assert.equal(restocked.juiceClubCash, 9, 'club cash is persisted and restored');
+
+// 10. Caller-supplied price and amount are still ignored, so the fix did not
+//     open a way to forge free stock.
+useGameStore.getState().resetGame();
+useGameStore.setState({ juiceClubCash: 10, juiceStock: 0, crackerStock: 0 });
+useGameStore.getState().buyStock('supplies', 0, 999);
+const forged = useGameStore.getState();
+assert.equal(forged.juiceClubCash, 8, 'a forged price is ignored - the authored price is charged');
+assert.equal(forged.juiceStock, 5, 'a forged amount is ignored - the authored amount is granted');
+assert.equal(forged.crackerStock, 5, 'a forged amount cannot inflate crackers either');

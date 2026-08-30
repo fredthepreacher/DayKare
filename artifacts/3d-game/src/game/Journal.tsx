@@ -272,7 +272,7 @@ export function Journal() {
                 <div className="flex justify-between items-center text-sm border-b border-gray-200 pb-1">
                   <span>Restock (5 Juice & Crackers) - $2</span>
                   <button
-                    onClick={() => buyStock('juice', 2, 5)}
+                    onClick={() => buyStock('supplies', 2, 5)}
                     disabled={juiceClubCash < 2}
                     className="bg-green-500 text-white px-2 py-1 rounded disabled:opacity-50"
                   >Buy</button>

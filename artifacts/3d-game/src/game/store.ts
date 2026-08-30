@@ -159,7 +159,8 @@ export interface GameState {
   advanceQuestObjective: (questId: string, objectiveId: string) => boolean;
   completeTidyToy: (item: string) => boolean;
   
-  buyStock: (type: 'juice' | 'cracker', cost: number, amount: number) => void;
+  /** `cost` and `amount` are ignored - prices are authored in the store. */
+  buyStock: (type: 'juice' | 'cracker' | 'supplies', cost: number, amount: number) => void;
   buyUpgrade: (id: string, cost: number) => void;
   addWaitingCustomer: (id: string) => void;
   removeWaitingCustomer: (id: string) => void;
@@ -1046,24 +1047,45 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      /**
+       * Buys supplies. Prices and amounts are authored HERE and the caller's
+       * `cost` and `amount` arguments are deliberately ignored, so a forged
+       * call cannot mint free stock.
+       *
+       * `supplies` restocks BOTH juice and crackers, and it exists because its
+       * absence was a soft-lock. The Journal's only restock button is labelled
+       * "Restock (5 Juice & Crackers) - $2" but called buyStock('juice'), which
+       * added juice alone. serveCustomer requires juice AND crackers, and no
+       * code path anywhere restocked crackers. So a player who ran both to zero
+       * paid $2, watched juice refill, still could not serve anyone, and could
+       * repeat that until the cash ran out - at which point the Juice Club was
+       * dead for the rest of that save. That is the "I restocked and it did not
+       * register" bug: the purchase registered perfectly, it just bought half
+       * of what the button promised.
+       */
       buyStock: (type) => set((state) => {
-        const purchase = type === 'juice'
-          ? { cost: 2, amount: 5 }
-          : type === 'cracker'
-            ? { cost: 2, amount: 5 }
-            : null;
-        if (purchase && state.juiceClubCash >= purchase.cost) {
-          return {
-            juiceClubCash: state.juiceClubCash - purchase.cost,
-            juiceStock: type === 'juice'
-              ? Math.min(MAX_STOCK, state.juiceStock + purchase.amount)
-              : state.juiceStock,
-            crackerStock: type === 'cracker'
-              ? Math.min(MAX_STOCK, state.crackerStock + purchase.amount)
-              : state.crackerStock,
-          };
-        }
-        return state;
+        const purchases = {
+          juice: { cost: 2, juice: 5, cracker: 0 },
+          cracker: { cost: 2, juice: 0, cracker: 5 },
+          supplies: { cost: 2, juice: 5, cracker: 5 },
+        } as const;
+        const purchase = purchases[type as keyof typeof purchases];
+        if (!purchase) return state;
+        if (state.juiceClubCash < purchase.cost) return state;
+
+        const juiceStock = Math.min(MAX_STOCK, state.juiceStock + purchase.juice);
+        const crackerStock = Math.min(MAX_STOCK, state.crackerStock + purchase.cracker);
+
+        // Already full: charging for stock we cannot add is taking money for
+        // nothing, and it is how a player ends up broke and still unable to
+        // serve.
+        if (juiceStock === state.juiceStock && crackerStock === state.crackerStock) return state;
+
+        return {
+          juiceClubCash: state.juiceClubCash - purchase.cost,
+          juiceStock,
+          crackerStock,
+        };
       }),
 
       buyUpgrade: (id) => set((state) => {
