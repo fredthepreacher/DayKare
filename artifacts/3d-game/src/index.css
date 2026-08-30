@@ -1560,3 +1560,42 @@
   font-size: 12px;
 }
 
+
+/* Save-conflict chooser.
+   A conflict is the one moment where the game must not decide for the player,
+   so the two choices are given equal visual weight and the suggested one is
+   marked rather than pre-selected. */
+[data-testid='panel-cloud-conflict'] {
+  flex-direction: column;
+  gap: 14px;
+  border-color: #e2c56a;
+  background: #fff8e3;
+}
+
+.daykare-conflict-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.daykare-conflict-choices .daykare-setting-button {
+  width: 100%;
+  text-align: left;
+}
+
+.daykare-conflict-choices .daykare-setting-button > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.daykare-conflict-choices .daykare-setting-button > span > span {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+.daykare-conflict-choices .daykare-setting-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
