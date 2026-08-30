@@ -235,8 +235,17 @@ export function Journal() {
                   <span className="text-[10px] font-black uppercase tracking-wide text-orange-700">{caper.step.replace('-', ' ')}</span>
                 </div>
                 <div className="mt-1 text-xs text-orange-950/70">
-                  A nonviolent playground plan with public supplies, fair roles, and teacher approval.
+                  A nonviolent supervised plan with fair roles, route scouting, a clear hallway window, one authorized retrieval, and a safe return.
                 </div>
+                {caper.role !== 'none' && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-orange-950">
+                    <span><strong>Role:</strong> {caper.role.replace('-', ' ')}</span>
+                    <span><strong>Helper:</strong> {caper.helper}</span>
+                  </div>
+                )}
+                {caper.interruptions > 0 && (
+                  <div className="mt-2 text-xs font-bold text-amber-700">Safe resets: {caper.interruptions}</div>
+                )}
                 {caper.consequence !== 'none' && (
                   <div className="mt-2 text-xs font-bold text-green-700">Outcome: {caper.consequence.replace('-', ' ')}</div>
                 )}

@@ -14,6 +14,7 @@ type AudioContextConstructor = new () => AudioContext;
 
 let audioContext: AudioContext | null = null;
 let audioUnlocked = false;
+let audioEnabled = true;
 let lastAmbientAt = -Infinity;
 let lastSocialAt = -Infinity;
 let activePriority = 0;
@@ -49,6 +50,7 @@ function getAudioContext() {
  * guarded and caught so a browser policy can never create an unhandled error.
  */
 export function unlockGameAudio() {
+  if (!audioEnabled) return;
   audioUnlocked = true;
   const context = getAudioContext();
   if (!context || context.state === 'running') return;
@@ -57,6 +59,21 @@ export function unlockGameAudio() {
   } catch {
     // Some browser implementations can reject synchronously as well.
   }
+}
+
+export function setGameAudioEnabled(enabled: boolean) {
+  audioEnabled = enabled;
+  if (!enabled && audioContext?.state === 'running') {
+    try {
+      void audioContext.suspend().catch(() => undefined);
+    } catch {
+      // Losing or suspending audio must never affect gameplay.
+    }
+  }
+}
+
+export function gameAudioIsEnabled() {
+  return audioEnabled;
 }
 
 function shouldPlay(context: AudioContext, priority: SoundPriority) {
@@ -133,7 +150,7 @@ function scheduleSound(context: AudioContext, sound: GameSound, start: number) {
 }
 
 export function playGameSound(sound: GameSound, priority: SoundPriority = 'ambient') {
-  if (!audioUnlocked) return;
+  if (!audioUnlocked || !audioEnabled) return;
   const context = getAudioContext();
   if (!context || context.state !== 'running' || !shouldPlay(context, priority)) return;
 

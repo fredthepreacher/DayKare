@@ -100,11 +100,16 @@ import {
   advanceCaper as advanceCaperState,
   advanceDistrictPreview,
   appendRewardEvent,
+  chooseCaperRole,
+  completeCaperRetrieval,
+  completeCaperSafeSetup,
   chooseMaeIntroduction,
   createInitialCaper,
   createInitialDistrictProgress,
   createInitialRivalStory,
   getOptionalRewardMultiplier,
+  interruptCaper,
+  observeCaperPatrol,
   normalizeCaper,
   normalizeDistrictProgress,
   normalizeRewardEvents,
@@ -114,6 +119,13 @@ import {
   resolveMaeStory,
   startCaper as startCaperState,
 } from './storyProgression';
+import {
+  ONLINE_MAX_PLAYERS,
+  ONLINE_STORAGE_KEY,
+  createInitialOnlinePreview,
+  normalizeOnlinePreview,
+  serializeOnlinePreview,
+} from './modeStore';
 
 const freshRivalStory = createInitialRivalStory();
 const curiousIntroduction = chooseMaeIntroduction(freshRivalStory, 'curious');
@@ -173,13 +185,51 @@ assert.equal(getOptionalRewardMultiplier(1_000, 1_000), 1);
 
 let caperRules = startCaperState(createInitialCaper());
 assert.equal(caperRules.step, 'plan');
-for (const expected of ['gather', 'teacher-check', 'celebrate', 'complete'] as const) {
-  caperRules = advanceCaperState(caperRules);
-  assert.equal(caperRules.step, expected);
-}
+caperRules = chooseCaperRole(caperRules, 'lookout');
+assert.equal(caperRules.step, 'scout');
+assert.equal(caperRules.helper, 'Zoe');
+caperRules = advanceCaperState(caperRules);
+assert.equal(caperRules.step, 'teacher-check');
+caperRules = advanceCaperState(caperRules);
+assert.equal(caperRules.step, 'patrol-timing');
+caperRules = observeCaperPatrol(caperRules, 1_000);
+assert.equal(caperRules.step, 'patrol-timing');
+assert.equal(observeCaperPatrol(caperRules, 3_000), caperRules, 'the patrol window cannot be skipped');
+caperRules = observeCaperPatrol(caperRules, 3_500);
+assert.equal(caperRules.step, 'safe-distraction');
+caperRules = completeCaperSafeSetup(caperRules);
+assert.equal(caperRules.step, 'retrieve');
+caperRules = completeCaperRetrieval(caperRules);
+assert.equal(caperRules.step, 'escape');
+caperRules = advanceCaperState(caperRules);
+assert.equal(caperRules.step, 'celebrate');
+caperRules = advanceCaperState(caperRules);
+assert.equal(caperRules.step, 'complete');
 assert.equal(advanceCaperState(caperRules), caperRules, 'a completed caper cannot reward twice');
-assert.equal(caperRules.consequence, 'teacher-guided');
+assert.equal(caperRules.consequence, 'friends-helped');
 assert.equal(normalizeCaper({ step: 'forged', attempts: -5 }).step, 'idle');
+assert.equal(normalizeCaper({ version: 1, step: 'gather', attempts: 1 }).step, 'scout');
+assert.equal(
+  normalizeCaper({ version: 2, step: 'retrieve', attempts: 1 }).step,
+  'plan',
+  'a forged v2 stage cannot authorize restricted Storage access',
+);
+const interruptedCaper = interruptCaper({
+  ...chooseCaperRole(startCaperState(createInitialCaper()), 'route-leader'),
+  step: 'patrol-timing',
+});
+assert.equal(interruptedCaper.step, 'interrupted');
+assert.equal(interruptedCaper.consequence, 'teacher-guided');
+assert.equal(advanceCaperState(interruptedCaper).step, 'scout');
+
+const onlinePreview = createInitialOnlinePreview();
+assert.equal(onlinePreview.seats.length >= 8 && onlinePreview.seats.length <= ONLINE_MAX_PLAYERS, true);
+assert.equal(ONLINE_STORAGE_KEY === 'daykare-save', false, 'Online preview has a separate persistence namespace');
+assert.deepEqual(
+  normalizeOnlinePreview({ visibility: 'invite', selectedOutfit: 99, selectedAccessory: -1 }).visibility,
+  'invite',
+);
+assert.equal(serializeOnlinePreview(onlinePreview).selectedOutfit, 0);
 let districtRules = createInitialDistrictProgress();
 for (let index = 0; index < 5; index += 1) {
   districtRules = advanceDistrictPreview(districtRules, 'makerMarket');
@@ -206,8 +256,13 @@ assert.equal(rolledDay.progression.reputation, 17);
 
 assert.equal(rolledDay.startCaper(), true);
 assert.equal(rolledDay.startCaper(), false, 'an active caper cannot restart over itself');
+assert.equal(useGameStore.getState().chooseCaperRole('route-leader'), true);
 assert.equal(useGameStore.getState().advanceCaper(), true);
 assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(useGameStore.getState().observeCaperPatrol(1_000), true);
+assert.equal(useGameStore.getState().observeCaperPatrol(3_500), true);
+assert.equal(useGameStore.getState().completeCaperSafeSetup(), true);
+assert.equal(useGameStore.getState().completeCaperRetrieval(), true);
 assert.equal(useGameStore.getState().advanceCaper(), true);
 const caperRewardBefore = useGameStore.getState().progression.tokens;
 assert.equal(useGameStore.getState().advanceCaper(), true);
@@ -224,8 +279,13 @@ const boostStartedAt = Date.now();
 assert.equal(useGameStore.getState().activateOptionalRewardBoost(boostStartedAt), true);
 assert.equal(useGameStore.getState().activateOptionalRewardBoost(boostStartedAt + 100), false);
 assert.equal(useGameStore.getState().startCaper(), true);
+assert.equal(useGameStore.getState().chooseCaperRole('supply-helper'), true);
 assert.equal(useGameStore.getState().advanceCaper(), true);
 assert.equal(useGameStore.getState().advanceCaper(), true);
+assert.equal(useGameStore.getState().observeCaperPatrol(10_000), true);
+assert.equal(useGameStore.getState().observeCaperPatrol(12_500), true);
+assert.equal(useGameStore.getState().completeCaperSafeSetup(), true);
+assert.equal(useGameStore.getState().completeCaperRetrieval(), true);
 assert.equal(useGameStore.getState().advanceCaper(), true);
 const boostedCaperRewardBefore = useGameStore.getState().progression.tokens;
 assert.equal(useGameStore.getState().advanceCaper(), true);
@@ -1716,6 +1776,7 @@ assert.equal(isGameplayBlocked({ journalOpen: true, activeDialogue: null, zoneTr
 assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: { text: 'pause' }, zoneTransitioning: false }), true);
 assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: null, zoneTransitioning: true }), true);
 assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: null, zoneTransitioning: false }), false);
+assert.equal(isGameplayBlocked({ journalOpen: false, activeDialogue: null, zoneTransitioning: false, frontEndBlocked: true }), true);
 
 setTouchMove(2, -2);
 assert.deepEqual({ x: getTouchInput().x, y: getTouchInput().y }, { x: 1, y: -1 }, 'touch movement clamps to a stable unit range');

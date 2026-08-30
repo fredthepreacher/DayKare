@@ -14,6 +14,8 @@ import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
 import { isGameplayBlocked } from './gameplayGate';
 import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetry';
+import { GameFrontEnd } from './GameFrontEnd';
+import { useModeStore } from './modeStore';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
 
@@ -30,6 +32,7 @@ function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THRE
       journalOpen: store.journalOpen,
       activeDialogue: store.activeDialogue,
       zoneTransitioning: store.zoneTransitioning,
+      frontEndBlocked: useModeStore.getState().menuOpen || useModeStore.getState().activeMode === 'online-preview',
     })) {
       if (store.activeInteractable !== null) store.setActiveInteractable(null);
       return;
@@ -109,6 +112,7 @@ export function DayKareApp() {
         </Canvas>
         <UI />
         <PerformanceTelemetryPanel />
+        <GameFrontEnd />
       </div>
     </KeyboardControls>
   );

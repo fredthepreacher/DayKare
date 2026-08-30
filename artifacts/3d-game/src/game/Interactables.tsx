@@ -15,9 +15,63 @@ export function Interactables({ playerRef }: { playerRef: React.RefObject<THREE.
       <Binky playerRef={playerRef} />
       <ShinyRock />
       <Tricycle playerRef={playerRef} />
+      <ParadeBanner />
+      <CaperBubbleTable />
       <ToyBlock playerRef={playerRef} position={[-3, 0.25, -2]} id="blue-block" color="#3a86ff" />
       <ToyBlock playerRef={playerRef} position={[2, 0.25, 4]} id="red-block" color="#ff006e" />
       <ToyBlock playerRef={playerRef} position={[5.2, 0.25, -5.6]} id="yellow-block" color="#ffbe0b" />
+    </group>
+  );
+}
+
+function ParadeBanner() {
+  const active = useGameStore((state) => state.activeInteractable === 'parade-banner');
+  const caperStep = useGameStore((state) => state.caper.step);
+  const position = useMemo(() => new THREE.Vector3(-12.2, 0, 11.4), []);
+  const available = caperStep === 'retrieve';
+  useCandidate('parade-banner', position, available, 2.1, 28, true);
+  if (!available) return null;
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.35, 0]} castShadow>
+        <boxGeometry args={[0.95, 0.7, 0.42]} />
+        <meshStandardMaterial color="#f5b942" roughness={0.75} />
+      </mesh>
+      <mesh position={[0, 0.38, 0.225]}>
+        <planeGeometry args={[0.62, 0.3]} />
+        <meshBasicMaterial color="#fff6d8" />
+      </mesh>
+      <FocusHalo active={active} radius={0.78} color="#ffd166" />
+    </group>
+  );
+}
+
+function CaperBubbleTable() {
+  const active = useGameStore((state) => state.activeInteractable === 'caper-bubble-table');
+  const caperStep = useGameStore((state) => state.caper.step);
+  const position = useMemo(() => new THREE.Vector3(-6.2, 0, 6.1), []);
+  const available = caperStep === 'safe-distraction';
+  useCandidate('caper-bubble-table', position, available, 2.25, 26, true);
+  if (!available) return null;
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.48, 0]} castShadow>
+        <cylinderGeometry args={[0.68, 0.78, 0.18, 20]} />
+        <meshStandardMaterial color="#33cccc" roughness={0.68} />
+      </mesh>
+      <mesh position={[0, 0.24, 0]} castShadow>
+        <cylinderGeometry args={[0.12, 0.16, 0.48, 10]} />
+        <meshStandardMaterial color="#7a4e31" roughness={0.86} />
+      </mesh>
+      <mesh position={[-0.24, 0.65, 0]}>
+        <sphereGeometry args={[0.12, 12, 10]} />
+        <meshStandardMaterial color="#f7d45a" transparent opacity={0.78} />
+      </mesh>
+      <mesh position={[0.2, 0.7, 0.08]}>
+        <sphereGeometry args={[0.1, 12, 10]} />
+        <meshStandardMaterial color="#ff86be" transparent opacity={0.78} />
+      </mesh>
+      <FocusHalo active={active} radius={0.92} color="#33cccc" />
     </group>
   );
 }

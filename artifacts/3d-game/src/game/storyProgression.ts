@@ -30,13 +30,36 @@ export interface RewardEvent {
   sticker?: string;
 }
 
-export type CaperStep = 'idle' | 'plan' | 'gather' | 'teacher-check' | 'celebrate' | 'complete';
+export type CaperStep =
+  | 'idle'
+  | 'plan'
+  | 'scout'
+  | 'teacher-check'
+  | 'patrol-timing'
+  | 'safe-distraction'
+  | 'retrieve'
+  | 'escape'
+  | 'interrupted'
+  | 'celebrate'
+  | 'complete';
+export type CaperRole = 'none' | 'route-leader' | 'lookout' | 'supply-helper';
 
 export interface CaperState {
-  version: 1;
+  version: 2;
   step: CaperStep;
   attempts: number;
   consequence: 'none' | 'teacher-guided' | 'friends-helped';
+  role: CaperRole;
+  helper: 'none' | 'Mae' | 'Sam' | 'Zoe';
+  route: 'none' | 'reading-corner' | 'garden-gate' | 'art-hall';
+  retrieval: 'none' | 'parade-banner';
+  interruptions: number;
+  scouted: boolean;
+  teacherApproved: boolean;
+  patrolStartedAt: number;
+  patrolObserved: boolean;
+  setupReady: boolean;
+  retrieved: boolean;
 }
 
 export interface DistrictProgress {
@@ -46,10 +69,21 @@ export interface DistrictProgress {
 }
 
 export const createInitialCaper = (): CaperState => ({
-  version: 1,
+  version: 2,
   step: 'idle',
   attempts: 0,
   consequence: 'none',
+  role: 'none',
+  helper: 'none',
+  route: 'none',
+  retrieval: 'none',
+  interruptions: 0,
+  scouted: false,
+  teacherApproved: false,
+  patrolStartedAt: 0,
+  patrolObserved: false,
+  setupReady: false,
+  retrieved: false,
 });
 
 export const createInitialDistrictProgress = (): DistrictProgress => ({
@@ -62,17 +96,79 @@ export function normalizeCaper(value: unknown): CaperState {
   const initial = createInitialCaper();
   if (!value || typeof value !== 'object' || Array.isArray(value)) return initial;
   const candidate = value as Partial<CaperState>;
-  const steps = new Set<CaperStep>(['idle', 'plan', 'gather', 'teacher-check', 'celebrate', 'complete']);
+  const rawCandidate = value as Record<string, unknown>;
+  const steps = new Set<CaperStep>([
+    'idle',
+    'plan',
+    'scout',
+    'teacher-check',
+    'patrol-timing',
+    'safe-distraction',
+    'retrieve',
+    'escape',
+    'interrupted',
+    'celebrate',
+    'complete',
+  ]);
   const consequences = new Set<CaperState['consequence']>(['none', 'teacher-guided', 'friends-helped']);
+  const roles = new Set<CaperRole>(['none', 'route-leader', 'lookout', 'supply-helper']);
+  const helpers = new Set<CaperState['helper']>(['none', 'Mae', 'Sam', 'Zoe']);
+  const routes = new Set<CaperState['route']>(['none', 'reading-corner', 'garden-gate', 'art-hall']);
+  const rawStep = rawCandidate.step === 'gather' ? 'scout' : candidate.step;
+  const requestedStep = steps.has(rawStep as CaperStep) ? rawStep as CaperStep : 'idle';
+  const legacy = rawCandidate.version !== 2;
+  const legacyActive = legacy && requestedStep !== 'idle' && requestedStep !== 'plan';
+  const role = roles.has(candidate.role as CaperRole)
+    ? candidate.role as CaperRole
+    : legacyActive ? 'route-leader' : 'none';
+  const helper = helpers.has(candidate.helper as CaperState['helper'])
+    ? candidate.helper as CaperState['helper']
+    : legacyActive ? 'Mae' : 'none';
+  const route = routes.has(candidate.route as CaperState['route'])
+    ? candidate.route as CaperState['route']
+    : legacyActive ? 'garden-gate' : 'none';
+  const atOrAfter = (step: CaperStep) => {
+    const order: CaperStep[] = ['idle', 'plan', 'scout', 'teacher-check', 'patrol-timing', 'safe-distraction', 'retrieve', 'escape', 'celebrate', 'complete'];
+    return order.indexOf(requestedStep) >= order.indexOf(step);
+  };
+  const scouted = legacy ? atOrAfter('teacher-check') : candidate.scouted === true;
+  const teacherApproved = legacy ? atOrAfter('patrol-timing') : candidate.teacherApproved === true;
+  const patrolObserved = legacy ? atOrAfter('safe-distraction') : candidate.patrolObserved === true;
+  const setupReady = legacy ? atOrAfter('retrieve') : candidate.setupReady === true;
+  const retrieved = legacy ? atOrAfter('escape') : candidate.retrieved === true;
+  let step = requestedStep;
+  if (step !== 'idle' && step !== 'plan' && role === 'none') step = 'plan';
+  else if (atOrAfter('teacher-check') && !scouted) step = 'scout';
+  else if (atOrAfter('patrol-timing') && !teacherApproved) step = 'teacher-check';
+  else if (atOrAfter('safe-distraction') && !patrolObserved) step = 'patrol-timing';
+  else if (atOrAfter('retrieve') && !setupReady) step = 'safe-distraction';
+  else if (atOrAfter('escape') && !retrieved) step = 'retrieve';
   return {
-    version: 1,
-    step: steps.has(candidate.step as CaperStep) ? candidate.step as CaperStep : 'idle',
+    version: 2,
+    step,
     attempts: typeof candidate.attempts === 'number' && Number.isFinite(candidate.attempts)
       ? Math.min(99, Math.max(0, Math.floor(candidate.attempts)))
       : 0,
     consequence: consequences.has(candidate.consequence as CaperState['consequence'])
       ? candidate.consequence as CaperState['consequence']
       : 'none',
+    role,
+    helper,
+    route,
+    retrieval: candidate.retrieval === 'parade-banner' || retrieved
+      ? 'parade-banner'
+      : 'none',
+    interruptions: typeof candidate.interruptions === 'number' && Number.isFinite(candidate.interruptions)
+      ? Math.min(20, Math.max(0, Math.floor(candidate.interruptions)))
+      : 0,
+    scouted,
+    teacherApproved,
+    patrolStartedAt: typeof candidate.patrolStartedAt === 'number' && Number.isFinite(candidate.patrolStartedAt)
+      ? Math.max(0, candidate.patrolStartedAt)
+      : 0,
+    patrolObserved,
+    setupReady,
+    retrieved,
   };
 }
 
@@ -89,26 +185,96 @@ export function normalizeDistrictProgress(value: unknown): DistrictProgress {
 export function startCaper(caper: CaperState): CaperState {
   if (caper.step !== 'idle' && caper.step !== 'complete') return caper;
   return {
-    version: 1,
+    version: 2,
     step: 'plan',
     attempts: caper.attempts + 1,
     consequence: 'none',
+    role: 'none',
+    helper: 'none',
+    route: 'none',
+    retrieval: 'none',
+    interruptions: 0,
+    scouted: false,
+    teacherApproved: false,
+    patrolStartedAt: 0,
+    patrolObserved: false,
+    setupReady: false,
+    retrieved: false,
+  };
+}
+
+export function chooseCaperRole(caper: CaperState, role: Exclude<CaperRole, 'none'>): CaperState {
+  if (caper.step !== 'plan' || caper.role !== 'none') return caper;
+  const choices: Record<Exclude<CaperRole, 'none'>, Pick<CaperState, 'helper' | 'route'>> = {
+    'route-leader': { helper: 'Mae', route: 'garden-gate' },
+    lookout: { helper: 'Zoe', route: 'reading-corner' },
+    'supply-helper': { helper: 'Sam', route: 'art-hall' },
+  };
+  return {
+    ...caper,
+    step: 'scout',
+    role,
+    ...choices[role],
+    scouted: false,
   };
 }
 
 export function advanceCaper(caper: CaperState): CaperState {
   const next: Partial<Record<CaperStep, CaperStep>> = {
-    plan: 'gather',
-    gather: 'teacher-check',
-    'teacher-check': 'celebrate',
+    scout: 'teacher-check',
+    'teacher-check': 'patrol-timing',
+    escape: 'celebrate',
+    interrupted: 'scout',
     celebrate: 'complete',
   };
+  if (caper.step === 'teacher-check' && !caper.scouted) return caper;
+  if (caper.step === 'escape' && !caper.retrieved) return caper;
   const nextStep = next[caper.step];
   if (!nextStep) return caper;
   return {
     ...caper,
     step: nextStep,
-    consequence: caper.step === 'teacher-check' ? 'teacher-guided' : caper.consequence,
+    consequence: nextStep === 'complete' && caper.consequence === 'none'
+      ? 'friends-helped'
+      : caper.consequence,
+    retrieval: caper.step === 'retrieve' ? 'parade-banner' : caper.retrieval,
+    scouted: caper.step === 'scout' ? true : caper.scouted,
+    teacherApproved: caper.step === 'teacher-check' ? true : caper.teacherApproved,
+    patrolStartedAt: caper.step === 'teacher-check' ? 0 : caper.patrolStartedAt,
+  };
+}
+
+export function observeCaperPatrol(caper: CaperState, now: number): CaperState {
+  if (caper.step !== 'patrol-timing' || !caper.teacherApproved || !Number.isFinite(now)) return caper;
+  if (caper.patrolStartedAt <= 0) return { ...caper, patrolStartedAt: now };
+  if (now - caper.patrolStartedAt < 2_500) return caper;
+  return { ...caper, step: 'safe-distraction', patrolObserved: true };
+}
+
+export function completeCaperSafeSetup(caper: CaperState): CaperState {
+  if (caper.step !== 'safe-distraction' || !caper.teacherApproved || !caper.patrolObserved) return caper;
+  return { ...caper, step: 'retrieve', setupReady: true };
+}
+
+export function completeCaperRetrieval(caper: CaperState): CaperState {
+  if (caper.step !== 'retrieve' || !caper.teacherApproved || !caper.setupReady) return caper;
+  return { ...caper, step: 'escape', retrieval: 'parade-banner', retrieved: true };
+}
+
+export function interruptCaper(caper: CaperState): CaperState {
+  if (!new Set<CaperStep>(['patrol-timing', 'safe-distraction', 'retrieve', 'escape']).has(caper.step)) return caper;
+  return {
+    ...caper,
+    step: 'interrupted',
+    consequence: 'teacher-guided',
+    retrieval: 'none',
+    interruptions: Math.min(20, caper.interruptions + 1),
+    scouted: false,
+    teacherApproved: false,
+    patrolStartedAt: 0,
+    patrolObserved: false,
+    setupReady: false,
+    retrieved: false,
   };
 }
 

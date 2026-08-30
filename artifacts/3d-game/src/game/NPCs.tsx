@@ -373,7 +373,13 @@ function Teacher({
       suspicionAccumulator.current = 0;
       const inStorage = playerRef.current.position.x < -8 && playerRef.current.position.z > 8;
       const store = useGameStore.getState();
-      const storageAuthorized = objectiveIsActive(store.quests, 'where-binky', 'search-storage');
+      const storageAuthorized = objectiveIsActive(store.quests, 'where-binky', 'search-storage')
+        || (
+          (store.caper.step === 'retrieve' || store.caper.step === 'escape')
+          && store.caper.teacherApproved
+          && store.caper.patrolObserved
+          && store.caper.setupReady
+        );
       if (inStorage && !storageAuthorized) {
         store.setTeacherSuspicion((current) => {
           const next = current + suspicionDelta * 20;

@@ -10,6 +10,7 @@ import { addCameraOrbit, consumeCameraRecenterRequest, getCameraInput, getCamera
 import { isGameplayBlocked } from './gameplayGate';
 import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, resolveMovement, trackPlayerPosition } from './world';
 import { CameraRig, advanceCameraPosition } from './cameraRig';
+import { useModeStore } from './modeStore';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -27,6 +28,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const playerPosition = useGameStore((s) => s.playerPosition);
   const zoneTransitioning = useGameStore((s) => s.zoneTransitioning);
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition);
+  const frontEndBlocked = useModeStore((s) => s.menuOpen || s.activeMode === 'online-preview');
   
   // State
   const velocity = useRef(new THREE.Vector3());
@@ -53,7 +55,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
   const positionSaveAccumulator = useRef(0);
-  gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning });
+  gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning, frontEndBlocked });
   const cameraProfile = getCameraProfile(size.width, size.height);
   const zoneCameraBlockers = useMemo(
     () => CAMERA_BLOCKERS.filter((solid) => solid.zone === zone),

@@ -220,6 +220,29 @@ try {
     await writeFile(path.join(process.env.DAYKARE_CAPTURE_DIR, 'daykare-swiftshader-mobile.png'), Buffer.from(mobile.data, 'base64'));
   }
 
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=button-story]"))', 'front-end menu');
+  assert.equal(
+    await evaluate(client, 'document.querySelector("[data-testid=status-online-players]")?.textContent?.includes("Offline") === true'),
+    true,
+    'Online menu entry is explicitly offline',
+  );
+  await evaluate(client, 'document.querySelector("[data-testid=button-online]")?.click()');
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=overlay-online-lobby]"))', 'Online preview lobby');
+  assert.equal(
+    await evaluate(client, 'document.querySelector("[data-testid=status-networking]")?.textContent?.includes("not connected yet") === true'),
+    true,
+    'Online lobby truthfully reports the disconnected networking boundary',
+  );
+  assert.equal(
+    await evaluate(client, 'document.querySelectorAll("[data-testid^=card-online-seat-]").length'),
+    8,
+    'Online preview renders its local NPC and staff fill seats',
+  );
+  await evaluate(client, 'document.querySelector("[data-testid=button-online-back]")?.click()');
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=button-story]"))', 'return to front-end menu');
+  await evaluate(client, 'document.querySelector("[data-testid=button-story]")?.click()');
+  await waitFor(client, '!document.querySelector("[data-testid=overlay-game-menu]")', 'Story Mode resume');
+
   const modulePath = JSON.stringify(new URL('src/game/store.ts', targetUrl).href);
   await evaluate(client, `(async () => {
     const { useGameStore } = await import(${modulePath});

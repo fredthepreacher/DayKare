@@ -700,3 +700,863 @@
     width: min(calc(100vw - 32px), 24rem);
   }
 }
+
+/* --- DayKare Game Menu Additions --- */
+
+.daykare-menu-backdrop {
+  animation: dk-menu-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.daykare-menu-panel {
+  animation: dk-menu-slide-in 0.5s cubic-bezier(0.2, 1, 0.4, 1) forwards;
+}
+
+.daykare-menu-item {
+  opacity: 0;
+  animation: dk-menu-item-slide 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.daykare-menu-item:nth-child(1) { animation-delay: 0.10s; }
+.daykare-menu-item:nth-child(2) { animation-delay: 0.16s; }
+.daykare-menu-item:nth-child(3) { animation-delay: 0.22s; }
+.daykare-menu-item:nth-child(4) { animation-delay: 0.28s; }
+.daykare-menu-item:nth-child(5) { animation-delay: 0.34s; }
+
+@keyframes dk-menu-fade-in {
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to { opacity: 1; backdrop-filter: blur(12px); }
+}
+
+@keyframes dk-menu-slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes dk-menu-item-slide {
+  from { opacity: 0; transform: translateX(-24px) scale(0.96); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.daykare-online-shell,
+.daykare-front-panel-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: clamp(12px, 3vw, 36px);
+  overflow: auto;
+  background:
+    radial-gradient(circle at 86% 8%, rgb(255 209 102 / 35%), transparent 32%),
+    radial-gradient(circle at 10% 94%, rgb(51 204 204 / 30%), transparent 34%),
+    rgb(52 36 27 / 78%);
+  color: #4b3021;
+  backdrop-filter: blur(14px);
+  pointer-events: auto;
+}
+
+.daykare-online-panel {
+  width: min(1180px, 100%);
+  max-height: calc(100dvh - clamp(24px, 6vw, 72px));
+  overflow: auto;
+  border: 6px solid #704324;
+  border-radius: 30px;
+  background: #fffaf1;
+  box-shadow: 0 28px 80px rgb(30 18 12 / 42%);
+}
+
+.daykare-online-header,
+.daykare-front-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 28px;
+  border-bottom: 2px solid #eadcca;
+  background: #fffdf8;
+}
+
+.daykare-online-title-row {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+}
+
+.daykare-online-title-row h1,
+.daykare-front-panel-header h1 {
+  margin: 1px 0 0;
+  font-family: var(--app-font-serif);
+  font-size: clamp(28px, 4vw, 43px);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.daykare-online-mark {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  place-items: center;
+  border: 3px solid #188d91;
+  border-radius: 18px;
+  background: #33cccc;
+  color: #fff;
+  box-shadow: inset 0 -6px 0 rgb(1 83 87 / 12%);
+}
+
+.daykare-online-mark svg {
+  width: 29px;
+  height: 29px;
+}
+
+.daykare-eyebrow {
+  margin: 0;
+  color: #986326;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.daykare-plain-button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 2px solid #dfcbb8;
+  border-radius: 14px;
+  background: #fff;
+  color: #6a442d;
+  font-weight: 900;
+  box-shadow: 0 3px 0 #dfcbb8;
+}
+
+.daykare-plain-button svg {
+  width: 18px;
+}
+
+.daykare-preview-pill,
+.daykare-seat-count {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #efe7ff;
+  color: #674596;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.daykare-online-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 22px 28px 0;
+  padding: 14px 16px;
+  border: 2px solid #e9bd4d;
+  border-radius: 17px;
+  background: #fff4cb;
+}
+
+.daykare-online-notice p,
+.daykare-customize-card p,
+.daykare-online-safety-card p,
+.daykare-lockup-card p,
+.daykare-feature-card p {
+  margin: 3px 0 0;
+  color: #725845;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.daykare-notice-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #da7b20;
+  box-shadow: 0 0 0 5px rgb(218 123 32 / 16%);
+}
+
+.daykare-online-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 24px;
+  padding: 24px 28px 30px;
+}
+
+.daykare-online-section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 13px;
+}
+
+.daykare-online-section-heading.compact {
+  margin-top: 26px;
+}
+
+.daykare-online-section-heading h2,
+.daykare-customize-card h2,
+.daykare-progress-hero h2,
+.daykare-feature-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 3px 0 0;
+  font-family: var(--app-font-serif);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.daykare-online-section-heading h2 svg {
+  width: 21px;
+}
+
+.daykare-seat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.daykare-seat-card {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+  padding: 10px;
+  border: 2px solid #e7d8c6;
+  border-radius: 17px;
+  background: #fff;
+}
+
+.daykare-seat-card.is-open {
+  border-style: dashed;
+  background: #faf4ea;
+}
+
+.daykare-seat-avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 2px solid rgb(70 41 25 / 18%);
+  border-radius: 14px;
+  color: white;
+  font-weight: 950;
+  box-shadow: inset 0 -4px 0 rgb(42 21 11 / 10%);
+}
+
+.daykare-seat-avatar.is-open {
+  background: #efe6d9;
+  color: #957761;
+}
+
+.daykare-seat-avatar svg {
+  width: 20px;
+}
+
+.daykare-seat-card strong,
+.daykare-seat-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daykare-seat-card strong {
+  font-size: 14px;
+}
+
+.daykare-seat-card small {
+  color: #8a7160;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.daykare-seat-status {
+  display: grid;
+  min-width: 28px;
+  margin-left: auto;
+  place-items: center;
+  color: #9b806e;
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.daykare-seat-status.is-ready {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #dff5df;
+  color: #398145;
+}
+
+.daykare-seat-status svg {
+  width: 14px;
+}
+
+.daykare-visibility-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.daykare-visibility-option {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 15px;
+  align-items: center;
+  gap: 9px;
+  min-height: 70px;
+  padding: 10px;
+  border: 2px solid #e4d6c6;
+  border-radius: 16px;
+  background: #fff;
+  color: #5d402d;
+  text-align: left;
+}
+
+.daykare-visibility-option.is-selected {
+  border-color: #28aeb1;
+  background: #ebfbf9;
+  box-shadow: 0 0 0 2px rgb(51 204 204 / 16%);
+}
+
+.daykare-visibility-option > svg {
+  width: 23px;
+  color: #2b999c;
+}
+
+.daykare-visibility-option strong,
+.daykare-visibility-option small {
+  display: block;
+}
+
+.daykare-visibility-option strong {
+  font-size: 12px;
+}
+
+.daykare-visibility-option small {
+  margin-top: 2px;
+  color: #8d7360;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.daykare-radio-dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #bea996;
+  border-radius: 50%;
+}
+
+.daykare-visibility-option.is-selected .daykare-radio-dot {
+  border: 4px solid #28aeb1;
+  background: #fff;
+}
+
+.daykare-invite-code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #f1e9ff;
+  color: #62408f;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.daykare-invite-code strong {
+  margin-left: auto;
+  letter-spacing: .15em;
+}
+
+.daykare-invite-code button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.daykare-invite-code svg {
+  width: 16px;
+}
+
+.daykare-online-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.daykare-customize-card,
+.daykare-online-safety-card {
+  padding: 20px;
+  border: 2px solid #eadaca;
+  border-radius: 21px;
+  background: #fff;
+}
+
+.daykare-customize-card {
+  border-color: #f1a9ce;
+  background: #fff0f7;
+}
+
+.daykare-muted-copy {
+  margin-bottom: 14px !important;
+}
+
+.daykare-choice-button,
+.daykare-front-action {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 9px;
+  padding: 10px 12px;
+  border: 2px solid #dfcdd7;
+  border-radius: 15px;
+  background: #fff;
+  color: #64344d;
+  text-align: left;
+}
+
+.daykare-choice-button strong {
+  flex: 1;
+}
+
+.daykare-choice-button span:last-child,
+.daykare-front-action > span:last-child {
+  color: #a26a87;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.daykare-online-safety-card {
+  background: #eef9e9;
+  border-color: #b7dca8;
+}
+
+.daykare-online-story-button {
+  min-height: 52px;
+  margin-top: auto;
+  border: 2px solid #53321f;
+  border-radius: 16px;
+  background: #6b4026;
+  color: #fff;
+  font-weight: 900;
+  box-shadow: 0 4px 0 #3f2416;
+}
+
+.daykare-front-panel {
+  width: min(680px, 100%);
+  max-height: calc(100dvh - clamp(24px, 6vw, 72px));
+  overflow: auto;
+  border: 6px solid #704324;
+  border-radius: 28px;
+  background: #fffaf1;
+  box-shadow: 0 28px 80px rgb(30 18 12 / 42%);
+}
+
+.daykare-front-panel-header > div {
+  min-width: 0;
+}
+
+.daykare-front-panel-content {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.daykare-feature-card {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  border: 2px solid #f0b4d3;
+  border-radius: 22px;
+  background: #fff0f7;
+}
+
+.daykare-feature-card-blue {
+  border-color: #9fdedf;
+  background: #eafafa;
+}
+
+.daykare-feature-card > svg {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  color: #c43d83;
+}
+
+.daykare-feature-card-blue > svg {
+  color: #248f92;
+}
+
+.daykare-front-action {
+  min-height: 72px;
+  margin: 0;
+  border-color: #ddcebd;
+  color: #553725;
+}
+
+.daykare-front-action.is-primary {
+  border-color: #d79327;
+  background: #fff0c7;
+}
+
+.daykare-front-action > span:nth-child(2) {
+  display: grid;
+  flex: 1;
+}
+
+.daykare-front-action small {
+  color: #896f5e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.daykare-color-swatch,
+.daykare-bookmark-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 2px solid rgb(73 42 25 / 18%);
+  border-radius: 13px;
+  color: #fff;
+  font-family: var(--app-font-serif);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.daykare-bookmark-icon {
+  background: #d29426;
+}
+
+.daykare-lockup-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px;
+  border: 2px solid #b7dca8;
+  border-radius: 17px;
+  background: #eef9e9;
+}
+
+.daykare-lockup-card > svg {
+  width: 20px;
+  color: #3b8646;
+}
+
+.daykare-progress-hero {
+  padding: 20px;
+  border: 2px solid #e2c56a;
+  border-radius: 22px;
+  background: linear-gradient(135deg, #fff0ba, #ffe0c1);
+}
+
+.daykare-stat-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.daykare-stat-row span {
+  display: grid;
+  min-width: 120px;
+  padding: 10px 13px;
+  border: 1px solid rgb(127 83 33 / 16%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 65%);
+}
+
+.daykare-stat-row strong {
+  font-size: 22px;
+}
+
+.daykare-stat-row small,
+.daykare-progress-grid span {
+  color: #8c6f57;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.daykare-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.daykare-progress-grid > div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border: 2px solid #e8dac9;
+  border-radius: 16px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.daykare-setting-row {
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 2px solid #e4d6c6;
+  border-radius: 17px;
+  background: #fff;
+}
+
+.daykare-setting-row > span:first-child {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  flex: 1;
+  align-items: center;
+}
+
+.daykare-setting-row svg {
+  grid-row: 1 / 3;
+  width: 22px;
+  color: #a06b31;
+}
+
+.daykare-setting-row small {
+  color: #8b735f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.daykare-toggle-button,
+.daykare-setting-static {
+  min-width: 64px;
+  padding: 8px 10px;
+  border: 2px solid #d4c2ae;
+  border-radius: 12px;
+  background: #f5ede4;
+  color: #65462f;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.daykare-setting-button {
+  width: 100%;
+  color: inherit;
+  text-align: left;
+}
+
+.daykare-setting-button.is-on {
+  border-color: #35aaad;
+  background: #effdfb;
+}
+
+.daykare-switch {
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  background: #cdbdab;
+}
+
+.daykare-switch span {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .2s ease;
+  box-shadow: 0 2px 4px rgb(69 45 30 / 25%);
+}
+
+.daykare-setting-button.is-on .daykare-switch {
+  background: #35aaad;
+}
+
+.daykare-setting-button.is-on .daykare-switch span {
+  transform: translateX(20px);
+}
+
+.daykare-plain-button:hover,
+.daykare-visibility-option:hover,
+.daykare-choice-button:hover,
+.daykare-front-action:hover,
+.daykare-setting-button:hover {
+  filter: brightness(.98);
+  transform: translateY(-1px);
+}
+
+.daykare-plain-button:focus-visible,
+.daykare-visibility-option:focus-visible,
+.daykare-choice-button:focus-visible,
+.daykare-front-action:focus-visible,
+.daykare-setting-button:focus-visible,
+.daykare-online-story-button:focus-visible,
+.daykare-invite-code button:focus-visible {
+  outline: 4px solid #33cccc;
+  outline-offset: 3px;
+}
+
+@media (max-width: 820px) {
+  .daykare-online-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daykare-online-side-column {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .daykare-online-story-button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .daykare-online-shell,
+  .daykare-front-panel-shell {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .daykare-online-panel,
+  .daykare-front-panel {
+    max-height: calc(100dvh - 16px);
+    border-width: 4px;
+    border-radius: 22px;
+  }
+
+  .daykare-online-header,
+  .daykare-front-panel-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .daykare-online-title-row {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .daykare-preview-pill {
+    margin-left: auto;
+  }
+
+  .daykare-online-notice {
+    margin: 14px 14px 0;
+  }
+
+  .daykare-online-grid {
+    gap: 16px;
+    padding: 16px 14px 22px;
+  }
+
+  .daykare-seat-grid,
+  .daykare-online-side-column,
+  .daykare-progress-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daykare-visibility-list {
+    grid-template-columns: 1fr;
+  }
+
+  .daykare-visibility-option {
+    min-height: 60px;
+  }
+
+  .daykare-front-panel-content {
+    padding: 15px;
+  }
+
+  .daykare-stat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daykare-menu-backdrop,
+  .daykare-menu-panel,
+  .daykare-menu-item {
+    animation: none;
+    opacity: 1;
+  }
+
+  .daykare-switch span {
+    transition: none;
+  }
+}
+
+.daykare-reduce-motion .daykare-menu-backdrop,
+.daykare-reduce-motion .daykare-menu-panel,
+.daykare-reduce-motion .daykare-menu-item {
+  animation: none;
+  opacity: 1;
+}
+
+.daykare-reduce-motion *,
+.daykare-reduce-motion *::before,
+.daykare-reduce-motion *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.01ms !important;
+}
+
+.daykare-high-contrast .daykare-menu-panel,
+.daykare-high-contrast .daykare-online-panel,
+.daykare-high-contrast .daykare-front-panel {
+  border-color: #251308;
+  box-shadow: 0 0 0 4px #fff, 0 28px 80px rgb(0 0 0 / 62%);
+}
+
+.daykare-high-contrast button:focus-visible {
+  outline-color: #0736ff !important;
+  outline-width: 5px !important;
+}
+
+.daykare-larger-text .daykare-menu-panel,
+.daykare-larger-text .daykare-online-panel,
+.daykare-larger-text .daykare-front-panel {
+  font-size: 112%;
+}
+
+.daykare-larger-text .daykare-menu-item > div:nth-child(2) > div:first-child {
+  font-size: 25px;
+}
+
+.daykare-larger-text .daykare-menu-item > div:nth-child(2) > div:nth-child(2),
+.daykare-larger-text .daykare-online-notice p,
+.daykare-larger-text .daykare-feature-card p,
+.daykare-larger-text .daykare-customize-card p,
+.daykare-larger-text .daykare-online-safety-card p {
+  font-size: 15px;
+}
+
+.daykare-larger-text .daykare-seat-card strong,
+.daykare-larger-text .daykare-visibility-option strong {
+  font-size: 15px;
+}
+
+.daykare-larger-text .daykare-seat-card small,
+.daykare-larger-text .daykare-visibility-option small,
+.daykare-larger-text .daykare-setting-row small {
+  font-size: 12px;
+}
+

@@ -32,6 +32,9 @@ import { resetTouchInput } from './touchInput';
 import {
   appendRewardEvent,
   chooseMaeIntroduction,
+  chooseCaperRole as chooseCaperRoleState,
+  completeCaperRetrieval as completeCaperRetrievalState,
+  completeCaperSafeSetup as completeCaperSafeSetupState,
   createInitialRivalStory,
   normalizeRivalStory,
   recordGardenStoryMilestone,
@@ -43,8 +46,11 @@ import {
   createInitialDistrictProgress,
   normalizeCaper,
   normalizeDistrictProgress,
+  interruptCaper as interruptCaperState,
+  observeCaperPatrol as observeCaperPatrolState,
   startCaper as startCaperState,
   type CaperState,
+  type CaperRole,
   type DistrictProgress,
   type RewardEvent,
   type RivalChoice,
@@ -177,7 +183,12 @@ export interface GameState {
   resolveRivalStory: () => boolean;
   dismissRewardEvent: (id: string) => void;
   startCaper: () => boolean;
+  chooseCaperRole: (role: Exclude<CaperRole, 'none'>) => boolean;
   advanceCaper: () => boolean;
+  observeCaperPatrol: (now: number) => boolean;
+  completeCaperSafeSetup: () => boolean;
+  completeCaperRetrieval: () => boolean;
+  interruptCaper: () => boolean;
   advanceDistrictPreview: (district: 'makerMarket' | 'storybookLane') => boolean;
   activateOptionalRewardBoost: (now: number) => boolean;
   addProgressionTokens: (amount: number) => void;
@@ -1348,6 +1359,16 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      chooseCaperRole: (role) => {
+        let changed = false;
+        set((state) => {
+          const caper = chooseCaperRoleState(state.caper, role);
+          if (caper === state.caper) return state;
+          changed = true;
+          return { caper };
+        });
+        return changed;
+      },
       advanceCaper: () => {
         let changed = false;
         set((state) => {
@@ -1373,6 +1394,49 @@ export const useGameStore = create<GameState>()(
               reputation: 2,
               sticker: 'Kindness Crew',
             }),
+          };
+        });
+        return changed;
+      },
+      observeCaperPatrol: (now) => {
+        let changed = false;
+        set((state) => {
+          const caper = observeCaperPatrolState(state.caper, now);
+          if (caper === state.caper) return state;
+          changed = true;
+          return { caper };
+        });
+        return changed;
+      },
+      completeCaperSafeSetup: () => {
+        let changed = false;
+        set((state) => {
+          const caper = completeCaperSafeSetupState(state.caper);
+          if (caper === state.caper) return state;
+          changed = true;
+          return { caper };
+        });
+        return changed;
+      },
+      completeCaperRetrieval: () => {
+        let changed = false;
+        set((state) => {
+          const caper = completeCaperRetrievalState(state.caper);
+          if (caper === state.caper) return state;
+          changed = true;
+          return { caper };
+        });
+        return changed;
+      },
+      interruptCaper: () => {
+        let changed = false;
+        set((state) => {
+          const caper = interruptCaperState(state.caper);
+          if (caper === state.caper) return state;
+          changed = true;
+          return {
+            caper,
+            ambientMessage: 'Ms. Harper pauses the plan, clears the route, and helps everyone reset safely.',
           };
         });
         return changed;

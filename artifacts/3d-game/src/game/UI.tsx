@@ -12,12 +12,14 @@ import {
   AlertTriangle,
   MapPinned,
   Star,
+  Menu,
 } from 'lucide-react';
 import { TouchControls } from './TouchControls';
 import { HUB_ROUTES, isRouteUnlocked, requirementLabel, requirementProgressLabel } from './progression';
 import { getActiveQuest, getCurrentObjective, objectiveIsActive } from './quests';
 import { playGameSound, unlockGameAudio } from './audio';
 import { dialogueDismissLabel } from './dialogueActions';
+import { useModeStore } from './modeStore';
 import {
   acknowledgeTeacherCall,
   getTeacherInterventionSnapshot,
@@ -95,9 +97,16 @@ export function UI() {
     caper,
     districtProgress,
     startCaper,
+    chooseCaperRole,
     advanceCaper,
+    observeCaperPatrol,
+    completeCaperSafeSetup,
+    completeCaperRetrieval,
+    interruptCaper,
     advanceDistrictPreview,
   } = useGameStore();
+  const frontEndBlocked = useModeStore((state) => state.menuOpen || state.activeMode === 'online-preview');
+  const openMenu = useModeStore((state) => state.openMenu);
 
   const [subscribe] = useKeyboardControls<Controls>();
   const interactRef = useRef<() => void>(() => undefined);
@@ -188,10 +197,10 @@ export function UI() {
     return subscribe(
       (state) => state.journal,
       (pressed) => {
-        if (pressed && !activeDialogue && !zoneTransitioning) toggleJournal();
+        if (pressed && !activeDialogue && !zoneTransitioning && !frontEndBlocked) toggleJournal();
       }
     );
-  }, [subscribe, toggleJournal, activeDialogue, zoneTransitioning]);
+  }, [subscribe, toggleJournal, activeDialogue, zoneTransitioning, frontEndBlocked]);
 
   // Juice Club Customers Simulation
   useEffect(() => {
@@ -228,7 +237,7 @@ export function UI() {
 
   useEffect(() => {
     const runInteraction = () => {
-      if (zoneTransitioning) return;
+      if (zoneTransitioning || frontEndBlocked) return;
       unlockGameAudio();
       if (activeDialogue || isRiding || activeInteractable) {
         playGameSound('interaction', 'interaction');
@@ -391,21 +400,29 @@ export function UI() {
             if (startCaper()) {
               setActiveDialogue({
                 name: 'Sticker Parade Plan',
-                text: 'Mae’s safe caper has one rule: nobody sneaks, takes, or gets left out. First, choose a parade route that stays clear of the tricycle loop.',
+                text: 'Mae’s safe caper has one rule: nobody sneaks, takes, or gets left out. Choose the role you want to practice.',
+                options: [
+                  { label: 'Route Leader', action: () => { chooseCaperRole('route-leader'); setActiveDialogue({ name: 'Mae', text: 'You lead the garden-gate route. I’ll keep the plan card and check each turn with you.' }); } },
+                  { label: 'Lookout', action: () => { chooseCaperRole('lookout'); setActiveDialogue({ name: 'Zoe', text: 'We watch for clear hallways and call a pause if anyone needs the path.' }); } },
+                  { label: 'Supply Helper', action: () => { chooseCaperRole('supply-helper'); setActiveDialogue({ name: 'Sam', text: 'We count washable stickers and carry only what Ms. Harper approves.' }); } },
+                ],
               });
             }
           } else if (caper.step === 'plan') {
+            setActiveDialogue({
+              name: 'Sticker Parade Plan',
+              text: 'Pick one role before the route opens.',
+              options: [
+                { label: 'Route Leader', action: () => { chooseCaperRole('route-leader'); setActiveDialogue(null); } },
+                { label: 'Lookout', action: () => { chooseCaperRole('lookout'); setActiveDialogue(null); } },
+                { label: 'Supply Helper', action: () => { chooseCaperRole('supply-helper'); setActiveDialogue(null); } },
+              ],
+            });
+          } else if (caper.step === 'scout') {
             if (advanceCaper()) {
               setActiveDialogue({
                 name: 'Sticker Parade Plan',
-                text: 'Route planned. Next, gather pretend signs, ribbon scraps, and washable stickers from the public craft cart.',
-              });
-            }
-          } else if (caper.step === 'gather') {
-            if (advanceCaper()) {
-              setActiveDialogue({
-                name: 'Sticker Parade Plan',
-                text: 'Supplies ready. Show the plan to Ms. Harper before the parade starts—good capers have responsible grown-ups in the loop.',
+                text: `Scouting complete with ${caper.helper}. The ${caper.route.replace('-', ' ')} route has clear corners and a calm stopping spot. Show the plan to Ms. Harper next.`,
               });
             }
           } else if (caper.step === 'teacher-check') {
@@ -413,8 +430,68 @@ export function UI() {
               name: 'Sticker Parade Plan',
               text: 'The plan needs a grown-up check. Bring it to Ms. Harper before launching the parade.',
             });
+          } else if (caper.step === 'patrol-timing') {
+            setActiveDialogue({
+              name: 'Sticker Parade Plan',
+              text: caper.patrolStartedAt > 0
+                ? 'Keep watching until the marked teacher round is complete.'
+                : 'Ms. Harper marked a calm hallway window. Start the timer and watch one full teacher round before moving.',
+              options: [
+                {
+                  label: caper.patrolStartedAt > 0 ? 'Check Clear Path' : 'Start Watching',
+                  action: () => {
+                    const before = useGameStore.getState().caper;
+                    observeCaperPatrol(Date.now());
+                    const after = useGameStore.getState().caper;
+                    setActiveDialogue(after.step === 'safe-distraction'
+                      ? { name: 'Ms. Harper', text: 'Good waiting. The full round is complete, the hallway is clear, and I am watching the Storage doorway.' }
+                      : {
+                          name: 'Ms. Harper',
+                          text: before.patrolStartedAt > 0
+                            ? 'The round is still moving. Watch a little longer, then check again.'
+                            : 'Timer started. Watch the classroom, art hall, and playground turns before checking again.',
+                        });
+                  },
+                },
+                { label: 'Pause and Reset', action: () => { interruptCaper(); setActiveDialogue({ name: 'Ms. Harper', text: 'Pausing is a strong choice. We’ll clear the route and scout it together again.' }); } },
+              ],
+            });
+          } else if (caper.step === 'safe-distraction') {
+            setActiveDialogue({
+              name: 'Sticker Parade Plan',
+              text: 'The timing is right. Set the supervised bubble table in the public hall so the younger group has a calm activity while Ms. Harper opens Storage.',
+            });
+          } else if (caper.step === 'retrieve') {
+            setActiveDialogue({
+              name: 'Sticker Parade Plan',
+              text: 'Ms. Harper has authorized this objective and is supervising the Storage doorway. Retrieve the labeled parade banner, then return here.',
+            });
+          } else if (caper.step === 'escape') {
+            if (advanceCaper()) {
+              setActiveDialogue({ name: 'Sticker Parade Plan', text: 'Safe return complete. Everyone stayed on the approved route. The parade can begin.' });
+            }
+          } else if (caper.step === 'interrupted') {
+            if (advanceCaper()) {
+              setActiveDialogue({ name: 'Ms. Harper', text: 'Reset complete. Scout the route again with your helper; pausing did not erase your progress.' });
+            }
           } else if (caper.step === 'celebrate' && advanceCaper()) {
             setActiveDialogue(null);
+          }
+        } else if (activeInteractable === 'parade-banner') {
+          if (caper.step === 'retrieve' && completeCaperRetrieval()) {
+            setActiveInteractable(null);
+            setActiveDialogue({
+              name: 'Parade Banner',
+              text: 'You take only the labeled banner while Ms. Harper supervises. Follow the clear return route back to the plan board.',
+            });
+          }
+        } else if (activeInteractable === 'caper-bubble-table') {
+          if (caper.step === 'safe-distraction' && completeCaperSafeSetup()) {
+            setActiveInteractable(null);
+            setActiveDialogue({
+              name: 'Bubble Table',
+              text: 'The public hall activity is ready and supervised. Ms. Harper opens Storage for the labeled parade banner only.',
+            });
           }
         } else if (activeInteractable.startsWith('route-')) {
           const routeId = activeInteractable.replace('route-', '');
@@ -455,7 +532,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, collectShinyRock, rivalStory.beat, caper.step, districtProgress]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
@@ -659,6 +736,8 @@ export function UI() {
       if (caper.step === 'celebrate') return 'Launch Sticker Parade';
       return `Continue Caper · ${caper.step.replace('-', ' ')}`;
     }
+    if (activeInteractable === 'parade-banner') return 'Retrieve Parade Banner';
+    if (activeInteractable === 'caper-bubble-table') return 'Set Up Bubble Table';
     if (activeInteractable.startsWith('garden-landmark-')) {
       const labels: Record<string, string> = {
         pond: 'Notice Pond Ripples',
@@ -687,6 +766,8 @@ export function UI() {
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
     if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
     if (activeInteractable === 'caper-board') return 'Safe caper · planned with teacher supervision';
+    if (activeInteractable === 'parade-banner') return 'Authorized story objective · teacher supervised';
+    if (activeInteractable === 'caper-bubble-table') return 'Public hall setup · supervised activity';
     if (activeInteractable.startsWith('garden-landmark-')) return 'Garden discovery · safe observation point';
     if (activeInteractable.startsWith('garden-npc-')) return 'Garden routine';
     if (activeInteractable.startsWith('route-')) {
@@ -705,7 +786,7 @@ export function UI() {
   const interactionDetail = getInteractionDetail();
   const activeQuest = getActiveQuest(quests);
   const activeObjective = getCurrentObjective(quests);
-  const gameplayBlocked = journalOpen || Boolean(activeDialogue) || zoneTransitioning;
+  const gameplayBlocked = journalOpen || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked;
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">
@@ -782,6 +863,17 @@ export function UI() {
 
       {/* HUD - Top Right */}
       <div className="daykare-hud-right absolute top-6 right-6 flex flex-col items-end gap-3 pointer-events-auto">
+        <button
+          type="button"
+          onClick={openMenu}
+          disabled={Boolean(activeDialogue) || zoneTransitioning}
+          className="bg-card/90 backdrop-blur border-2 border-primary/20 p-3 rounded-xl shadow-lg flex items-center gap-3 hover:scale-105 transition-transform"
+          data-testid="button-open-game-menu"
+          aria-label="Open game menu"
+        >
+          <span className="font-bold hidden sm:block">Menu</span>
+          <Menu className="w-6 h-6 text-primary" />
+        </button>
         <button 
           onClick={toggleJournal}
           disabled={Boolean(activeDialogue) || zoneTransitioning}
