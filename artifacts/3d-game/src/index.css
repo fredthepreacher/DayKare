@@ -217,7 +217,13 @@
 
   .daykare-touch-recenter {
     position: fixed;
-    left: var(--daykare-touch-recenter-left, 50%);
+    left: calc(
+      var(--daykare-visual-right, 100vw)
+      - max(
+        35px,
+        calc(var(--daykare-safe-right, env(safe-area-inset-right, 0px)) + 31px)
+      )
+    );
     top: var(--daykare-touch-recenter-top, max(8px, env(safe-area-inset-top)));
     width: 46px;
     min-width: 46px;
@@ -567,6 +573,19 @@
   .daykare-hud-left,
   .daykare-hud-right {
     transform: scale(0.72);
+  }
+
+  .daykare-touch-movement {
+    bottom: max(8px, calc(env(safe-area-inset-bottom) + 6px));
+  }
+
+  .daykare-touch-pad {
+    width: 112px;
+    height: 112px;
+  }
+
+  .daykare-touch-hint {
+    display: none;
   }
 
   .daykare-center-notices {

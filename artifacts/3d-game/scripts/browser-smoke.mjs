@@ -112,12 +112,18 @@ async function dispatchKey(client, type, code, key) {
 }
 
 async function setViewport(client, width, height, mobile) {
-  await client.send('Emulation.setDeviceMetricsOverride', {
-    width,
-    height,
-    deviceScaleFactor: mobile ? 2 : 1,
-    mobile,
-  });
+  await Promise.all([
+    client.send('Emulation.setDeviceMetricsOverride', {
+      width,
+      height,
+      deviceScaleFactor: mobile ? 2 : 1,
+      mobile,
+    }),
+    client.send('Emulation.setTouchEmulationEnabled', {
+      enabled: mobile,
+      maxTouchPoints: mobile ? 5 : 1,
+    }),
+  ]);
   await sleep(180);
 }
 
@@ -637,6 +643,73 @@ try {
     'the completed Shiny Rock trade remains consumed after reload',
   );
 
+  const questModulePath = JSON.stringify(new URL('src/game/quests.ts', targetUrl).href);
+  await evaluate(client, `(async () => {
+    const quests = await import(${questModulePath});
+    const store = globalThis.__daykareStore;
+    let tidyQuests = quests.activateQuest(quests.createInitialQuests(), 'rainbow-tidy-up');
+    tidyQuests = quests.advanceObjective(tidyQuests, 'rainbow-tidy-up', 'collect-blue-block');
+    const state = store.getState();
+    store.setState({
+      quests: tidyQuests,
+      inventory: ['blue-block'],
+      tidyPlacedItems: [],
+      activeDialogue: null,
+      journalOpen: false,
+      zone: 'hub',
+      pendingZone: null,
+      zoneTransitioning: false,
+      playerPosition: [0, 0, -2.8],
+      hubPosition: [0, 0, -2.8],
+      teleportTrigger: state.teleportTrigger + 1,
+    });
+  })()`);
+  await waitFor(
+    client,
+    `globalThis.__daykareStore.getState().activeInteractable === 'activity-rainbow-tidy-up'
+      && document.querySelector('.daykare-touch-interact strong')?.textContent === 'Place Blue Block'`,
+    'carried blue block exposes its mobile station action',
+  );
+  await evaluate(client, `document.querySelector('.daykare-touch-interact').click()`);
+  await waitFor(
+    client,
+    `globalThis.__daykareStore.getState().quests['rainbow-tidy-up'].currentObjectiveId === 'collect-red-block'`,
+    'mobile blue-block placement advances the tidy objective',
+  );
+  assert.deepEqual(
+    await evaluate(client, `(() => {
+      const state = globalThis.__daykareStore.getState();
+      return {
+        inventory: state.inventory,
+        placed: state.tidyPlacedItems,
+        objective: state.quests['rainbow-tidy-up'].currentObjectiveId,
+      };
+    })()`),
+    { inventory: [], placed: ['blue-block'], objective: 'collect-red-block' },
+    'mobile placement consumes and records the blue block atomically',
+  );
+  await client.send('Page.reload', { ignoreCache: true });
+  await waitFor(client, 'document.readyState === "complete"', 'blue-block placement reload');
+  await waitFor(client, 'Boolean(document.querySelector("canvas"))', '3D canvas remount after blue-block placement');
+  await evaluate(client, `(async () => {
+    const { useGameStore } = await import(${modulePath});
+    globalThis.__daykareStore = useGameStore;
+  })()`);
+  assert.deepEqual(
+    await evaluate(client, `(() => {
+      const state = globalThis.__daykareStore.getState();
+      const duplicate = state.completeTidyToy('blue-block');
+      return {
+        duplicate,
+        inventory: state.inventory,
+        placed: state.tidyPlacedItems,
+        objective: state.quests['rainbow-tidy-up'].currentObjectiveId,
+      };
+    })()`),
+    { duplicate: false, inventory: [], placed: ['blue-block'], objective: 'collect-red-block' },
+    'blue-block placement survives reload without duplicate advancement or ownership',
+  );
+
   const waitForResource = async (fragment, message, timeoutMs = 8000) => {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
@@ -987,6 +1060,36 @@ try {
       [],
       `${viewport.label} keeps HUD and touch controls separated: ${JSON.stringify(controlLayout.overlaps)}`,
     );
+    const recenterControl = controlLayout.controls.find((control) => control.selector === '.daykare-touch-recenter');
+    assert.ok(
+      controlLayout.visual.right - recenterControl.right <= 24,
+      `${viewport.label} keeps Center camera in its dedicated right-side slot: ${JSON.stringify({
+        visualRight: controlLayout.visual.right,
+        recenter: recenterControl,
+        gap: controlLayout.visual.right - recenterControl.right,
+      })}`,
+    );
+    if (viewport.label === 'landscape') {
+      const safeAreaLayout = await evaluate(client, `(() => {
+        const root = document.documentElement;
+        root.style.setProperty('--daykare-safe-right', '44px');
+        const visual = window.visualViewport ?? {
+          offsetLeft: 0,
+          width: window.innerWidth,
+        };
+        const rect = document.querySelector('.daykare-touch-recenter').getBoundingClientRect();
+        const result = {
+          rightGap: visual.offsetLeft + visual.width - rect.right,
+          right: rect.right,
+        };
+        root.style.removeProperty('--daykare-safe-right');
+        return result;
+      })()`);
+      assert.ok(
+        safeAreaLayout.rightGap >= 52,
+        `landscape Center camera clears a nonzero right safe area: ${JSON.stringify(safeAreaLayout)}`,
+      );
+    }
     if (process.env.DAYKARE_CAPTURE_DIR) {
       const screenshot = await client.send('Page.captureScreenshot', { format: 'png' });
       const captureName = viewport.label.replaceAll(' ', '-');
@@ -1116,6 +1219,81 @@ try {
     })()`),
     { x: 0, y: 0, run: false, crouch: false },
     'touch cancellation releases pointer ownership and resets every movement mode',
+  );
+
+  const repeatedOrbit = await evaluate(client, `(async () => {
+    const cameraInput = await import(${cameraInputModulePath});
+    cameraInput.recenterCamera();
+    const pad = document.querySelector('.daykare-touch-pad');
+    const canvas = document.querySelector('.daykare-app-shell canvas');
+    pad.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 61,
+      pointerType: 'touch',
+      button: 0,
+      clientX: ${padPoint.x},
+      clientY: ${padPoint.y},
+    }));
+    pad.dispatchEvent(new PointerEvent('pointermove', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 61,
+      pointerType: 'touch',
+      clientX: ${padPoint.x + 34},
+      clientY: ${padPoint.y - 52},
+    }));
+    for (let drag = 0; drag < 8; drag += 1) {
+      const pointerId = 71 + drag;
+      canvas.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: 'touch',
+        button: 0,
+        clientX: ${lookPoint.x},
+        clientY: ${lookPoint.y},
+      }));
+      window.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: 'touch',
+        clientX: ${lookPoint.x + 110},
+        clientY: ${lookPoint.y},
+      }));
+      window.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId,
+        pointerType: 'touch',
+        clientX: ${lookPoint.x + 110},
+        clientY: ${lookPoint.y},
+      }));
+    }
+    const touch = await import(${touchModulePath});
+    const result = {
+      movementMagnitude: Math.hypot(touch.getTouchInput().x, touch.getTouchInput().y),
+      yaw: cameraInput.getCameraInput().yaw,
+    };
+    pad.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 61,
+      pointerType: 'touch',
+      clientX: ${padPoint.x + 34},
+      clientY: ${padPoint.y - 52},
+    }));
+    return result;
+  })()`);
+  assert.ok(repeatedOrbit.movementMagnitude > 0.5, 'repeated free-look drags leave joystick movement owned');
+  assert.ok(repeatedOrbit.yaw > Math.PI * 2, `repeated mobile free-look exceeds 360 degrees: ${repeatedOrbit.yaw}`);
+  assert.deepEqual(
+    await evaluate(client, `(async () => {
+      const touch = await import(${touchModulePath});
+      return { ...touch.getTouchInput() };
+    })()`),
+    { x: 0, y: 0, run: false, crouch: false },
+    'releasing movement after repeated look drags clears only the completed joystick stream',
   );
 
   await evaluate(client, `(() => {

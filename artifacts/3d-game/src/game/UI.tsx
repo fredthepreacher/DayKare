@@ -526,7 +526,12 @@ export function UI() {
     if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
-    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Place Toy';
+    if (activeInteractable === 'activity-rainbow-tidy-up') {
+      const item = quests['rainbow-tidy-up']?.currentObjectiveId?.replace('place-', '');
+      if (!item) return 'Place Toy';
+      const name = item.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+      return `Place ${name}`;
+    }
     if (activeInteractable === 'garden-return') return 'Return to DayKare';
     if (activeInteractable === 'garden-activity-host') {
       if (gardenActivityStep === 0) return 'Start Planting';

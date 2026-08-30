@@ -188,6 +188,69 @@ assert.equal(unchanged, quests);
 quests = activateQuest(quests, 'rainbow-tidy-up');
 assert.equal(quests['rainbow-tidy-up'].currentObjectiveId, 'collect-blue-block');
 
+let bluePlacementQuests = advanceObjective(quests, 'rainbow-tidy-up', 'collect-blue-block');
+useGameStore.getState().resetGame();
+useGameStore.setState({
+  quests: bluePlacementQuests,
+  inventory: ['red-block'],
+  tidyPlacedItems: [],
+});
+assert.equal(
+  useGameStore.getState().completeTidyToy('blue-block'),
+  false,
+  'the station rejects placement when the required block is not carried',
+);
+useGameStore.setState({ inventory: ['blue-block'] });
+assert.equal(useGameStore.getState().completeTidyToy('blue-block'), true);
+assert.deepEqual(useGameStore.getState().inventory, [], 'placement consumes the carried block atomically');
+assert.deepEqual(useGameStore.getState().tidyPlacedItems, ['blue-block']);
+assert.equal(useGameStore.getState().quests['rainbow-tidy-up'].currentObjectiveId, 'collect-red-block');
+assert.equal(
+  useGameStore.getState().completeTidyToy('blue-block'),
+  false,
+  'a placed block cannot advance the activity twice',
+);
+const reloadedBluePlacement = normalizePersistedGameState(serializeGameState(useGameStore.getState()));
+assert.deepEqual(reloadedBluePlacement.inventory, []);
+assert.deepEqual(reloadedBluePlacement.tidyPlacedItems, ['blue-block']);
+assert.equal(reloadedBluePlacement.quests['rainbow-tidy-up'].currentObjectiveId, 'collect-red-block');
+
+let finalPlacementQuests = quests;
+for (const objective of [
+  'collect-blue-block',
+  'place-blue-block',
+  'collect-red-block',
+  'place-red-block',
+  'collect-yellow-block',
+]) {
+  finalPlacementQuests = advanceObjective(finalPlacementQuests, 'rainbow-tidy-up', objective);
+}
+useGameStore.getState().resetGame();
+useGameStore.setState({
+  quests: finalPlacementQuests,
+  inventory: ['yellow-block'],
+  tidyPlacedItems: ['blue-block', 'red-block'],
+});
+const rewardBeforeTidy = useGameStore.getState().progression;
+assert.equal(useGameStore.getState().completeTidyToy('yellow-block'), true);
+const completedTidy = useGameStore.getState();
+assert.equal(completedTidy.progression.tokens, rewardBeforeTidy.tokens + 2);
+assert.equal(completedTidy.progression.reputation, rewardBeforeTidy.reputation + 2);
+assert.equal(completedTidy.progression.trustedHelperPass, true);
+assert.equal(completedTidy.quests['rainbow-tidy-up'].currentObjectiveId, 'collect-blue-block');
+const completedTidySave = normalizePersistedGameState(serializeGameState(completedTidy));
+assert.equal(completedTidySave.progression.tokens, completedTidy.progression.tokens);
+assert.equal(completedTidySave.progression.reputation, completedTidy.progression.reputation);
+assert.equal(completedTidySave.progression.activityRuns['rainbow-tidy-up'], 1);
+useGameStore.setState(completedTidySave);
+assert.equal(useGameStore.getState().completeTidyToy('yellow-block'), false);
+assert.equal(
+  useGameStore.getState().progression.activityRewards['rainbow-tidy-up'],
+  2,
+  'reload preserves one completion reward without allowing a duplicate',
+);
+useGameStore.getState().resetGame();
+
 const wallSlideStart = new THREE.Vector3(7.1, 0, 4);
 const wallSlideDesired = new THREE.Vector3(9, 0, 2.6);
 const wallSlideResult = resolveMovement(wallSlideStart, wallSlideDesired, PLAYER_RADIUS);
@@ -1267,8 +1330,9 @@ stepCameraInput(1 / 30);
 stepCameraInput(1 / 120);
 assert.equal(getCameraInput().yaw, directYaw, 'camera drag does not accumulate frame-dependent inertia');
 recenterCamera();
-addCameraOrbit(800, 500);
+for (let drag = 0; drag < 8; drag += 1) addCameraOrbit(125, drag % 2 === 0 ? 8 : -8);
 assert.ok(getCameraInput().yaw > Math.PI * 2, 'horizontal touch travel supports a complete orbit');
+addCameraOrbit(0, 500);
 assert.equal(getCameraInput().pitch, 0.62, 'vertical orbit stays within the comfortable upper pitch limit');
 addCameraOrbit(0, -500);
 assert.equal(getCameraInput().pitch, -0.05, 'vertical orbit stays within the comfortable lower pitch limit');
@@ -1563,6 +1627,33 @@ for (const route of HUB_ROUTES) {
   );
 }
 
+clearInteractionCandidates();
+registerInteractionCandidate({
+  id: 'approach-priority-station',
+  position: new THREE.Vector3(0, 0, -4),
+  approach: new THREE.Vector3(0, 0, -2.8),
+  range: 2.25,
+  priority: 70,
+  questPriority: true,
+  valid: true,
+});
+registerInteractionCandidate({
+  id: 'nearby-toy',
+  position: new THREE.Vector3(0.2, 0, -1),
+  range: 2,
+  priority: 12,
+  valid: true,
+});
+assert.equal(
+  resolveInteractionCandidate(new THREE.Vector3(0, 0, -0.6), new THREE.Vector3(0, 0, 1))?.id,
+  'approach-priority-station',
+  'the active station resolves throughout its authored approach area regardless of facing',
+);
+assert.notEqual(
+  resolveInteractionCandidate(new THREE.Vector3(0, 0, -0.54), new THREE.Vector3(0, 0, -1))?.id,
+  'approach-priority-station',
+  'the station remains unavailable just outside the authored approach range',
+);
 clearInteractionCandidates();
 const fartherQuestTarget = {
   id: 'farther-quest',

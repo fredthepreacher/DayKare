@@ -6,6 +6,23 @@ import { addCameraOrbit, recenterCamera } from './cameraInput';
 const HOLD_DELAY_MS = 520;
 const DOUBLE_TAP_WINDOW_MS = 360;
 const TAP_MOVEMENT_LIMIT = 18;
+const LOOK_BLOCKING_SELECTOR = [
+  'button',
+  'a',
+  'input',
+  'select',
+  'textarea',
+  '[role="button"]',
+  '[role="dialog"]',
+  '[role="application"]',
+  '.daykare-hud-left',
+  '.daykare-hud-right',
+  '.daykare-center-notices',
+  '.daykare-dialogue',
+  '.daykare-touch-movement',
+  '.daykare-touch-interact',
+  '.daykare-touch-recenter',
+].join(',');
 
 export function isTouchTap(holdTriggered: boolean, maxTravel: number) {
   return !holdTriggered && maxTravel <= TAP_MOVEMENT_LIMIT;
@@ -52,7 +69,7 @@ export function TouchControls({
       const offsetLeft = viewport?.offsetLeft ?? 0;
       const offsetTop = viewport?.offsetTop ?? 0;
       const visibleBottom = offsetTop + height;
-       const hudRects = ['.daykare-hud-left', '.daykare-hud-right']
+      const hudRects = ['.daykare-hud-left', '.daykare-hud-right']
         .map((selector) => document.querySelector<HTMLElement>(selector)?.getBoundingClientRect())
         .filter((rect): rect is DOMRect => Boolean(rect));
       const hudBottom = hudRects.reduce(
@@ -69,8 +86,8 @@ export function TouchControls({
         '--daykare-visual-top': `${offsetTop}px`,
         '--daykare-visual-width': `${width}px`,
         '--daykare-visual-height': `${height}px`,
+        '--daykare-visual-right': `${offsetLeft + width}px`,
         '--daykare-hud-bottom': `${hudBottom}px`,
-        '--daykare-touch-recenter-left': `${offsetLeft + width / 2}px`,
         '--daykare-touch-recenter-top': `${Math.min(preferredTop, latestVisibleTop)}px`,
       };
       for (const [property, value] of Object.entries(values)) {
@@ -163,11 +180,16 @@ export function TouchControls({
       }
       pointerOwnership.current.releaseLook(pointerId);
     };
+    const isGameplayPoint = (event: PointerEvent) => {
+      const hit = document.elementFromPoint(event.clientX, event.clientY);
+      if (!(hit instanceof Element) || hit.closest(LOOK_BLOCKING_SELECTOR)) return false;
+      return hit === canvas || hit.closest('.daykare-app-shell') !== null;
+    };
     const onLookStart = (event: PointerEvent) => {
       if (
         (event.pointerType !== 'touch' && event.pointerType !== 'pen')
         || event.button !== 0
-        || event.target !== canvas
+        || !isGameplayPoint(event)
         || !pointerOwnership.current.claimLook(event.pointerId)
       ) return;
       event.preventDefault();
@@ -187,17 +209,31 @@ export function TouchControls({
     const onLookEnd = (event: PointerEvent) => {
       releaseLook(event.pointerId);
     };
-    canvas.addEventListener('pointerdown', onLookStart, { passive: false });
+    const onLostPointerCapture = (event: PointerEvent) => releaseLook(event.pointerId);
+    const onPageInterruption = () => {
+      const pointerId = pointerOwnership.current.lookPointer;
+      if (pointerId !== null) releaseLook(pointerId);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') onPageInterruption();
+    };
+    window.addEventListener('pointerdown', onLookStart, { passive: false, capture: true });
     window.addEventListener('pointermove', onLookMove, { passive: false });
     window.addEventListener('pointerup', onLookEnd);
     window.addEventListener('pointercancel', onLookEnd);
+    canvas.addEventListener('lostpointercapture', onLostPointerCapture);
+    window.addEventListener('pagehide', onPageInterruption);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       const pointerId = pointerOwnership.current.lookPointer;
       if (pointerId !== null) releaseLook(pointerId);
-      canvas.removeEventListener('pointerdown', onLookStart);
+      window.removeEventListener('pointerdown', onLookStart, { capture: true });
       window.removeEventListener('pointermove', onLookMove);
       window.removeEventListener('pointerup', onLookEnd);
       window.removeEventListener('pointercancel', onLookEnd);
+      canvas.removeEventListener('lostpointercapture', onLostPointerCapture);
+      window.removeEventListener('pagehide', onPageInterruption);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [movementEnabled]);
 
@@ -224,7 +260,16 @@ export function TouchControls({
       setCrouchEnabled(false);
     };
     window.addEventListener('blur', resetAfterBlur);
-    return () => window.removeEventListener('blur', resetAfterBlur);
+    window.addEventListener('pagehide', resetAfterBlur);
+    const resetAfterVisibilityLoss = () => {
+      if (document.visibilityState !== 'visible') resetAfterBlur();
+    };
+    document.addEventListener('visibilitychange', resetAfterVisibilityLoss);
+    return () => {
+      window.removeEventListener('blur', resetAfterBlur);
+      window.removeEventListener('pagehide', resetAfterBlur);
+      document.removeEventListener('visibilitychange', resetAfterVisibilityLoss);
+    };
   }, []);
 
   const updateMovement = (clientX: number, clientY: number) => {
@@ -358,6 +403,7 @@ export function TouchControls({
             onPointerMove={onPointerMove}
             onPointerUp={finishPointer}
             onPointerCancel={cancelPointer}
+            onLostPointerCapture={cancelPointer}
             role="application"
             aria-label="Drag to move. Double tap to toggle run. Tap and hold to toggle crouch."
           >

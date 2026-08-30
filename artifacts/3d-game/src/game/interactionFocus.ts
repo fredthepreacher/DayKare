@@ -30,6 +30,10 @@ export function updateInteractionCandidate(id: string, update: Partial<Interacti
   if (current) Object.assign(current, update);
 }
 
+function interactionPoint(candidate: InteractionCandidate) {
+  return candidate.approach ?? candidate.position;
+}
+
 export function resolveInteractionCandidate(
   playerPosition: THREE.Vector3,
   playerForward: THREE.Vector3,
@@ -42,14 +46,22 @@ export function resolveInteractionCandidate(
   let hasQuestCandidate = false;
   let hasUrgentCandidate = false;
   for (const candidate of candidates.values()) {
-    if (candidate.valid && candidate.questPriority && playerPosition.distanceTo(candidate.position) <= candidate.range) {
+    if (
+      candidate.valid
+      && candidate.questPriority
+      && playerPosition.distanceTo(interactionPoint(candidate)) <= candidate.range
+    ) {
       hasQuestCandidate = true;
       break;
     }
   }
   if (!hasQuestCandidate) {
     for (const candidate of candidates.values()) {
-      if (candidate.valid && candidate.urgentPriority && playerPosition.distanceTo(candidate.position) <= candidate.range) {
+      if (
+        candidate.valid
+        && candidate.urgentPriority
+        && playerPosition.distanceTo(interactionPoint(candidate)) <= candidate.range
+      ) {
         hasUrgentCandidate = true;
         break;
       }
@@ -61,9 +73,10 @@ export function resolveInteractionCandidate(
       || (hasQuestCandidate && !candidate.questPriority)
       || (!hasQuestCandidate && hasUrgentCandidate && !candidate.urgentPriority)
     ) continue;
-    const distance = playerPosition.distanceTo(candidate.position);
+    const target = interactionPoint(candidate);
+    const distance = playerPosition.distanceTo(target);
     if (distance > candidate.range) continue;
-    offsetScratch.copy(candidate.position).sub(playerPosition).setY(0);
+    offsetScratch.copy(target).sub(playerPosition).setY(0);
     directionScratch.copy(offsetScratch);
     if (distance > 0.001) directionScratch.normalize();
     else directionScratch.copy(forwardScratch);

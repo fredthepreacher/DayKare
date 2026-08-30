@@ -5,7 +5,7 @@ import { registerInteractionCandidate, updateInteractionCandidate } from './inte
 import { HUB_ROUTES, isRouteUnlocked, type RouteDefinition } from './progression';
 import { useGameStore } from './store';
 import { playGameSound } from './audio';
-import { getWorldSolidTransform } from './world';
+import { getWorldSolidTransform, WORLD_INTERACTION_TARGETS } from './world';
 
 export function HubProgression({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
@@ -76,13 +76,27 @@ function RainbowTidyUp({ playerRef }: { playerRef: React.RefObject<THREE.Group |
   const ref = useRef<THREE.Group>(null);
   const active = useGameStore((state) => state.activeInteractable === 'activity-rainbow-tidy-up');
   const quest = useGameStore((state) => state.quests['rainbow-tidy-up']);
+  const inventory = useGameStore((state) => state.inventory);
   const placed = useGameStore((state) => state.tidyPlacedItems);
   const placedSignature = placed.join('|');
   const previousPlacedSignature = useRef(placedSignature);
   const id = 'activity-rainbow-tidy-up';
-  const position = useMemo(() => new THREE.Vector3(0, 0, -4), []);
-  const canPlace = quest?.status === 'active' && quest.currentObjectiveId?.startsWith('place-') === true;
-  const candidate = useMemo(() => ({ id, position, range: 2, priority: 70, valid: canPlace }), [id, position]);
+  const stationTarget = WORLD_INTERACTION_TARGETS.find((target) => target.id === 'rainbow-tidy-up');
+  const position = useMemo(() => new THREE.Vector3(...(stationTarget?.position ?? [0, 0, -4])), [stationTarget]);
+  const approach = useMemo(() => new THREE.Vector3(...(stationTarget?.approach ?? [0, 0, -2.8])), [stationTarget]);
+  const requiredItem = quest?.currentObjectiveId?.startsWith('place-')
+    ? quest.currentObjectiveId.replace('place-', '')
+    : null;
+  const canPlace = quest?.status === 'active' && requiredItem !== null && inventory.includes(requiredItem);
+  const candidate = useMemo(() => ({
+    id,
+    position,
+    approach,
+    range: 2.25,
+    priority: 70,
+    questPriority: true,
+    valid: canPlace,
+  }), [id, position, approach, canPlace]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   useEffect(() => {
     if (previousPlacedSignature.current !== placedSignature) {
@@ -91,7 +105,7 @@ function RainbowTidyUp({ playerRef }: { playerRef: React.RefObject<THREE.Group |
     }
   }, [placedSignature]);
   useFrame((_, delta) => {
-    updateInteractionCandidate(id, { position, valid: canPlace });
+    updateInteractionCandidate(id, { position, approach, questPriority: true, valid: canPlace });
     if (!ref.current) return;
     const scale = THREE.MathUtils.lerp(ref.current.scale.x, active ? 1.06 : 1, 1 - Math.exp(-8 * delta));
     ref.current.scale.setScalar(scale);
