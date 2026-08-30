@@ -131,6 +131,8 @@ export const PLAY_SLIDE_RAMP = {
   }),
 };
 
+export const SHINY_ROCK_SPAWN = [10.2, 0.18, -0.4] as [number, number, number];
+
 export const WORLD_SOLIDS: WorldSolid[] = [
   box('north-boundary', 'boundary', -16, 16, -16.3, -15.7),
   box('south-boundary', 'boundary', -16, 16, 15.7, 16.3),

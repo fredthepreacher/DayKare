@@ -37,6 +37,7 @@ import {
   MIN_CAMERA_DISTANCE,
   PLAYER_RADIUS,
   PLAY_SLIDE_RAMP,
+  SHINY_ROCK_SPAWN,
   TRICYCLE_RADIUS,
   WORLD_PORTALS,
   WORLD_SOLIDS,
@@ -49,6 +50,7 @@ import {
   resolveMovement,
   trackPlayerPosition,
 } from './world';
+import { shouldSpawnShinyRock } from './Interactables';
 import { CameraRig, advanceCameraPosition, isSweptSphereClear } from './cameraRig';
 import {
   normalizePersistedGameState,
@@ -109,6 +111,16 @@ assert.equal(interrupted['where-binky'].objectiveStates['return-binky'], 'active
 const malformed = normalizeQuestStates({ 'where-binky': { status: 'oops', objectiveStates: null } });
 assert.equal(malformed['where-binky'].status, 'active');
 assert.equal(malformed['where-binky'].currentObjectiveId, 'talk-to-leo');
+
+const shinyRockQuest = advanceObjective(
+  advanceObjective(createInitialQuests(), 'where-binky', 'talk-to-leo'),
+  'where-binky',
+  'ask-mia',
+);
+assert.equal(shouldSpawnShinyRock(shinyRockQuest, [], 'hub'), true);
+assert.equal(shouldSpawnShinyRock(shinyRockQuest, ['Shiny Rock'], 'hub'), false);
+assert.equal(shouldSpawnShinyRock(shinyRockQuest, [], 'garden'), false);
+assert.equal(isWalkable(new THREE.Vector3(...SHINY_ROCK_SPAWN), 0.34, [], 'hub'), true);
 
 const contradictoryActive = normalizeQuestStates({
   'where-binky': {
@@ -711,6 +723,13 @@ assert.equal(corruptSave.pendingZone, null);
 assert.deepEqual(corruptSave.progression.activityRuns, { 'juice-club-service': 99_999 });
 assert.deepEqual(corruptSave.progression.activityRewards, { 'juice-club-service': 99_999 });
 
+const tradedRockSave = normalizePersistedGameState({
+  quests: advanceObjective(shinyRockQuest, 'where-binky', 'trade-with-sam'),
+  binkyStatus: 'traded-info',
+  collectibles: ['Shiny Rock'],
+});
+assert.deepEqual(tradedRockSave.collectibles, [], 'a traded Shiny Rock cannot reappear from a contradictory save');
+
 const forgedKnownActivity = normalizePersistedGameState({
   quests: {
     'rainbow-tidy-up': {
@@ -745,6 +764,19 @@ const repairedQueue = normalizePersistedGameState({
 assert.deepEqual(repairedQueue.waitingCustomers, ['Max']);
 assert.equal(repairedQueue.juiceClubActiveCustomer, 'Max');
 assert.equal(repairedQueue.juiceClubCustomerPhase, 'ordering');
+
+useGameStore.getState().resetGame();
+assert.deepEqual(useGameStore.getState().collectibles, [], 'new games discover the Shiny Rock in the world');
+useGameStore.setState({ quests: shinyRockQuest, zone: 'hub' });
+assert.equal(useGameStore.getState().collectShinyRock(), true, 'the active trade objective can collect the world rock');
+assert.deepEqual(useGameStore.getState().collectibles, ['Shiny Rock']);
+assert.equal(useGameStore.getState().collectShinyRock(), false, 'the world rock cannot be collected twice');
+assert.equal(useGameStore.getState().progression.collectibleProgress['Shiny Rock'], 1);
+assert.equal(useGameStore.getState().tradeShinyRock(), true, 'Sam consumes the owned rock and advances atomically');
+assert.deepEqual(useGameStore.getState().collectibles, []);
+assert.equal(useGameStore.getState().quests['where-binky'].currentObjectiveId, 'search-storage');
+assert.equal(useGameStore.getState().binkyStatus, 'traded-info');
+assert.equal(useGameStore.getState().tradeShinyRock(), false, 'the Shiny Rock trade cannot advance twice');
 
 useGameStore.getState().resetGame();
 useGameStore.setState({

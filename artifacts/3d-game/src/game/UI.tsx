@@ -54,6 +54,8 @@ export function UI() {
     toggleRain,
     advanceSchedule,
     pickUp,
+    collectShinyRock,
+    tradeShinyRock,
     drop,
     updateBinkyStatus,
     cycleTricycleColor,
@@ -232,6 +234,14 @@ export function UI() {
           }
           setActiveInteractable(null);
           setActiveDialogue({ name: 'System', text: 'You found Binky! Return it to Leo.' });
+        } else if (activeInteractable === 'shiny-rock') {
+          if (collectShinyRock()) {
+            setActiveInteractable(null);
+            setActiveDialogue({
+              name: 'Shiny Rock',
+              text: 'A smooth blue rock sparkles in your hand. Sam might trade a clue for this.',
+            });
+          }
         } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block' || activeInteractable === 'yellow-block') {
           pickUp(activeInteractable);
           const objectiveId = `collect-${activeInteractable}`;
@@ -385,7 +395,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, collectShinyRock]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Mr. Davis' && objectiveIsActive(quests, 'where-binky', 'search-storage')) {
@@ -471,9 +481,11 @@ export function UI() {
             text: "I'll tell you what I saw if you give me a Shiny Rock.",
             options: [
               { label: 'Trade Rock', action: () => {
-                useGameStore.setState(s => ({ collectibles: s.collectibles.filter(c => c !== 'Shiny Rock') }));
-                advanceQuestObjective('where-binky', 'trade-with-sam');
-                setActiveDialogue({ name: 'Sam', text: "Thanks! I saw Mr. Davis put something pink in the Storage Room boxes." });
+                if (tradeShinyRock()) {
+                  setActiveDialogue({ name: 'Sam', text: "Thanks! I saw Mr. Davis put something pink in the Storage Room boxes." });
+                } else {
+                  setActiveDialogue({ name: 'Sam', text: "Let's find that Shiny Rock near the playground first." });
+                }
               }},
               { label: 'Keep it', action: () => setActiveDialogue(null) }
             ]
@@ -511,6 +523,7 @@ export function UI() {
     if (isRiding) return 'Dismount';
     if (!activeInteractable) return null;
     if (activeInteractable === 'binky') return 'Pick up Binky';
+    if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Place Toy';

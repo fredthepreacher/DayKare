@@ -113,6 +113,8 @@ export interface GameState {
   drop: (item: string) => void;
   dropAt: (item: string, position: [number, number, number]) => void;
   recoverDroppedItem: (id: string) => void;
+  collectShinyRock: () => boolean;
+  tradeShinyRock: () => boolean;
   setIsRiding: (r: boolean) => void;
   
   updateFriend: (name: string, updates: Partial<FriendState>) => void;
@@ -189,7 +191,7 @@ const initialState = {
   isRainy: false,
   isImaginationMode: false,
   inventory: [],
-  collectibles: ['Shiny Rock'],
+  collectibles: [],
   isRiding: false,
   
   friends: initialFriends,
@@ -534,6 +536,8 @@ export function normalizePersistedGameState(value: unknown) {
   const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
   const inventory = savedItems.inventory;
   const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory);
+  const normalizedCollectibles = normalizeKnownStrings(persisted.collectibles, AUTHORED_COLLECTIBLES, 8);
+  const shinyRockAlreadyTraded = quests['where-binky']?.objectiveStates['trade-with-sam'] === 'complete';
   const juiceClubCustomersServed = safeInteger(
     persisted.juiceClubCustomersServed,
     initialState.juiceClubCustomersServed,
@@ -575,7 +579,9 @@ export function normalizePersistedGameState(value: unknown) {
     isRainy: persisted.isRainy === true,
     isImaginationMode: false,
     inventory,
-    collectibles: normalizeKnownStrings(persisted.collectibles, AUTHORED_COLLECTIBLES, 8),
+    collectibles: shinyRockAlreadyTraded
+      ? normalizedCollectibles.filter((item) => item !== 'Shiny Rock')
+      : normalizedCollectibles,
     isRiding: false,
     friends: normalizeFriends(persisted.friends),
     teacherSuspicion: safeNumber(persisted.teacherSuspicion, 0, 0, 100),
@@ -743,6 +749,49 @@ export const useGameStore = create<GameState>()(
             : [...state.inventory, droppedItem.item],
         };
       }),
+      collectShinyRock: () => {
+        let changed = false;
+        set((state) => {
+          if (
+            state.zone !== 'hub'
+            || state.quests['where-binky']?.currentObjectiveId !== 'trade-with-sam'
+            || state.collectibles.includes('Shiny Rock')
+          ) return state;
+          changed = true;
+          return {
+            collectibles: [...state.collectibles, 'Shiny Rock'],
+            progression: {
+              ...state.progression,
+              collectibleProgress: {
+                ...state.progression.collectibleProgress,
+                'Shiny Rock': Math.min(
+                  MAX_ACTIVITY_RUNS,
+                  (state.progression.collectibleProgress['Shiny Rock'] ?? 0) + 1,
+                ),
+              },
+            },
+          };
+        });
+        return changed;
+      },
+      tradeShinyRock: () => {
+        let changed = false;
+        set((state) => {
+          if (
+            state.quests['where-binky']?.currentObjectiveId !== 'trade-with-sam'
+            || !state.collectibles.includes('Shiny Rock')
+          ) return state;
+          const quests = advanceObjective(state.quests, 'where-binky', 'trade-with-sam');
+          if (quests === state.quests) return state;
+          changed = true;
+          return {
+            collectibles: state.collectibles.filter((item) => item !== 'Shiny Rock'),
+            quests,
+            binkyStatus: legacyStatusForQuest(quests) as BinkyStatus,
+          };
+        });
+        return changed;
+      },
 
       setIsRiding: (r) => set((state) => ({
         isRiding: r,

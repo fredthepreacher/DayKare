@@ -6,18 +6,30 @@ import { objectiveIsActive } from './quests';
 import { useGameStore } from './store';
 import { SuppliedArtwork } from './Artwork';
 import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
+import { SHINY_ROCK_SPAWN } from './world';
 
 export function Interactables({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
     <group>
       <JuiceStand playerRef={playerRef} />
       <Binky playerRef={playerRef} />
+      <ShinyRock />
       <Tricycle playerRef={playerRef} />
       <ToyBlock playerRef={playerRef} position={[-3, 0.25, -2]} id="blue-block" color="#3a86ff" />
       <ToyBlock playerRef={playerRef} position={[2, 0.25, 4]} id="red-block" color="#ff006e" />
       <ToyBlock playerRef={playerRef} position={[5.2, 0.25, -5.6]} id="yellow-block" color="#ffbe0b" />
     </group>
   );
+}
+
+export function shouldSpawnShinyRock(
+  quests: ReturnType<typeof useGameStore.getState>['quests'],
+  collectibles: string[],
+  zone: ReturnType<typeof useGameStore.getState>['zone'],
+) {
+  return zone === 'hub'
+    && objectiveIsActive(quests, 'where-binky', 'trade-with-sam')
+    && !collectibles.includes('Shiny Rock');
 }
 
 function useCandidate(
@@ -122,6 +134,44 @@ function Binky({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }
         </mesh>
       </group>
       <FocusHalo active={active} radius={0.46} color="#ff8fbd" />
+    </group>
+  );
+}
+
+function ShinyRock() {
+  const visual = useRef<THREE.Group>(null);
+  const quests = useGameStore((state) => state.quests);
+  const collectibles = useGameStore((state) => state.collectibles);
+  const zone = useGameStore((state) => state.zone);
+  const active = useGameStore((state) => state.activeInteractable === 'shiny-rock');
+  const visible = shouldSpawnShinyRock(quests, collectibles, zone);
+  const position = useMemo(() => new THREE.Vector3(...SHINY_ROCK_SPAWN), []);
+  useCandidate('shiny-rock', position, visible, 1.7, 95, visible);
+  useFrame((state, delta) => {
+    if (!visual.current) return;
+    visual.current.rotation.y += delta * (active ? 1.8 : 0.35);
+    visual.current.position.y = Math.sin(state.clock.elapsedTime * 2.8) * (active ? 0.045 : 0.018);
+  });
+  if (!visible) return null;
+  return (
+    <group name="shiny-rock-world" position={position}>
+      <group ref={visual} rotation={[0.08, 0, -0.12]}>
+        <mesh castShadow>
+          <dodecahedronGeometry args={[0.28, 0]} />
+          <meshStandardMaterial
+            color="#79d7ff"
+            emissive="#46bde8"
+            emissiveIntensity={active ? 0.42 : 0.16}
+            roughness={0.28}
+            metalness={0.08}
+          />
+        </mesh>
+        <mesh position={[0.05, 0.08, 0.2]} rotation={[0.2, 0.1, -0.35]}>
+          <planeGeometry args={[0.12, 0.035]} />
+          <meshBasicMaterial color="#ffffff" transparent opacity={0.82} />
+        </mesh>
+      </group>
+      <FocusHalo active={active} radius={0.48} color="#72d8ff" />
     </group>
   );
 }

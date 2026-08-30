@@ -505,6 +505,95 @@ try {
     'repeated hydration of the same corrupt payload stays deterministic',
   );
 
+  const shinyRockPickup = await evaluate(client, `(async () => {
+    const store = globalThis.__daykareStore;
+    const interactables = await import(${JSON.stringify(new URL('src/game/Interactables.tsx', targetUrl).href)});
+    const world = await import(${JSON.stringify(new URL('src/game/world.ts', targetUrl).href)});
+    const { Vector3 } = await import(${JSON.stringify(new URL('node_modules/.vite/deps/three.js', targetUrl).href)});
+    store.getState().resetGame();
+    store.getState().advanceQuestObjective('where-binky', 'talk-to-leo');
+    store.getState().advanceQuestObjective('where-binky', 'ask-mia');
+    const before = store.getState();
+    const worldVisible = interactables.shouldSpawnShinyRock(before.quests, before.collectibles, before.zone);
+    const spawnWalkable = world.isWalkable(new Vector3(...world.SHINY_ROCK_SPAWN), 0.34, [], 'hub');
+    const collected = store.getState().collectShinyRock();
+    const state = store.getState();
+    return {
+      worldVisible,
+      spawn: world.SHINY_ROCK_SPAWN,
+      spawnWalkable,
+      collected,
+      collectibles: state.collectibles,
+      objective: state.quests['where-binky'].currentObjectiveId,
+      pickupCount: state.progression.collectibleProgress['Shiny Rock'],
+    };
+  })()`);
+  assert.deepEqual(shinyRockPickup, {
+    worldVisible: true,
+    spawn: [10.2, 0.18, -0.4],
+    spawnWalkable: true,
+    collected: true,
+    collectibles: ['Shiny Rock'],
+    objective: 'trade-with-sam',
+    pickupCount: 1,
+  }, 'the live Hub exposes one reachable quest-gated Shiny Rock and collects it');
+
+  await client.send('Page.reload', { ignoreCache: true });
+  await waitFor(client, 'document.readyState === "complete"', 'Shiny Rock pickup reload');
+  const shinyRockTrade = await evaluate(client, `(async () => {
+    const { useGameStore } = await import(${modulePath});
+    globalThis.__daykareStore = useGameStore;
+    const started = performance.now();
+    while (!useGameStore.persist.hasHydrated() && performance.now() - started < 5000) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const before = useGameStore.getState();
+    const pickupSurvived = before.collectibles.includes('Shiny Rock')
+      && before.quests['where-binky'].currentObjectiveId === 'trade-with-sam';
+    const traded = before.tradeShinyRock();
+    const duplicateTrade = useGameStore.getState().tradeShinyRock();
+    const after = useGameStore.getState();
+    return {
+      pickupSurvived,
+      traded,
+      duplicateTrade,
+      collectibles: after.collectibles,
+      objective: after.quests['where-binky'].currentObjectiveId,
+      binkyStatus: after.binkyStatus,
+      pickupCount: after.progression.collectibleProgress['Shiny Rock'],
+    };
+  })()`);
+  assert.deepEqual(shinyRockTrade, {
+    pickupSurvived: true,
+    traded: true,
+    duplicateTrade: false,
+    collectibles: [],
+    objective: 'search-storage',
+    binkyStatus: 'traded-info',
+    pickupCount: 1,
+  }, 'the Shiny Rock survives reload, trades atomically, and cannot advance twice');
+
+  await client.send('Page.reload', { ignoreCache: true });
+  await waitFor(client, 'document.readyState === "complete"', 'Shiny Rock trade reload');
+  assert.deepEqual(
+    await evaluate(client, `(async () => {
+      const { useGameStore } = await import(${modulePath});
+      globalThis.__daykareStore = useGameStore;
+      const started = performance.now();
+      while (!useGameStore.persist.hasHydrated() && performance.now() - started < 5000) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      const state = useGameStore.getState();
+      return {
+        collectibles: state.collectibles,
+        objective: state.quests['where-binky'].currentObjectiveId,
+        pickupCount: state.progression.collectibleProgress['Shiny Rock'],
+      };
+    })()`),
+    { collectibles: [], objective: 'search-storage', pickupCount: 1 },
+    'the completed Shiny Rock trade remains consumed after reload',
+  );
+
   const waitForResource = async (fragment, message, timeoutMs = 8000) => {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
