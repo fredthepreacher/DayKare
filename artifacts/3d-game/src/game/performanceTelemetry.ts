@@ -16,6 +16,8 @@ export interface FrameTelemetryContext {
   renderCostMs?: number;
 }
 
+export type AdaptiveRenderMode = 'full' | 'reduced';
+
 export interface FramePerformanceSnapshot extends FrameTelemetryContext {
   frameCount: number;
   sampleCount: number;
@@ -28,6 +30,7 @@ export interface FramePerformanceSnapshot extends FrameTelemetryContext {
   droppedFrameRatio: number;
   degradationDetected: boolean;
   adaptiveSafeguardActive: boolean;
+  adaptiveRenderMode: AdaptiveRenderMode;
   adaptiveAnimationIntervalMs: number;
   updatedAt: number;
   degradationReason: 'frame-time' | 'dropped-frames' | null;
@@ -42,6 +45,31 @@ const RECOVERY_DROP_RATIO = 0.1;
 const DEGRADED_HOLD_MS = 3500;
 const RECOVERY_HOLD_MS = 5000;
 const ADAPTIVE_ANIMATION_INTERVAL_MS = 100;
+
+/**
+ * Renderer cost is intentionally changed only for the explicit low-quality
+ * setting or after the existing sustained-degradation safeguard activates.
+ * High-quality mode keeps the device's native DPR; reduced mode bounds pixel
+ * work at 1x and lets the renderer skip shadow-map work.
+ */
+export function getRecommendedPixelRatio(
+  quality: FrameTelemetryContext['quality'],
+  devicePixelRatio: number,
+  mode: AdaptiveRenderMode = 'full',
+) {
+  const safeDevicePixelRatio = Number.isFinite(devicePixelRatio)
+    ? Math.max(1, devicePixelRatio)
+    : 1;
+  if (quality === 'low' || mode === 'reduced') return 1;
+  return safeDevicePixelRatio;
+}
+
+export function shouldUseRendererShadows(
+  quality: FrameTelemetryContext['quality'],
+  mode: AdaptiveRenderMode = 'full',
+) {
+  return quality === 'high' && mode === 'full';
+}
 
 const EMPTY_CONTEXT: FrameTelemetryContext = {
   renderer: 'unknown',
@@ -68,9 +96,9 @@ function percentile(values: number[], fraction: number) {
 
 /**
  * A small rolling frame monitor intended for development profiling on real
- * devices. It never changes visual quality by itself. Once a poor frame
- * window persists, callers may use the conservative interval to update only
- * optional animation; recovery requires a separate, longer healthy window.
+ * devices. Once a poor frame window persists, callers may use the
+ * conservative renderer mode and interval to reduce optional work; recovery
+ * requires a separate, longer healthy window.
  */
 export class FramePerformanceTelemetry {
   private samples = new Float32Array(SAMPLE_LIMIT);
@@ -94,6 +122,7 @@ export class FramePerformanceTelemetry {
     droppedFrameRatio: 0,
     degradationDetected: false,
     adaptiveSafeguardActive: false,
+    adaptiveRenderMode: 'full',
     adaptiveAnimationIntervalMs: 0,
     updatedAt: 0,
     degradationReason: null,
@@ -156,6 +185,7 @@ export class FramePerformanceTelemetry {
       droppedFrameRatio,
       degradationDetected,
       adaptiveSafeguardActive: this.adaptiveSafeguardActive,
+      adaptiveRenderMode: this.adaptiveSafeguardActive ? 'reduced' : 'full',
       adaptiveAnimationIntervalMs: this.adaptiveSafeguardActive ? ADAPTIVE_ANIMATION_INTERVAL_MS : 0,
       updatedAt: atMs,
       degradationReason: frameTimeDegraded ? 'frame-time' : droppedFramesDegraded ? 'dropped-frames' : null,

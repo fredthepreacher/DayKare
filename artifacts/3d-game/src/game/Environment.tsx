@@ -3,6 +3,7 @@ import { getWorldSolidTransform, PLAY_SLIDE_RAMP, WORLD_SOLIDS } from './world';
 
 export function Environment() {
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
+  const quality = useGameStore(s => s.quality);
   
   // Colors adjust based on imagination mode
   const floorMain = isImaginationMode ? "#2b1055" : "#e4d0b6";
@@ -21,9 +22,9 @@ export function Environment() {
         position={[10, 20, 10]} 
         intensity={isImaginationMode ? 1.5 : 1} 
         color={isImaginationMode ? "#ff0a54" : "#ffeedd"}
-        castShadow 
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        castShadow={quality === 'high'}
+        shadow-mapSize-width={quality === 'high' ? 1024 : 256}
+        shadow-mapSize-height={quality === 'high' ? 1024 : 256}
       />
       {isImaginationMode && (
         <pointLight position={[-5, 5, -5]} intensity={2} color="#4cc9f0" distance={20} />

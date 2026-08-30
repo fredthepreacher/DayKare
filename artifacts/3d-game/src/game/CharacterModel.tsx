@@ -1,6 +1,7 @@
 import { useFrame } from '@react-three/fiber';
 import { useRef } from 'react';
 import * as THREE from 'three';
+import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 
 type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
@@ -76,6 +77,7 @@ export function CharacterModel({
   const previousActivity = useRef(activitySignal ?? activityMode);
   const activityChangedAt = useRef(-10);
   const legSitBlend = useRef(0);
+  const lastOptionalAnimationAt = useRef(Number.NEGATIVE_INFINITY);
 
   useFrame((state, delta) => {
     if (!rig.current) return;
@@ -119,6 +121,7 @@ export function CharacterModel({
     movementBlend.current = THREE.MathUtils.lerp(movementBlend.current, targetMovement, 1 - Math.exp(-10 * delta));
     runningBlend.current = THREE.MathUtils.lerp(runningBlend.current, targetRunning, 1 - Math.exp(-9 * delta));
     phase.current += delta * THREE.MathUtils.lerp(2.2, 8 + runningBlend.current * 5, movementBlend.current);
+    if (!shouldUpdateOptionalAnimation(lastOptionalAnimationAt, state.clock.elapsedTime * 1000)) return;
     const stride = Math.sin(phase.current) * movementBlend.current * THREE.MathUtils.lerp(0.34, 0.55, runningBlend.current);
     const idle = Math.sin(state.clock.elapsedTime * 2.1 + motionSeed) * 0.025 * idleEnergy;
     const idleClock = idleVariant === 'fidget' ? 2.2 : idleVariant === 'bounce' ? 2.7 : 1.45;

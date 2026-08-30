@@ -4,8 +4,11 @@ import * as THREE from 'three';
 import { useGameStore } from './store';
 import {
   getPerformanceTelemetry,
+  getRecommendedPixelRatio,
   type FramePerformanceSnapshot,
   type FrameTelemetryContext,
+  type AdaptiveRenderMode,
+  shouldUseRendererShadows,
 } from './performanceTelemetry';
 
 function rendererContext(gl: THREE.WebGLRenderer) {
@@ -25,10 +28,12 @@ function rendererContext(gl: THREE.WebGLRenderer) {
 }
 
 function PerformanceTelemetry() {
-  const { gl, scene, size } = useThree();
+  const { gl, scene, size, setDpr } = useThree();
   const zone = useGameStore((state) => state.zone);
   const quality = useGameStore((state) => state.quality);
   const previousFrameAt = useRef(0);
+  const adaptiveModeRef = useRef<AdaptiveRenderMode>('full');
+  const [adaptiveRenderMode, setAdaptiveRenderMode] = useState<AdaptiveRenderMode>('full');
   const renderer = useMemo(() => rendererContext(gl), [gl]);
   const telemetry = getPerformanceTelemetry();
   const frameContext = useRef<FrameTelemetryContext>({
@@ -46,6 +51,13 @@ function PerformanceTelemetry() {
     quality,
     renderCostMs: 0,
   });
+
+  useEffect(() => {
+    const devicePixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+    setDpr(getRecommendedPixelRatio(quality, devicePixelRatio, adaptiveRenderMode));
+    gl.shadowMap.enabled = shouldUseRendererShadows(quality, adaptiveRenderMode);
+    gl.shadowMap.needsUpdate = true;
+  }, [adaptiveRenderMode, gl, quality, setDpr]);
 
   useFrame(() => {
     const now = performance.now();
@@ -71,6 +83,10 @@ function PerformanceTelemetry() {
     context.quality = quality;
     context.renderCostMs = frameTimeMs;
     const snapshot = telemetry.recordFrame(frameTimeMs, now, context);
+    if (snapshot.adaptiveRenderMode !== adaptiveModeRef.current) {
+      adaptiveModeRef.current = snapshot.adaptiveRenderMode;
+      setAdaptiveRenderMode(snapshot.adaptiveRenderMode);
+    }
     if (import.meta.env.DEV) {
       (globalThis as typeof globalThis & {
         __daykarePerformanceProbe?: typeof snapshot;
@@ -102,7 +118,7 @@ export function PerformanceTelemetryPanel() {
       <span>{snapshot.fps.toFixed(1)} FPS · p95 {snapshot.p95FrameMs.toFixed(1)}ms</span>
       <span>{snapshot.droppedFrames} dropped · {snapshot.renderCalls} calls · {snapshot.triangles} tris</span>
       <span>{snapshot.zone} · {snapshot.devicePixelRatio.toFixed(2)} DPR · {renderer}</span>
-      <span>{snapshot.adaptiveSafeguardActive ? 'Optional animation safeguard active' : 'Visual quality unchanged'}</span>
+      <span>{snapshot.adaptiveSafeguardActive ? 'Adaptive renderer safeguard active' : 'Adaptive renderer at full quality'}</span>
     </aside>
   );
 }

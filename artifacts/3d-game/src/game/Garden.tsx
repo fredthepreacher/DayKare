@@ -469,6 +469,7 @@ function GardenActivityProp({ activity, role }: { activity: GardenActivity; role
 
 function GardenEnvironment() {
   const imagination = useGameStore((state) => state.isImaginationMode);
+  const quality = useGameStore((state) => state.quality);
   const grass = imagination ? '#173d38' : '#91b976';
   const path = imagination ? '#7254b3' : '#e7cf9f';
   const wall = imagination ? '#315f58' : '#779b67';
@@ -476,7 +477,14 @@ function GardenEnvironment() {
   return (
     <group>
       <ambientLight intensity={imagination ? 0.48 : 0.78} color={imagination ? '#8edcff' : '#fff7df'} />
-      <directionalLight position={[12, 22, 8]} intensity={imagination ? 1.35 : 1.05} color={imagination ? '#ff8dcc' : '#fff1c7'} castShadow />
+      <directionalLight
+        position={[12, 22, 8]}
+        intensity={imagination ? 1.35 : 1.05}
+        color={imagination ? '#ff8dcc' : '#fff1c7'}
+        castShadow={quality === 'high'}
+        shadow-mapSize-width={quality === 'high' ? 1024 : 256}
+        shadow-mapSize-height={quality === 'high' ? 1024 : 256}
+      />
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[36, 36]} />
         <meshStandardMaterial color={grass} roughness={0.96} />

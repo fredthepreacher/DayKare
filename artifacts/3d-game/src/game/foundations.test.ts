@@ -70,7 +70,11 @@ import { artworkBackingSize, validateArtworkSurfaceAnchor, type ArtworkSurfaceAn
 import { dialogueDismissLabel } from './dialogueActions';
 import { getSharedActivitySession, reportSessionArrival, resetActivitySessions } from './activitySessions';
 import { activitySessionIsInterrupted, sessionParticipant, shouldUseSessionSlot } from './activitySessions';
-import { FramePerformanceTelemetry } from './performanceTelemetry';
+import {
+  FramePerformanceTelemetry,
+  getRecommendedPixelRatio,
+  shouldUseRendererShadows,
+} from './performanceTelemetry';
 import {
   acknowledgeTeacherCall,
   getChildIntervention,
@@ -1585,6 +1589,13 @@ assert.equal(pointerOwnership.lookPointer, 22, 'lifting movement leaves look own
 assert.equal(pointerOwnership.releaseLook(22), true);
 
 const sustainedFrameProbe = new FramePerformanceTelemetry();
+assert.equal(getRecommendedPixelRatio('high', 2, 'full'), 2, 'full high quality preserves native DPR');
+assert.equal(getRecommendedPixelRatio('low', 2, 'full'), 1, 'low quality bounds renderer DPR at 1x');
+assert.equal(getRecommendedPixelRatio('high', 2, 'reduced'), 1, 'adaptive reduction bounds high quality at 1x');
+assert.equal(getRecommendedPixelRatio('high', Number.NaN, 'full'), 1, 'invalid device DPR uses a safe renderer default');
+assert.equal(shouldUseRendererShadows('high', 'full'), true, 'full high quality retains authored shadows');
+assert.equal(shouldUseRendererShadows('low', 'full'), false, 'low quality disables shadow-map work');
+assert.equal(shouldUseRendererShadows('high', 'reduced'), false, 'adaptive reduction disables shadow-map work');
 const telemetryContext = {
   renderer: 'test renderer',
   vendor: 'test vendor',
@@ -1609,6 +1620,7 @@ for (let frame = 0; frame < 90; frame += 1) {
 let telemetrySnapshot = sustainedFrameProbe.getSnapshot();
 assert.equal(telemetrySnapshot.degradationDetected, true, 'frame telemetry identifies sustained frame pacing degradation');
 assert.equal(telemetrySnapshot.adaptiveSafeguardActive, true, 'optional animation throttling waits for sustained degradation');
+assert.equal(telemetrySnapshot.adaptiveRenderMode, 'reduced', 'sustained degradation requests the reduced renderer policy');
 assert.ok(telemetrySnapshot.p95FrameMs >= 60, 'frame telemetry reports a meaningful p95 rather than only average FPS');
 assert.ok(telemetrySnapshot.droppedFrames > 0, 'frame telemetry reports missed 60Hz frame budgets');
 for (let frame = 0; frame < 470; frame += 1) {
@@ -1618,6 +1630,7 @@ for (let frame = 0; frame < 470; frame += 1) {
 telemetrySnapshot = sustainedFrameProbe.getSnapshot();
 assert.equal(telemetrySnapshot.degradationDetected, false, 'a healthy rolling frame window clears degradation');
 assert.equal(telemetrySnapshot.adaptiveSafeguardActive, false, 'optional animation recovers only after a long healthy period');
+assert.equal(telemetrySnapshot.adaptiveRenderMode, 'full', 'healthy recovery restores the full renderer policy');
 
 const fortyFpsProbe = new FramePerformanceTelemetry();
 let fortyFpsAt = 0;

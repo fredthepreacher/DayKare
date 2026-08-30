@@ -1491,7 +1491,11 @@ try {
   const performanceSample = await evaluate(client, 'structuredClone(globalThis.__daykarePerformanceProbe)');
   assert.ok(performanceSample.p95FrameMs >= performanceSample.p50FrameMs, 'performance probe reports ordered frame-time percentiles');
   assert.ok(Number.isFinite(performanceSample.droppedFrames), 'performance probe reports dropped frame budgets');
-  assert.ok(performanceSample.devicePixelRatio > 0, 'performance probe reports the renderer DPR');
+  assert.equal(performanceSample.devicePixelRatio, 1, 'low quality renders at the optimized 1x DPR');
+  assert.ok(
+    performanceSample.adaptiveRenderMode === 'full' || performanceSample.adaptiveRenderMode === 'reduced',
+    'performance probe reports the active renderer policy',
+  );
   assert.ok(performanceSample.renderCalls >= 0 && performanceSample.triangles >= 0, 'performance probe reports render workload');
   assert.equal(performanceSample.zone, 'hub', 'performance probe includes relevant live scene state');
   const softwareRenderer = /swiftshader|llvmpipe|software/i.test(performanceSample.renderer);
