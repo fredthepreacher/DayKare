@@ -48,3 +48,6 @@ Thumbs.db
 .cache/
 .local/
 .config/
+
+# Local scratch: files staged for deletion when permissions allow
+_to_delete/
