@@ -1,0 +1,19 @@
+kind = "design-system"
+previewPath = "/daykare-playtime/"
+title = "DayKare Playtime Design System"
+description = "A warm, tactile visual system extracted from DayKare's stylized daycare adventure: paper textures, cocoa typography, sunny activity colors, rounded play surfaces, and accessible game-like controls for children and families."
+version = "1.0.0"
+id = "artifacts/daykare-playtime"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/daykare-playtime/" ]
+localPort = 21994
+
+[services.development]
+run = "pnpm --filter @workspace/daykare-playtime run dev"
+
+[services.env]
+PORT = "21994"
+BASE_PATH = "/daykare-playtime/"
