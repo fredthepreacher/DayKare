@@ -7,6 +7,7 @@ import {
   accountSettingsFromLegacyOnlineSave,
   buildConflictReport,
   canWrite,
+  COLUMNS,
   defaultAccountSettings,
   defaultDeviceSettings,
   deviceSettingsFromLegacyOnlineSave,
@@ -291,3 +292,28 @@ assert.equal(
 );
 
 console.log('cloud sync tests passed');
+
+// --- cloud read column lists ---------------------------------------------
+//
+// Regression test for the Phase 3 preview QA finding. online_saves has no
+// day_number column; selecting it made PostgREST reject EVERY Online read with
+// 42703, which left the cached revision at 0, which made every Online write a
+// revision mismatch. Online stopped syncing after its first row and the UI
+// still reported "Cloud save on". A one-word column list was the whole bug.
+
+assert.ok(
+  !COLUMNS.online.includes('day_number'),
+  'the Online select must not ask for day_number - online_saves has no such column',
+);
+assert.ok(
+  COLUMNS.story.includes('day_number'),
+  'the Story select still asks for day_number, which story_saves does have',
+);
+for (const scope of ['story', 'online'] as const) {
+  for (const required of ['save_version', 'payload', 'revision', 'payload_hash', 'updated_at', 'device_label']) {
+    assert.ok(
+      COLUMNS[scope].includes(required),
+      `the ${scope} select must include ${required}; sync cannot work without it`,
+    );
+  }
+}

@@ -19,6 +19,25 @@ const TABLE: Record<SaveScope, string> = {
   online: 'online_saves',
 };
 
+/**
+ * The columns each scope actually has.
+ *
+ * `day_number` exists on story_saves and NOT on online_saves - an Online save
+ * has no day. Selecting one list for both scopes made PostgREST answer every
+ * Online read with 42703 "column online_saves.day_number does not exist", and
+ * because a failed read leaves the cached revision at 0, every subsequent
+ * Online write was rejected as a revision mismatch. Online silently stopped
+ * syncing after its very first row while the UI still said "Cloud save on".
+ *
+ * Found in the Phase 3 preview QA. The columns are listed per scope so the
+ * next divergence between the two tables fails at the type level here rather
+ * than at runtime in a player's browser.
+ */
+export const COLUMNS: Record<SaveScope, string> = {
+  story: 'save_version, payload, revision, payload_hash, updated_at, device_label, rep, day_number',
+  online: 'save_version, payload, revision, payload_hash, updated_at, device_label, rep',
+};
+
 export async function readCloudSave(
   client: SupabaseClient | null,
   scope: SaveScope,
@@ -27,7 +46,7 @@ export async function readCloudSave(
   try {
     const { data, error } = await client
       .from(TABLE[scope])
-      .select('save_version, payload, revision, payload_hash, updated_at, device_label, rep, day_number')
+      .select(COLUMNS[scope])
       .maybeSingle();
     if (error) return { row: null, error: error.message };
     return { row: (data as CloudSaveRow | null) ?? null, error: null };

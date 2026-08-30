@@ -155,10 +155,12 @@ function ConflictChooser() {
   const cloudLine = dayOf(conflict.cloud);
   const otherDevice = conflict.cloud.deviceLabel;
 
+  const modeName = conflict.scope === 'online' ? 'DayKare Online' : 'Story Mode';
+
   return (
     <div className="daykare-lockup-card" data-testid="panel-cloud-conflict">
       <div>
-        <strong>Which save do you want to keep?</strong>
+        <strong>Which {modeName} save do you want to keep?</strong>
         <p>
           Nothing has been overwritten. {conflict.reason} Pick one to carry on with - the other
           one is kept as a backup, not deleted.
@@ -208,7 +210,22 @@ function ConflictChooser() {
  */
 function CloudSyncStatus() {
   const story = useCloudSyncStore((state) => state.story);
+  const online = useCloudSyncStore((state) => state.online);
   const conflict = useCloudSyncStore((state) => state.conflict);
+
+  /**
+   * Report the worse of the two scopes, not just Story.
+   *
+   * This card used to read `story` alone. During the Phase 3 preview QA the
+   * Online scope failed every read, sat in `error`, and the card cheerfully
+   * said "Cloud save on" the whole time - the one state a player would never
+   * think to question. A status line that can only report good news is not a
+   * status line.
+   */
+  const severity: Record<string, number> = {
+    idle: 0, syncing: 1, disabled: 2, offline: 3, error: 4, conflict: 5,
+  };
+  const worst = (severity[online.state] ?? 0) > (severity[story.state] ?? 0) ? online : story;
 
   const copy: Record<string, { title: string; detail: string }> = {
     disabled: { title: 'Playing on this device', detail: 'Your progress is saved here in this browser.' },
@@ -218,11 +235,11 @@ function CloudSyncStatus() {
     conflict: { title: 'Two versions of your save', detail: 'This device and another one both have progress. Nothing has been overwritten.' },
     error: { title: 'Cloud save paused', detail: 'Playing from this device. Your local progress is untouched.' },
   };
-  const shown = copy[story.state] ?? copy.disabled;
+  const shown = copy[worst.state] ?? copy.disabled;
 
   return (
     <>
-      <div className="daykare-lockup-card" data-testid={`status-cloud-sync-${story.state}`}>
+      <div className="daykare-lockup-card" data-testid={`status-cloud-sync-${worst.state}`}>
         <div>
           <strong>{shown.title}</strong>
           <p>{conflict ? `${copy.conflict.detail} ${conflict.reason}` : shown.detail}</p>

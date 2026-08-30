@@ -101,6 +101,19 @@ with checks as (
   where conrelid = 'public.story_saves'::regclass and contype = 'c'
     and (pg_get_constraintdef(oid) ilike '%rep >= 0%'
       or pg_get_constraintdef(oid) ilike '%day_number >= 1%')
+
+  union all
+  -- Added after the Phase 3 preview QA found adjust_resource callable from
+  -- the browser. A client that can call the economy functions can mint
+  -- currency regardless of how good the row policies are, so this is checked
+  -- as a first-class guarantee and not left to a code review.
+  select 12, 'economy functions NOT callable by the client', '0',
+    count(*)::text
+  from pg_proc p
+  cross join lateral unnest(array['authenticated','anon']) as r(role_name)
+  where p.pronamespace = 'public'::regnamespace
+    and p.proname in ('grant_item','adjust_resource')
+    and has_function_privilege(r.role_name, p.oid, 'EXECUTE')
 )
 
 select
