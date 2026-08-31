@@ -1,6 +1,9 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { CollisionDebug, collisionDebugEnabled } from './CollisionDebug';
+import { useWeather } from './WeatherSystem';
+import { useQualitySettings } from './useQualitySettings';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { useGameStore } from './store';
 import { getWorldSolidTransform, isWalkable, WORLD_SOLIDS } from './world';
@@ -470,21 +473,31 @@ function GardenActivityProp({ activity, role }: { activity: GardenActivity; role
 function GardenEnvironment() {
   const imagination = useGameStore((state) => state.isImaginationMode);
   const quality = useGameStore((state) => state.quality);
+  const qualitySettings = useQualitySettings();
+  const { sky: gardenSky } = useWeather();
+  const debugCollision = useMemo(() => collisionDebugEnabled(), []);
   const grass = imagination ? '#173d38' : '#91b976';
   const path = imagination ? '#7254b3' : '#e7cf9f';
   const wall = imagination ? '#315f58' : '#779b67';
 
   return (
     <group>
-      <ambientLight intensity={imagination ? 0.48 : 0.78} color={imagination ? '#8edcff' : '#fff7df'} />
-      <directionalLight
-        position={[12, 22, 8]}
-        intensity={imagination ? 1.35 : 1.05}
-        color={imagination ? '#ff8dcc' : '#fff1c7'}
-        castShadow={quality === 'high'}
-        shadow-mapSize-width={quality === 'high' ? 1024 : 256}
-        shadow-mapSize-height={quality === 'high' ? 1024 : 256}
+      {/* The garden rig now follows the same clock and weather as the hub, and
+          reads the quality SETTINGS rather than comparing the raw preset string
+          to 'high' - which quietly turned garden shadows off on Ultra. */}
+      <ambientLight
+        intensity={imagination ? 0.48 : gardenSky.ambientIntensity * 1.1}
+        color={imagination ? '#8edcff' : gardenSky.ambientColor}
       />
+      <directionalLight
+        position={imagination ? [12, 22, 8] : gardenSky.sunPosition}
+        intensity={imagination ? 1.35 : gardenSky.sunIntensity * 1.08}
+        color={imagination ? '#ff8dcc' : gardenSky.sunColor}
+        castShadow={qualitySettings.settings.shadows}
+        shadow-mapSize-width={qualitySettings.settings.shadowMapSize}
+        shadow-mapSize-height={qualitySettings.settings.shadowMapSize}
+      />
+      {debugCollision && <CollisionDebug zone="garden" />}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[36, 36]} />
         <meshStandardMaterial color={grass} roughness={0.96} />

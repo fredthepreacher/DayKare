@@ -1062,13 +1062,18 @@ try {
         '.daykare-touch-look',
         '.daykare-touch-recenter',
         '.daykare-touch-interact',
+        '.daykare-touch-actions',
       ];
+      // Sprint/Crouch moved to the right thumb, into a band shared with Center
+      // Camera above and the interaction button below. If it is not in this
+      // matrix the overlap audit silently stops covering the crowded side.
       const collisionSelectors = [
         '.daykare-hud-left',
         '.daykare-hud-right',
         '.daykare-touch-movement',
         '.daykare-touch-interact',
         '.daykare-touch-recenter',
+        '.daykare-touch-actions',
       ];
       const rectFor = (selector) => {
         const element = document.querySelector(selector);

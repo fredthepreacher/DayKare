@@ -27,6 +27,16 @@ export interface WorldSolid {
   shape?: 'box' | 'circle';
   radius?: number;
   collision?: boolean;
+  /**
+   * Block the player even though the solid is flat enough to step over.
+   *
+   * Player collision is height-aware (see STEP_OVER_HEIGHT): a solid whose top
+   * is ankle height is walkable, because a 6 cm sand pad or a rug is not a wall.
+   * A few flat things should still stop you for reasons that are not height -
+   * the pond is the whole example - and they say so here rather than by
+   * pretending to be 1.5 m tall.
+   */
+  blocksWhenFlat?: boolean;
   cameraRole?: 'structural' | 'substantial' | 'none';
   minY?: number;
   maxY?: number;
@@ -125,7 +135,9 @@ export const PLAY_SLIDE_RAMP = {
   position: [12, 0.5, -3.5] as [number, number, number],
   size: [1, 3, 0.2] as [number, number, number],
   rotation: [-Math.PI / 4, 0, 0] as [number, number, number],
-  solid: box('play-slide-ramp', 'playground', 11.4, 12.6, -4.7, -2.3, {
+  // The rotated ramp mesh sinks below the floor at z = -3.0; the collider ran
+  // to -2.3, leaving 0.28 m where the player was stopped by bare grass.
+  solid: box('play-slide-ramp', 'playground', 11.4, 12.6, -4.7, -3, {
     cameraRole: 'substantial',
     maxY: 1.7,
   }),
@@ -144,6 +156,15 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('playground-divider-south', 'wall', 7.7, 8.3, 2.15, 8),
   box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2.15),
   box('hall-divider-south', 'wall', -8.3, -7.7, 2.15, 8),
+  // The hallway/art-room and hallway/storage seams had a 4 m doorway cut into
+  // an 8 m span of continuously rendered floor, and NO wall either side of it -
+  // so 4.85 m of each seam was a hard stop with no geometry to explain it. These
+  // four panels are the walls that were always implied, following the same
+  // pattern as the dividers above.
+  box('art-divider-west', 'wall', -15.7, -14, -8.3, -7.7),
+  box('art-divider-east', 'wall', -10, -8.3, -8.3, -7.7),
+  box('storage-divider-west', 'wall', -15.7, -14, 7.7, 8.3),
+  box('storage-divider-east', 'wall', -10, -8.3, 7.7, 8.3),
   box('juice-stand', 'counter', 2, 4, -3.6, -2.4, { cameraRole: 'substantial' }),
   box('juice-signboard', 'furniture', 2, 4, -3.06, -2.94, {
     collision: false,
@@ -152,9 +173,14 @@ export const WORLD_SOLIDS: WorldSolid[] = [
     maxY: 2.22,
   }),
   box('art-table', 'table', -13.7, -10.3, -13.7, -10.3, { cameraRole: 'substantial', maxY: 1 }),
-  box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8, { cameraRole: 'substantial' }),
-  box('cubbies', 'cubby', -7.6, -3.8, -7.1, -6.3, { cameraRole: 'substantial', maxY: 2.2 }),
-  box('reading-nook', 'furniture', 4.6, 6.6, -7.4, -5.8, { cameraRole: 'substantial', maxY: 2.1 }),
+  // Entirely inside art-table's footprint, so it only ever added a second
+  // push-out inside a single-pass resolver. The table already blocks here.
+  box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8, { collision: false, cameraRole: 'substantial' }),
+  // Extended back to the wall face. The 0.6 m gap behind it needed 0.84 m to
+  // enter, so it read as a space you could slip into and never could.
+  box('cubbies', 'cubby', -7.6, -3.8, -7.7, -6.3, { cameraRole: 'substantial', maxY: 2.2 }),
+  // Trimmed to the beanbag and shelf the player can actually see.
+  box('reading-nook', 'furniture', 4.7, 6.5, -7.24, -5.96, { cameraRole: 'substantial', maxY: 1.1 }),
   box('storage-box-a', 'box', -14.7, -13.3, 9.3, 10.7, { cameraRole: 'substantial' }),
   box('storage-box-upper', 'box', -14.4, -13.6, 9.6, 10.4, {
     collision: false,
@@ -168,11 +194,23 @@ export const WORLD_SOLIDS: WorldSolid[] = [
     maxY: 2,
   }),
   PLAY_SLIDE_RAMP.solid,
-  box('sandbox', 'playground', 10, 14, 3, 7, { cameraRole: 'substantial' }),
+  // 4 x 4 m of sand, 6 cm tall. It declared maxY 1.5 - twenty-five times its own
+  // mesh - and with height ignored it cut the playground's 6.56 m corridor down
+  // to two 0.86 m lanes, or 0.30 m on the tricycle. Now it reads as the floor
+  // decoration it looks like.
+  box('sandbox', 'playground', 10, 14, 3, 7, { cameraRole: 'substantial', maxY: 0.07 }),
   box('route-garden-district', 'route-gate', 13, 15.4, -14.3, -12.3),
   box('route-storybook-lane', 'route-gate', -15.4, -13, -14.3, -12.3),
   box('route-maker-market', 'route-gate', 13, 15.4, 12.2, 14.3),
-  box('rainbow-tidy-up', 'activity-station', -0.65, 0.65, -4.65, -3.35),
+  // A circle matching the visible bin. The square left 0.89 m of invisible wall
+  // on each diagonal, right on the edge of the classroom rug - which is exactly
+  // where a player would report being blocked by a rug.
+  box('rainbow-tidy-up', 'activity-station', -0.64, 0.64, -4.64, -3.36, {
+    shape: 'circle',
+    radius: 0.64,
+    maxY: 0.52,
+    blocksWhenFlat: true,
+  }),
   gardenBox('garden-north-boundary', 'boundary', -18.3, 18.3, -18.3, -17.7),
   gardenBox('garden-south-boundary', 'boundary', -18.3, 18.3, 17.7, 18.3),
   gardenBox('garden-west-boundary', 'boundary', -18.3, -17.7, -18, 18),
@@ -180,7 +218,9 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   gardenBox('garden-greenhouse-west', 'wall', -14.8, -8.8, -11.8, -11.2),
   gardenBox('garden-greenhouse-east', 'wall', -14.8, -8.8, -5.8, -5.2),
   gardenBox('garden-greenhouse-north', 'wall', -14.8, -14.2, -11.8, -5.2),
-  gardenCircle('garden-pond', 'playground', 10, -0.2, 2.72, { maxY: 0.12 }),
+  // Flat, and still not somewhere you walk. Water is the one case the
+  // step-over rule should not decide.
+  gardenCircle('garden-pond', 'playground', 10, -0.2, 2.72, { maxY: 0.12, blocksWhenFlat: true }),
   gardenCircle('garden-gazebo-nw-post', 'furniture', -2.7, 3.4, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
   gardenCircle('garden-gazebo-ne-post', 'furniture', 2.7, 3.4, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
   gardenCircle('garden-gazebo-sw-post', 'furniture', -2.7, 8.8, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
@@ -431,6 +471,32 @@ export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_
   });
 }
 
+/**
+ * How tall something can be and still be walked over.
+ *
+ * Player collision used to be purely 2D in XZ: minY and maxY were read only by
+ * the camera, so every solid was an infinitely tall wall to the player. That is
+ * why a 6 cm sandbox pad blocked a 4 x 4 m square of the playground, and why the
+ * authors' evident intent - `garden-pond: maxY 0.12`, and the `collision: false`
+ * escape hatches on the juice signboard and the upper storage box - had no
+ * effect on walking at all.
+ *
+ * 0.15 m is ankle height: below a step, above the thickest floor decal.
+ */
+export const STEP_OVER_HEIGHT = 0.15;
+
+/**
+ * Does this solid stop the player? Flat things do not, unless they say they do.
+ * The camera keeps using the full solid list, because a shape too low to block a
+ * foot can still be worth not clipping through.
+ */
+export function blocksPlayer(solid: WorldSolid): boolean {
+  if (solid.collision === false) return false;
+  if (solid.blocksWhenFlat) return true;
+  const top = solid.maxY ?? 1.5;
+  return top > STEP_OVER_HEIGHT;
+}
+
 function pushOut(point: THREE.Vector3, radius: number, solid: WorldSolid, axis: 'x' | 'z') {
   if (!overlapsCircle(point, radius, solid)) return;
   const clearance = radius + 0.0001;
@@ -469,7 +535,7 @@ export function isWalkable(
 ) {
   return isWithinWalkableBounds(position, radius, zone) && !WORLD_SOLIDS.some((solid) => (
     solid.zone === zone
-    && solid.collision !== false
+    && blocksPlayer(solid)
     && !ignoredKinds.includes(solid.kind)
     && overlapsCircle(position, radius, solid)
   ));
@@ -492,12 +558,12 @@ export function resolveMovement(
     const before = next.clone();
     next.x += stepX;
     for (const solid of WORLD_SOLIDS) {
-      if (solid.zone === zone && solid.collision !== false) pushOut(next, radius, solid, 'x');
+      if (solid.zone === zone && blocksPlayer(solid)) pushOut(next, radius, solid, 'x');
     }
     if (!isWithinWalkableBounds(next, radius, zone)) next.x = before.x;
     next.z += stepZ;
     for (const solid of WORLD_SOLIDS) {
-      if (solid.zone === zone && solid.collision !== false) pushOut(next, radius, solid, 'z');
+      if (solid.zone === zone && blocksPlayer(solid)) pushOut(next, radius, solid, 'z');
     }
     if (!isWithinWalkableBounds(next, radius, zone)) next.z = before.z;
   }

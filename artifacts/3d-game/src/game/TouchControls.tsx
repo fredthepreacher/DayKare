@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { LocateFixed } from 'lucide-react';
+import { ArrowDownNarrowWide, LocateFixed, Zap } from 'lucide-react';
 import { clearTouchMove, resetTouchInput, setTouchCrouch, setTouchMove, toggleTouchRun, TouchPointerOwnership } from './touchInput';
 import { addCameraOrbit, recenterCamera } from './cameraInput';
 
@@ -22,6 +22,10 @@ const LOOK_BLOCKING_SELECTOR = [
   '.daykare-touch-movement',
   '.daykare-touch-interact',
   '.daykare-touch-recenter',
+  // Without this, a finger landing in the gap between Sprint and Crouch would
+  // hit the container, fail the gameplay-point test, and be silently dropped -
+  // no orbit and no button, the same dead zone the movement pad's padding has.
+  '.daykare-touch-actions',
 ].join(',');
 
 export function isTouchTap(holdTriggered: boolean, maxTravel: number) {
@@ -413,11 +417,53 @@ export function TouchControls({
               style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }}
             />
           </div>
-          <div className="daykare-touch-status" aria-live="polite">
-            <span className={runEnabled ? 'is-active' : ''}>Run {runEnabled ? 'on' : 'off'}</span>
-            <span className={crouchEnabled ? 'is-active' : ''}>Crouch {crouchEnabled ? 'on' : 'off'}</span>
-          </div>
-          <div className="daykare-touch-hint">Double-tap run · Hold crouch</div>
+        </div>
+      )}
+
+      {/* Sprint and crouch, on the right thumb.
+          They were gestures on the left pad - double-tap to run, long-press to
+          crouch - which meant the hand holding the stick had to stop steering to
+          change gait, and neither was discoverable. As real buttons they sit
+          under the right thumb, and because they are <button> elements the look
+          handler's LOOK_BLOCKING_SELECTOR already excludes them, so a tap here
+          cannot orbit the camera and cannot take the joystick's pointer: the
+          ownership model has slots for movement and look only, and a button
+          claims neither. The gestures still work for anyone used to them. */}
+      {movementEnabled && (
+        <div className="daykare-touch-actions">
+          <button
+            type="button"
+            className={`daykare-touch-action ${runEnabled ? 'is-active' : ''}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              const next = toggleTouchRun();
+              setRunEnabled(next);
+              if ('vibrate' in navigator) navigator.vibrate(18);
+            }}
+            aria-pressed={runEnabled}
+            aria-label={runEnabled ? 'Sprint on' : 'Sprint off'}
+          >
+            <Zap aria-hidden="true" size={19} strokeWidth={2.6} />
+            <span>Sprint</span>
+          </button>
+          <button
+            type="button"
+            className={`daykare-touch-action ${crouchEnabled ? 'is-active' : ''}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={() => {
+              setCrouchEnabled((previous) => {
+                const next = !previous;
+                setTouchCrouch(next);
+                return next;
+              });
+              if ('vibrate' in navigator) navigator.vibrate(18);
+            }}
+            aria-pressed={crouchEnabled}
+            aria-label={crouchEnabled ? 'Crouch on' : 'Crouch off'}
+          >
+            <ArrowDownNarrowWide aria-hidden="true" size={19} strokeWidth={2.6} />
+            <span>Crouch</span>
+          </button>
         </div>
       )}
 

@@ -12,13 +12,28 @@ import {
   PROGRESSION_VERSION,
   type ProgressionState,
 } from './progression';
+import { normalizeWeatherSeed } from './weather';
+
+/**
+ * The optional Star Token boost.
+ *
+ * 15 seconds was long enough to activate and too short to spend: a Rainbow
+ * Tidy-Up round is three fetch-and-carry trips, so the boost routinely expired
+ * before the round it was started for finished, and doubled nothing.
+ *
+ * It cannot be extended by reloading: the field is deliberately absent from the
+ * save allowlist and is zeroed on load, so a reload cancels a running boost
+ * rather than banking it. It cannot stack either - activateOptionalRewardBoost
+ * refuses while one is live, and the multiplier is a constant 2, not a product.
+ */
+export const OPTIONAL_BOOST_DURATION_MS = 45_000;
 import {
   activateQuest,
   advanceObjective,
   createInitialQuests,
   legacyStatusForQuest,
   normalizeQuestStates,
-  resetRepeatableQuest,
+  roundWasCompleted,
   type QuestStates,
 } from './quests';
 import {
@@ -106,6 +121,13 @@ export interface GameState {
   dayNumber: number;
   schedule: ScheduleState;
   isRainy: boolean;
+  /**
+   * Seed for the deterministic weather forecast. Only the seed is persisted;
+   * the weather itself is derived from (day, minute, seed), so no save can
+   * carry an impossible weather state and an old save simply starts
+   * forecasting from whatever day it is on.
+   */
+  weatherSeed: number;
   isImaginationMode: boolean;
   
   // Player
@@ -123,6 +145,16 @@ export interface GameState {
   quests: QuestStates;
   droppedItems: DroppedWorldItem[];
   tidyPlacedItems: string[];
+  /**
+   * Has the player been shown where the tidy blocks go?
+   *
+   * The placement popup fired on EVERY block of EVERY round forever - three
+   * interruptions per round, for as many rounds as the player chose to grind.
+   * It is a tutorial, so it runs once. The Journal objective and the interaction
+   * prompt still carry the instruction for anyone who needs reminding; what goes
+   * away is the modal dialogue.
+   */
+  tidyTutorialSeen: boolean;
   
   // Business
   juiceStock: number;
@@ -184,6 +216,7 @@ export interface GameState {
   addClue: (clue: string) => void;
   advanceQuestObjective: (questId: string, objectiveId: string) => boolean;
   completeTidyToy: (item: string) => boolean;
+  markTidyTutorialSeen: () => void;
   
   /** `cost` and `amount` are ignored - prices are authored in the store. */
   buyStock: (type: 'juice' | 'cracker' | 'supplies', cost: number, amount: number) => void;
@@ -268,6 +301,7 @@ const initialState = {
   dayNumber: 1,
   schedule: 'morning-play' as ScheduleState,
   isRainy: false,
+  weatherSeed: 0x5eed,
   isImaginationMode: false,
   inventory: [],
   collectibles: [],
@@ -281,6 +315,7 @@ const initialState = {
   quests: createInitialQuests(),
   droppedItems: [] as DroppedWorldItem[],
   tidyPlacedItems: [] as string[],
+  tidyTutorialSeen: false,
   
   juiceStock: 5,
   crackerStock: 5,
@@ -538,7 +573,13 @@ function reconcilePersistedProgression(
     routeUnlocks: [],
     activityRuns,
     activityRewards: {},
-    trustedHelperPass: rawProgression.trustedHelperPass === true,
+    // A finished Binky quest IS the Trusted Helper Pass. Deriving it only from
+    // the persisted flag left saves that migrated to complete without one
+    // permanently unable to earn it: the pass is granted in exactly one place,
+    // and that place refuses a quest already marked complete. The player saw
+    // "Where's Binky - complete" and no Sticker Parade board, forever.
+    trustedHelperPass: rawProgression.trustedHelperPass === true
+      || quests['where-binky']?.status === 'complete',
   });
 }
 
@@ -677,6 +718,7 @@ export function normalizePersistedGameState(value: unknown) {
     dayNumber: safeInteger(persisted.dayNumber, initialState.dayNumber, 1, 9999),
     schedule,
     isRainy: persisted.isRainy === true,
+    weatherSeed: normalizeWeatherSeed(persisted.weatherSeed),
     isImaginationMode: false,
     inventory,
     // Early builds pre-granted the rock without recording a world pickup. Keep
@@ -695,6 +737,12 @@ export function normalizePersistedGameState(value: unknown) {
     quests,
     droppedItems,
     tidyPlacedItems: normalizeTidyItems(persisted.tidyPlacedItems),
+    // Defaulting to false would hand the beginner tutorial back to every
+    // existing player on their next load. A save with completed rounds has
+    // demonstrably seen it, so derive rather than default.
+    tidyTutorialSeen: persisted.tidyTutorialSeen === true
+      || (progression.activityRuns['rainbow-tidy-up'] ?? 0) > 0
+      || quests['rainbow-tidy-up']?.completionCount > 0,
     juiceStock: safeInteger(persisted.juiceStock, initialState.juiceStock, 0, MAX_STOCK),
     crackerStock: safeInteger(persisted.crackerStock, initialState.crackerStock, 0, MAX_STOCK),
     juiceClubCash: safeInteger(persisted.juiceClubCash, initialState.juiceClubCash, 0, MAX_CASH),
@@ -729,6 +777,7 @@ export function serializeGameState(state: GameState) {
     dayNumber: state.dayNumber,
     schedule: state.schedule,
     isRainy: state.isRainy,
+    weatherSeed: state.weatherSeed,
     inventory: state.inventory,
     collectibles: state.collectibles,
     friends: state.friends,
@@ -738,6 +787,7 @@ export function serializeGameState(state: GameState) {
     quests: state.quests,
     droppedItems: state.droppedItems,
     tidyPlacedItems: state.tidyPlacedItems,
+    tidyTutorialSeen: state.tidyTutorialSeen,
     juiceStock: state.juiceStock,
     crackerStock: state.crackerStock,
     juiceClubCash: state.juiceClubCash,
@@ -1090,6 +1140,9 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      markTidyTutorialSeen: () => set((state) => (
+        state.tidyTutorialSeen ? state : { tidyTutorialSeen: true }
+      )),
       completeTidyToy: (item) => {
         let changed = false;
         set((state) => {
@@ -1102,7 +1155,10 @@ export const useGameStore = create<GameState>()(
           const quest = state.quests['rainbow-tidy-up'];
           if (!pair || !quest || quest.currentObjectiveId !== pair[1] || !state.inventory.includes(item)) return state;
           const nextQuests = advanceObjective(state.quests, 'rainbow-tidy-up', pair[1]);
-          const completedRound = nextQuests['rainbow-tidy-up'].status === 'complete';
+          // advanceObjective now resets the repeatable itself, so the round is
+          // detected by the completion counter rather than by a 'complete'
+          // status that no longer appears.
+          const completedRound = roundWasCompleted(state.quests, nextQuests, 'rainbow-tidy-up');
           const tokenReward = 2 * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
           const nextProgression = completedRound
             ? withQualifiedRoutes({
@@ -1130,7 +1186,7 @@ export const useGameStore = create<GameState>()(
           return {
             inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
             tidyPlacedItems: [...state.tidyPlacedItems.filter((placedItem) => placedItem !== item), item].slice(-3),
-            quests: completedRound ? resetRepeatableQuest(nextQuests, 'rainbow-tidy-up') : nextQuests,
+            quests: nextQuests,
             progression: nextProgression,
             rivalStory: completedRound
               ? recordRainbowStoryMilestone(state.rivalStory)
@@ -1583,7 +1639,7 @@ export const useGameStore = create<GameState>()(
         set((state) => {
           if (state.optionalRewardBoostUntil > now) return state;
           changed = true;
-          return { optionalRewardBoostUntil: now + 15_000 };
+          return { optionalRewardBoostUntil: now + OPTIONAL_BOOST_DURATION_MS };
         });
         return changed;
       },

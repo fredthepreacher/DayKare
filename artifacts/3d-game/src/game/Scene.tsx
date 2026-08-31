@@ -1,6 +1,7 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sky, KeyboardControls } from '@react-three/drei';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { WeatherEffects, useWeather } from './WeatherSystem';
 import { Player } from './Player';
 import { Environment } from './Environment';
 import { NPCs } from './NPCs';
@@ -52,7 +53,7 @@ function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THRE
 
 function GameScene() {
   const playerRef = useRef<THREE.Group>(null);
-  const isRainy = useGameStore(s => s.isRainy);
+  const { sky } = useWeather();
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
   const zone = useGameStore(s => s.zone);
   const zoneTransitioning = useGameStore(s => s.zoneTransitioning);
@@ -66,17 +67,20 @@ function GameScene() {
 
   return (
     <>
-      <Sky 
-        distance={450000} 
-        sunPosition={isImaginationMode ? [0, -1, 0] : (isRainy ? [0, 1, 0] : [10, 20, 10])} 
-        inclination={0} 
-        azimuth={0.25} 
-        mieCoefficient={isImaginationMode ? 0.05 : (isRainy ? 0.01 : 0.005)}
-        rayleigh={isImaginationMode ? 2 : (isRainy ? 4 : 0.5)}
+      {/* The sky follows the clock and the weather. It used to be three fixed
+          states (normal / rainy / imagination), so time of day was invisible. */}
+      <Sky
+        distance={450000}
+        sunPosition={isImaginationMode ? [0, -1, 0] : sky.sunPosition}
+        inclination={0}
+        azimuth={0.25}
+        mieCoefficient={isImaginationMode ? 0.05 : sky.mieCoefficient}
+        rayleigh={isImaginationMode ? 2 : sky.rayleigh}
       />
-      {(isRainy || isImaginationMode) && (
-        <fog attach="fog" args={[isImaginationMode ? '#2b1055' : '#8899a6', 5, 30]} />
-      )}
+      {isImaginationMode
+        ? <fog attach="fog" args={['#2b1055', 5, 30]} />
+        : sky.fog && <fog attach="fog" args={[sky.fog.color, sky.fog.near, sky.fog.far]} />}
+      <WeatherEffects />
       <PerformanceTelemetry />
       
       {zone === 'hub' ? (

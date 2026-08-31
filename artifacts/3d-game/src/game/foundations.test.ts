@@ -784,7 +784,19 @@ const artTable = getWorldSolidTransform('art-table', 1);
 assert.deepEqual(artTable.position, [-12, 0.5, -12]);
 assert.deepEqual(artTable.size, [3.3999999999999986, 1, 3.3999999999999986]);
 assert.ok(PLAY_SLIDE_RAMP.solid.minZ <= PLAY_SLIDE_RAMP.position[2] - 1);
-assert.ok(PLAY_SLIDE_RAMP.solid.maxZ >= PLAY_SLIDE_RAMP.position[2] + 1);
+// The ramp is a 3-long box rotated -45 degrees about X, so it crosses y = 0 at
+// z = -3 and everything south of that is buried under the playground floor. The
+// collider now stops there. It used to run to the full rotated footprint, which
+// put 0.28 m of invisible wall over bare grass at the bottom of the slide.
+assert.equal(
+  PLAY_SLIDE_RAMP.solid.maxZ,
+  -3,
+  'the ramp collider ends where the ramp stops being above the floor',
+);
+assert.ok(
+  PLAY_SLIDE_RAMP.solid.maxZ < PLAY_SLIDE_RAMP.position[2] + 1.06,
+  'the collider does not extend past the visible ramp geometry',
+);
 const upperStorageBox = getWorldSolidTransform('storage-box-upper', 0.8, 1.4);
 assert.deepEqual(upperStorageBox.position, [-14, 1.4, 10]);
 assert.deepEqual(upperStorageBox.size, [0.8000000000000007, 0.8, 0.8000000000000007]);

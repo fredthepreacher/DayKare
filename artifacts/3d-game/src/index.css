@@ -621,35 +621,50 @@
     background: hsl(var(--primary) / 0.16);
   }
 
+  /* The book is one column with a pinned header and a scrolling body, so the
+     close control and the tabs stay on screen at every scroll position. The
+     previous rules stacked two pages and pushed the only Close button below all
+     of page one, which left a touch player with no visible way out. */
   .daykare-journal-shell {
     align-items: stretch;
-    padding: 8px;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
   }
 
   .daykare-journal-book {
-    height: calc(100dvh - 16px);
-    flex-direction: column;
-    overflow-y: auto;
+    height: 100%;
+    max-height: 100%;
     border-width: 5px;
     border-radius: 20px;
+  }
+
+  .daykare-journal-body {
     touch-action: pan-y;
     overscroll-behavior: contain;
+    padding: 14px;
   }
 
-  .daykare-journal-book > div {
-    flex: none;
-    width: 100%;
-    padding: 20px;
-    overflow: visible;
-  }
-
-  .daykare-journal-book > div:first-child {
-    border-right: 0;
-    border-bottom: 1px solid #d4c3b3;
+  .daykare-journal-header {
+    padding: 12px 14px;
   }
 
   .daykare-journal-book h2 {
-    font-size: 29px;
+    font-size: 26px;
+  }
+
+  /* Every Journal control clears the 44px touch minimum. The old buttons were
+     px-2 py-1, roughly 26px tall. */
+  .daykare-journal-close,
+  .daykare-journal-action,
+  .daykare-journal-tab,
+  .daykare-map-button,
+  .daykare-collapsible-head {
+    min-height: 44px;
+  }
+
+  .daykare-map-surface {
+    height: 46vh;
+    min-height: 220px;
   }
 }
 
@@ -1647,4 +1662,420 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Journal — sections, status badges and the map.
+
+   The Journal previously rendered five progression systems in five vocabularies
+   and printed raw enum values ("idle", "active") at the player. These classes
+   back a single vocabulary defined in questBoard.ts, plus a map that is drawn
+   from world data rather than hand-placed divs.
+   ------------------------------------------------------------------------- */
+
+.daykare-journal-book {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  max-height: 88dvh;
+  overflow: hidden;
+}
+
+.daykare-journal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5d8cc;
+  flex: none;
+}
+
+.daykare-journal-close {
+  flex: none;
+  background: #5c3a21;
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 800;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgb(92 58 33 / 0.25);
+  touch-action: manipulation;
+}
+
+.daykare-journal-close:hover {
+  background: #74492a;
+}
+
+.daykare-journal-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5d8cc;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  flex: none;
+}
+
+.daykare-journal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.daykare-journal-tab {
+  flex: none;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8b5a2b;
+  background: transparent;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+
+.daykare-journal-tab:hover {
+  background: #f0e6da;
+}
+
+.daykare-journal-tab-active {
+  background: #5c3a21;
+  color: #fff;
+}
+
+.daykare-journal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+}
+
+.daykare-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  font-size: 17px;
+  color: #5c3a21;
+  margin-bottom: 10px;
+}
+
+/* --- Entry cards --- */
+
+.daykare-entry-card {
+  background: rgb(255 255 255 / 0.65);
+  border: 1px solid #e5d8cc;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.daykare-entry-card-primary {
+  background: #fff6ec;
+  border-color: #f0c9a0;
+  box-shadow: 0 2px 10px rgb(139 90 43 / 0.12);
+}
+
+.daykare-entry-card-dim {
+  opacity: 0.78;
+}
+
+.daykare-status-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.daykare-entry-next,
+.daykare-entry-requirement {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  border-radius: 10px;
+  padding: 7px 9px;
+}
+
+.daykare-entry-next {
+  background: #fff1e2;
+  color: #8a4b12;
+  font-weight: 600;
+}
+
+.daykare-entry-requirement {
+  background: #f2ece5;
+  color: #6d5a49;
+}
+
+.daykare-entry-unlocks {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #3f7d5c;
+  background: #eaf6ef;
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+
+.daykare-progress-track {
+  margin-top: 4px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ece0d2;
+  overflow: hidden;
+}
+
+.daykare-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e8833a, #f0a860);
+  transition: width 220ms ease;
+}
+
+.daykare-empty-note {
+  font-size: 12px;
+  color: #8b5a2b;
+  opacity: 0.85;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* --- Collapsibles --- */
+
+.daykare-collapsible {
+  border: 1px solid #e5d8cc;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 0.5);
+}
+
+.daykare-collapsible-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #5c3a21;
+  touch-action: manipulation;
+}
+
+.daykare-collapsible-body {
+  padding: 0 12px 12px;
+}
+
+/* --- Buttons --- */
+
+.daykare-journal-action {
+  flex: none;
+  color: #fff;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 900;
+  touch-action: manipulation;
+}
+
+.daykare-journal-action:disabled {
+  opacity: 0.45;
+}
+
+.daykare-journal-danger {
+  color: #d24545;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 16px;
+  border-radius: 10px;
+}
+
+.daykare-journal-danger:hover {
+  background: #fdeaea;
+}
+
+/* --- Map --- */
+
+.daykare-map-frame {
+  background: #e9e0d3;
+  border: 2px solid #c2b2a1;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.daykare-map-surface {
+  display: block;
+  width: 100%;
+  height: 300px;
+  /* The map owns its gestures: one finger pans, two pinch. Without this the
+     browser claims the drag for scrolling and the map never moves. */
+  touch-action: none;
+  cursor: grab;
+}
+
+.daykare-map-surface:active {
+  cursor: grabbing;
+}
+
+.daykare-map-room-label {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.daykare-map-button {
+  min-width: 34px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #f0e6da;
+  color: #5c3a21;
+  font-weight: 900;
+  font-size: 13px;
+  touch-action: manipulation;
+}
+
+.daykare-map-button-wide {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.daykare-map-button:disabled {
+  opacity: 0.4;
+}
+
+.daykare-map-readout {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #6d5a49;
+  min-height: 18px;
+  line-height: 1.4;
+}
+
+/* ---------------------------------------------------------------------------
+   Sprint / Crouch — right thumb.
+
+   Previously both lived on the LEFT joystick as gestures (double-tap to run,
+   long-press to crouch), so changing gait meant interrupting steering with the
+   same thumb. These are real buttons on the right, sized past the 44px minimum,
+   and placed in the free band between Center Camera (which floats below the HUD)
+   and the interaction button (bottom-right, ~64px tall).
+   ------------------------------------------------------------------------- */
+
+@media (pointer: coarse), (max-width: 767px) {
+  .daykare-touch-actions {
+    position: absolute;
+    right: max(16px, calc(env(safe-area-inset-right) + 8px));
+    bottom: max(108px, calc(env(safe-area-inset-bottom) + 100px));
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: auto;
+    z-index: 2;
+  }
+
+  .daykare-touch-action {
+    min-width: 62px;
+    min-height: 52px;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    border-radius: 16px;
+    border: 2px solid rgb(255 255 255 / 0.55);
+    background: rgb(28 22 18 / 0.52);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    backdrop-filter: blur(6px);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 140ms ease, transform 140ms ease;
+  }
+
+  .daykare-touch-action.is-active {
+    background: hsl(var(--primary) / 0.92);
+    border-color: #fff;
+    transform: scale(1.04);
+  }
+
+  .daykare-touch-action:active {
+    transform: scale(0.96);
+  }
+}
+
+/* Landscape is short. Lay the two buttons side by side so the cluster is one
+   row tall and cannot reach up into Center Camera's floating slot. */
+@media (pointer: coarse) and (orientation: landscape) {
+  .daykare-touch-actions {
+    flex-direction: row;
+    bottom: max(84px, calc(env(safe-area-inset-bottom) + 78px));
+    gap: 8px;
+  }
+
+  .daykare-touch-action {
+    min-width: 58px;
+    min-height: 46px;
+  }
+}
+
+@media (max-width: 520px) {
+  .daykare-touch-actions {
+    bottom: max(104px, calc(env(safe-area-inset-bottom) + 96px));
+  }
+}
+
+/* Reward pulses: a small "+2" that rises off a counter when it goes up.
+   Ordinary gains used to move a number silently, so the most frequent rewards
+   in the game were the least legible ones. */
+.daykare-reward-pulse-host {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  pointer-events: none;
+  display: block;
+  width: 0;
+  height: 0;
+}
+
+.daykare-reward-pulse {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 900;
+  color: #2f9e4f;
+  text-shadow: 0 1px 2px rgb(255 255 255 / 0.85);
+  animation: daykare-reward-pulse 1.1s ease-out both;
+}
+
+@keyframes daykare-reward-pulse {
+  0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.85); }
+  22%  { opacity: 1; transform: translate(-50%, -4px) scale(1.06); }
+  70%  { opacity: 1; transform: translate(-50%, -14px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -24px) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .daykare-reward-pulse {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
 }

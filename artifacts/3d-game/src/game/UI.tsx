@@ -1,3 +1,5 @@
+import { RewardPulse } from './RewardPulse';
+import { useIsRainy, useWeatherLabel } from './WeatherSystem';
 import { useGameStore } from './store';
 import { zoneLabel } from './world';
 import { formatClock, timeOfDayToMinute } from './gameClock';
@@ -107,6 +109,10 @@ export function UI() {
     interruptCaper,
     advanceDistrictPreview,
   } = useGameStore();
+  const tidyTutorialSeen = useGameStore((state) => state.tidyTutorialSeen);
+  const markTidyTutorialSeen = useGameStore((state) => state.markTidyTutorialSeen);
+  const rainyNow = useIsRainy();
+  const weatherLabel = useWeatherLabel();
   const frontEndBlocked = useModeStore((state) => state.menuOpen || state.activeMode === 'online-preview');
   const openMenu = useModeStore((state) => state.openMenu);
 
@@ -277,7 +283,15 @@ export function UI() {
           const objectiveId = `collect-${activeInteractable}`;
           advanceQuestObjective('rainbow-tidy-up', objectiveId);
           setActiveInteractable(null);
-          setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Toy collected! Carry it to the activity station.' });
+          // Only the FIRST block explains itself. This popup used to fire on
+          // every block of every round - three modal interruptions per round,
+          // for as many rounds as the player chose to grind. The Journal
+          // objective and the on-screen interaction prompt still say where the
+          // station is, so a player who needs the reminder still has it.
+          if (!tidyTutorialSeen) {
+            markTidyTutorialSeen();
+            setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Toy collected! Carry it to the activity station.' });
+          }
         } else if (activeInteractable === 'juice-stand') {
           if (schedule === 'juice-club') {
             setActiveDialogue({
@@ -332,8 +346,10 @@ export function UI() {
               });
             } else if (finishedRound) {
               setActiveDialogue(null);
-            } else {
+            } else if (!tidyTutorialSeen) {
               setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Perfect fit! Now find the next misplaced toy.' });
+            } else {
+              setActiveDialogue(null);
             }
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
@@ -572,7 +588,7 @@ export function UI() {
     }
     if (name === 'Mr. Davis') {
       if (schedule === 'outdoor-play') {
-        setActiveDialogue({ name, text: isRainy ? 'Rain plan today: I am checking the reading and building corners.' : 'I am patrolling the playground fence and keeping the gate paths clear.' });
+        setActiveDialogue({ name, text: rainyNow ? 'Rain plan today: I am checking the reading and building corners.' : 'I am patrolling the playground fence and keeping the gate paths clear.' });
       } else if (schedule === 'juice-club') {
         setActiveDialogue({ name, text: 'I am supervising the Juice Club line. Keep the counter stocked and leave a clear path for customers.' });
       } else if (schedule === 'art-time') {
@@ -803,7 +819,7 @@ export function UI() {
           </div>
           <div>
             <div className="text-2xl font-bold tracking-tight">{formatTime(timeOfDay)}</div>
-            <div className="text-sm font-medium text-muted-foreground">Day {dayNumber} · {getScheduleLabel(schedule)} {isRainy && "(Indoor)"}</div>
+            <div className="text-sm font-medium text-muted-foreground">Day {dayNumber} · {getScheduleLabel(schedule)} · {weatherLabel}{rainyNow && " (Indoor)"}</div>
           </div>
           <img
             src={`${import.meta.env.BASE_URL}daykare-assets/01_playtime_app_icon.png`}
@@ -826,7 +842,7 @@ export function UI() {
             className="bg-card/90 backdrop-blur p-2 rounded-lg shadow hover:bg-card border-2 border-transparent hover:border-blue-400/30 transition-all pointer-events-auto text-blue-500"
             title="Toggle Rain"
           >
-            {isRainy ? <CloudRain className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            {rainyNow ? <CloudRain className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
           </button>
           <button 
             onClick={toggleImagination}
@@ -888,12 +904,16 @@ export function UI() {
         </button>
 
         <div className="daykare-progress-chip daykare-hud-progress bg-card/90 backdrop-blur border-2 border-amber-400/25 px-3 py-2 rounded-xl shadow flex items-center gap-3 text-card-foreground">
-          <div className="flex items-center gap-1 font-bold text-amber-700">
+          <div className="flex items-center gap-1 font-bold text-amber-700 relative">
             <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
             {progression.tokens}
+            <RewardPulse value={progression.tokens} />
           </div>
           <div className="w-px h-4 bg-amber-300/50" />
-          <div className="text-xs font-bold text-muted-foreground">{progression.reputation} REP</div>
+          <div className="text-xs font-bold text-muted-foreground relative">
+            {progression.reputation} REP
+            <RewardPulse value={progression.reputation} suffix=" REP" />
+          </div>
         </div>
 
         {/*

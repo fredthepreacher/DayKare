@@ -1,6 +1,9 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { advanceRide, releaseRideable, riderFor, tryClaimRideable } from './rideables';
+import { commitSocialAction, currentApproacher, decideSocialAction, releaseApproach } from './npcSocial';
+import { useIsRainy } from './WeatherSystem';
 import { CharacterModel, type CharacterModelProps } from './CharacterModel';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { clearNpcNavigation, getNavigationTarget, registerNpcPosition } from './navigation';
@@ -97,8 +100,6 @@ const TEACHER_PATROL_PROFILES: Record<string, TeacherPatrolProfile> = {
 export function teacherPatrolProfile(name: string): TeacherPatrolProfile {
   return TEACHER_PATROL_PROFILES[name] ?? TEACHER_PATROL_PROFILES['Mr. Davis'];
 }
-
-let nextGreetingAt = 0;
 
 /**
  * Ranks the whole cast on an interval and writes each NPC's tier back.
@@ -253,7 +254,7 @@ function Teacher({
 }) {
   const ref = useRef<THREE.Group>(null);
   const schedule = useGameStore((state) => state.schedule);
-  const isRainy = useGameStore((state) => state.isRainy);
+  const isRainy = useIsRainy();
   const suspicion = useGameStore((state) => state.teacherSuspicion);
   const imagination = useGameStore((state) => state.isImaginationMode);
   const activeDialogue = useGameStore((state) => state.activeDialogue);
@@ -281,6 +282,9 @@ function Teacher({
   }>({ key: '', index: 0, dwellUntil: 0, nextScanAt: 0, scanUntil: 0, scanTarget: null });
   const lastPosition = useRef(new THREE.Vector3(...defaultPos));
   const stuckFor = useRef(0);
+  /** When this teacher last paid for real pathfinding. Tier B throttles on it. */
+  const lastTeacherPathAt = useRef(0);
+  const quality = useQualitySettings();
   const [isSupervising, setIsSupervising] = useState(false);
   const supervisingRef = useRef(false);
   const [intervention, setIntervention] = useState<TeacherInterventionState>(
@@ -323,6 +327,24 @@ function Teacher({
         }
       }, 2800);
     }
+    // Teachers now participate in the Phase 4A simulation tiers. They were the
+    // only cast members exempt, so two of the most expensive NPCs in the hub -
+    // both running supervision scans over every child - paid full cost at any
+    // distance, which quietly ate the budget the child tiers were saving.
+    const teacherDistance = playerRef.current
+      ? ref.current.position.distanceTo(playerRef.current.position)
+      : 0;
+    reportNpc({
+      id: `teacher-${name}`,
+      distance: teacherDistance,
+      visible: teacherDistance <= 30,
+      // An intervention aimed at the player, or a teacher you are talking to,
+      // must never be downgraded mid-sentence.
+      engaged: active || interventionIsActive(liveIntervention),
+    });
+    const teacherTier = tierFor(`teacher-${name}`);
+    const teacherCapabilities = capabilitiesForTier(teacherTier);
+
     const key = `${schedule}:${isRainy}`;
     const spots = teacherPatrolSpots(name, schedule, isRainy, defaultPos);
     if (patrol.current.key !== key) {
@@ -372,7 +394,27 @@ function Teacher({
     if (active && playerRef.current) {
       smoothTurn(ref.current, playerRef.current.position, delta);
     } else if (!arrived) {
-      stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, profile.speed);
+      const teacherNowMs = state.clock.elapsedTime * 1000;
+      const teacherInterval = tierIntervalMs(teacherTier, quality.settings.distantNpcIntervalMs);
+      const teacherPathDue = teacherInterval === 0
+        || teacherNowMs - lastTeacherPathAt.current >= teacherInterval;
+      if (teacherCapabilities.pathfinding && teacherPathDue) {
+        lastTeacherPathAt.current = teacherNowMs;
+        stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, profile.speed);
+      } else {
+        // Same coasting rule the children use: keep walking the straight line,
+        // just stop paying for pathfinding and separation. Supervision itself is
+        // never skipped - a teacher who stopped noticing children at distance
+        // would be a gameplay change, not a performance one.
+        const [tx, , tz] = advanceLogicalPosition(
+          [ref.current.position.x, ref.current.position.y, ref.current.position.z],
+          [destination.x, destination.y, destination.z],
+          profile.speed,
+          delta,
+        );
+        ref.current.position.x = tx;
+        ref.current.position.z = tz;
+      }
       const moved = ref.current.position.distanceTo(lastPosition.current);
       stuckFor.current = moved < 0.002 ? stuckFor.current + delta : 0;
       if (stuckFor.current > 2.8) {
@@ -485,7 +527,7 @@ function Kid({
 }: KidDefinition & { playerRef: React.RefObject<THREE.Group | null> }) {
   const ref = useRef<THREE.Group>(null);
   const schedule = useGameStore((state) => state.schedule);
-  const isRainy = useGameStore((state) => state.isRainy);
+  const isRainy = useIsRainy();
   const imagination = useGameStore((state) => state.isImaginationMode);
   const activeDialogue = useGameStore((state) => state.activeDialogue);
   const active = useGameStore((state) => state.activeInteractable === `kid-${name}`);
@@ -505,6 +547,22 @@ function Kid({
   const [childIntervention, setChildIntervention] = useState<ReturnType<typeof getChildIntervention>>(null);
   const childInterventionKey = useRef('');
   const greetingClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    // Without this, a child unmounting mid-ride (a zone change, a quality
+    // change that remounts the cast) leaves its claim behind and that trike is
+    // never available again.
+    releaseRideable(name, 0);
+    releaseApproach(name);
+  }, [name]);
+  // The wave animation already existed in CharacterModel but nothing ever
+  // triggered it in response to the player. This is that trigger.
+  const ridingRef = useRef(false);
+  const [riding, setRiding] = useState(false);
+  const socialReactionRef = useRef<{ reaction: 'wave' | 'cheer' | 'listen' | null; until: number }>({
+    reaction: null,
+    until: 0,
+  });
+  const [socialReaction, setSocialReaction] = useState<'wave' | 'cheer' | 'listen' | null>(null);
   const phase = useMemo(() => namePhase(name), [name]);
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const activityTarget = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
@@ -621,6 +679,49 @@ function Kid({
       }
       distanceToActivity = ref.current.position.distanceTo(activityTarget);
     }
+
+    // Ride-ons. A child on a tricycle overrides its station target with the
+    // ride's own waypoint loop; everything downstream - pathfinding, tier
+    // coasting, stuck detection - is unchanged, which is why this is an
+    // override rather than a parallel movement path.
+    //
+    // Claiming only happens outdoors, off-quest, and away from a teacher
+    // intervention, so a ride can never interrupt something that matters.
+    let mountedRide = false;
+    let rideSpeed = 1.15;
+    if (!questRequired && !liveChildIntervention) {
+      const seconds = state.clock.elapsedTime;
+      const existing = riderFor(name);
+      if (
+        !existing
+        && schedule === 'outdoor-play'
+        && !isRainy
+        && capabilities.pathfinding
+        && ref.current.position.x > 8.6
+      ) {
+        tryClaimRideable(name, [ref.current.position.x, ref.current.position.z], seconds);
+      }
+      if (riderFor(name)) {
+        const rideTarget = advanceRide(
+          name,
+          seconds,
+          ref.current.position.distanceTo(activityTarget) < 0.6,
+          1.15,
+        );
+        if (rideTarget) {
+          activityTarget.set(rideTarget.position[0], 0, rideTarget.position[1]);
+          distanceToActivity = ref.current.position.distanceTo(activityTarget);
+          mountedRide = rideTarget.mounted;
+          rideSpeed = rideTarget.speed;
+          activityState.current.arrived = false;
+          activityState.current.dwellUntil = 0;
+        }
+      }
+    }
+    if (ridingRef.current !== mountedRide) {
+      ridingRef.current = mountedRide;
+      setRiding(mountedRide);
+    }
     if (distanceToActivity < 0.48 && !activityState.current.arrived) {
       activityState.current.arrived = true;
       activityState.current.dwellUntil = questRequired
@@ -643,7 +744,7 @@ function Kid({
         || nowMs - activityState.current.lastPathAt >= pathInterval;
       if (capabilities.pathfinding && pathfindDue) {
         activityState.current.lastPathAt = nowMs;
-        stepNpc(`kid-${name}`, ref.current, activityTarget, playerRef.current, delta, 1.15);
+        stepNpc(`kid-${name}`, ref.current, activityTarget, playerRef.current, delta, mountedRide ? rideSpeed : 1.15);
       } else {
         // Coasting: Tier C always, and Tier B between its pathfinding ticks.
         // Still walking, just not paying for pathfinding or collision.
@@ -655,7 +756,7 @@ function Kid({
         const [nx, , nz] = advanceLogicalPosition(
           [ref.current.position.x, ref.current.position.y, ref.current.position.z],
           [activityTarget.x, activityTarget.y, activityTarget.z],
-          1.15,
+          mountedRide ? rideSpeed : 1.15,
           delta,
         );
         ref.current.position.x = nx;
@@ -755,29 +856,59 @@ function Kid({
       settledRef.current = settled;
       setSettled(settled);
     }
-    if (
-      settled
-      && capabilities.socialReactions
-      && playerRef.current
-      && !hasActiveQuest(quests)
-      && state.clock.elapsedTime >= nextGreetingAt
-      && distanceToPlayer < 2.15
-    ) {
+    // Social behaviour. The old rule was one greeting with a MODULE-SCOPE
+    // cooldown shared by all eleven children, so the first child to say hello
+    // silenced the whole daycare for twelve seconds - the room got quieter the
+    // more children were near you. Cooldowns are per child now; see npcSocial.
+    if (settled && playerRef.current) {
       const game = useGameStore.getState();
-      if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning && !game.activeInteractable) {
-        playGameSound('greeting', 'social');
-        const greeting = kidGreeting(name, schedule);
-        game.setAmbientMessage(greeting);
-        if (greetingClearTimer.current) clearTimeout(greetingClearTimer.current);
-        greetingClearTimer.current = setTimeout(() => {
-          const latest = useGameStore.getState();
-          if (latest.zone === 'hub' && latest.ambientMessage === greeting) {
-            latest.setAmbientMessage(null);
-          }
-        }, 3200);
-        nextGreetingAt = state.clock.elapsedTime + 12 + (phase % 5);
+      const decision = decideSocialAction({
+        name,
+        now: state.clock.elapsedTime,
+        distance: distanceToPlayer,
+        questActive: hasActiveQuest(quests),
+        blocked: game.zone !== 'hub'
+          || game.activeDialogue !== null
+          || game.journalOpen
+          || game.zoneTransitioning
+          || game.activeInteractable !== null,
+        allowed: capabilities.socialReactions,
+        schedule,
+        friendship: game.friends[name]?.friendship ?? 0,
+      });
+
+      if (decision.action !== 'none') {
+        commitSocialAction(name, state.clock.elapsedTime, decision);
+        socialReactionRef.current = { reaction: decision.reaction ?? null, until: state.clock.elapsedTime + 2.4 };
+        if (decision.message) {
+          playGameSound('greeting', 'social');
+          game.setAmbientMessage(decision.message);
+          if (greetingClearTimer.current) clearTimeout(greetingClearTimer.current);
+          const spoken = decision.message;
+          greetingClearTimer.current = setTimeout(() => {
+            const latest = useGameStore.getState();
+            if (latest.zone === 'hub' && latest.ambientMessage === spoken) {
+              latest.setAmbientMessage(null);
+            }
+          }, 3200);
+        }
       }
     }
+
+    // A child that decided to come over walks to the player instead of its
+    // station, then releases the slot so somebody else may approach later.
+    if (currentApproacher(state.clock.elapsedTime) === name) {
+      if (distanceToPlayer < 1.9 || !playerRef.current) {
+        releaseApproach(name);
+      }
+    }
+    {
+      const live = state.clock.elapsedTime < socialReactionRef.current.until
+        ? socialReactionRef.current.reaction
+        : null;
+      if (live !== socialReaction) setSocialReaction(live);
+    }
+
     activityState.current.lastPosition.copy(ref.current.position);
     mirror.copy(ref.current.position);
     updateInteractionCandidate(`kid-${name}`, {
@@ -796,6 +927,28 @@ function Kid({
   );
   return (
     <group ref={ref} position={defaultPos}>
+      {/* The trike a child is currently riding. Drawn under the character and
+          lifted slightly so the rider sits on it rather than in it. */}
+      {riding && (
+        <group position={[0, 0.16, 0]}>
+          <mesh position={[0, 0.2, 0]} castShadow>
+            <boxGeometry args={[0.36, 0.12, 0.62]} />
+            <meshStandardMaterial color={accent} roughness={0.6} />
+          </mesh>
+          <mesh position={[0, 0.14, -0.3]} rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.15, 0.15, 0.07, 10]} />
+            <meshStandardMaterial color="#3b3b45" />
+          </mesh>
+          <mesh position={[-0.19, 0.1, 0.26]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.11, 0.11, 0.06, 10]} />
+            <meshStandardMaterial color="#3b3b45" />
+          </mesh>
+          <mesh position={[0.19, 0.1, 0.26]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.11, 0.11, 0.06, 10]} />
+            <meshStandardMaterial color="#3b3b45" />
+          </mesh>
+        </group>
+      )}
       <CharacterModel
         bodyColor={imagination ? '#ff006e' : color}
         accentColor={accent}
@@ -834,7 +987,10 @@ function Kid({
            ?? (settled ? sessionVisual?.activity ?? renderedPlan.activity : 'walking')}
         socialReaction={childIntervention?.reaction === 'sad'
           ? undefined
-          : childIntervention?.reaction ?? (settled
+          // A reaction aimed at the player outranks ambient activity flavour:
+          // being waved at is about you, and should not be overwritten by the
+          // child's colouring animation.
+          : childIntervention?.reaction ?? socialReaction ?? (settled
             ? sessionVisual?.reaction ?? childActivityReaction(renderedPlan)
             : undefined)}
       />
