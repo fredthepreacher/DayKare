@@ -574,3 +574,16 @@ export function findApproachPoint(
   const approach = target.clone().addScaledVector(towardTarget, radius + 0.7);
   return isWalkable(approach, radius, [], zone) ? approach : target.clone();
 }
+/**
+ * Player-facing district names.
+ *
+ * A map rather than a ternary because Storybook Lane and Maker Market are
+ * planned, and a ternary silently renders every future district as "DayKare
+ * Hub" instead of failing to compile.
+ */
+export const ZONE_LABELS: Record<GameZone, string> = {
+  hub: 'DayKare Hub',
+  garden: 'Garden District',
+};
+
+export const zoneLabel = (zone: GameZone): string => ZONE_LABELS[zone] ?? ZONE_LABELS.hub;

@@ -5,6 +5,9 @@ import { CharacterModel, type CharacterModelProps } from './CharacterModel';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { clearNpcNavigation, getNavigationTarget, registerNpcPosition } from './navigation';
 import { useGameStore, type JuiceClubCustomerPhase } from './store';
+import { advanceLogicalPosition, capabilitiesForTier, tierIntervalMs } from './npcTiers';
+import { reportNpc, resetNpcTiers, tierFor, updateNpcTiers } from './npcTierRegistry';
+import { useQualitySettings } from './useQualitySettings';
 import { resolveMovement } from './world';
 import { playGameSound } from './audio';
 import { objectiveIsActive } from './quests';
@@ -97,14 +100,37 @@ export function teacherPatrolProfile(name: string): TeacherPatrolProfile {
 
 let nextGreetingAt = 0;
 
+/**
+ * Ranks the whole cast on an interval and writes each NPC's tier back.
+ *
+ * One component does this for everyone because the simulation budget belongs
+ * to the cast, not to any one child: twenty-five NPCs each deciding "I am near,
+ * so I am Tier A" is precisely the moment a phone gives up.
+ */
+function NpcTierCoordinator() {
+  const quality = useQualitySettings();
+  useFrame((state) => {
+    updateNpcTiers(state.clock.elapsedTime * 1000, {
+      animationDistance: quality.settings.npcAnimationDistance,
+      simulationDistance: quality.settings.npcSimulationDistance,
+      maxFullySimulatedNpcs: quality.settings.maxFullySimulatedNpcs,
+    });
+  });
+  return null;
+}
+
 export function NPCs({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   useEffect(() => {
     resetTeacherInterventions();
     return resetTeacherInterventions;
   }, []);
+  // The hub's cast leaves with the hub. A stale tier from a previous visit
+  // would otherwise decide how a child behaves on the first frame back.
+  useEffect(() => resetNpcTiers, []);
 
   return (
     <group>
+      <NpcTierCoordinator />
       <AmbientSocialMoments />
       <JuiceClubQueue />
       <Teacher name="Ms. Harper" color="#457b9d" accent="#e4bd6a" hairColor="#46352f" hairStyle="bob" skinColor="#c98562" defaultPos={[-2, 0, -2]} playerRef={playerRef} />
@@ -483,6 +509,7 @@ function Kid({
   const mirror = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const activityTarget = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
   const activityFocus = useMemo(() => new THREE.Vector3(...defaultPos), [defaultPos]);
+  const quality = useQualitySettings();
   const activityState = useRef({
     key: '',
     dwellUntil: 0,
@@ -492,6 +519,8 @@ function Kid({
     replanAttempts: 0,
     fallbackSessionId: null as string | null,
     lastPosition: new THREE.Vector3(...defaultPos),
+    /** When this child last paid for real pathfinding. Tier B throttles on it. */
+    lastPathAt: 0,
   });
   const candidate = useMemo(() => ({
     id: `kid-${name}`,
@@ -509,6 +538,26 @@ function Kid({
 
   useFrame((state, delta) => {
     if (!ref.current) return;
+
+    // Report where this child is, then read the tier the coordinator assigned.
+    // The report is two cheap numbers; the ranking happens elsewhere, for
+    // everyone at once, on an interval.
+    const distanceToPlayer = playerRef.current
+      ? ref.current.position.distanceTo(playerRef.current.position)
+      : 0;
+    const engaged = active || servedCustomer === name || activeJuiceClubCustomer === name;
+    reportNpc({
+      id: `kid-${name}`,
+      distance: distanceToPlayer,
+      // No frustum test yet: `active` already covers the case that matters
+      // (the player is engaging this child), and a wrong visibility guess is
+      // worse than a conservative one.
+      visible: distanceToPlayer <= 30,
+      engaged,
+    });
+    const tier = tierFor(`kid-${name}`);
+    const capabilities = capabilitiesForTier(tier);
+
     const questRequired = questPriorityForKid(name, quests);
     const currentPlan = getChildActivityPlan(name, schedule, isRainy, activityState.current.cycle, phase);
     const liveChildIntervention = getChildIntervention(name, state.clock.elapsedTime);
@@ -584,7 +633,34 @@ function Kid({
       smoothTurn(ref.current, playerRef.current.position, delta);
     } else if (distanceToActivity >= 0.48) {
       activityState.current.arrived = false;
-      stepNpc(`kid-${name}`, ref.current, activityTarget, playerRef.current, delta, 1.15);
+      // Tier B is "reduced frequency", and it has to actually BE that. Running
+      // the same pathfinding every frame and merely skipping greetings would
+      // make B a rename rather than a saving - which is what an earlier draft
+      // of this did, and what the tier benchmark caught.
+      const nowMs = state.clock.elapsedTime * 1000;
+      const pathInterval = tierIntervalMs(tier, quality.settings.distantNpcIntervalMs);
+      const pathfindDue = pathInterval === 0
+        || nowMs - activityState.current.lastPathAt >= pathInterval;
+      if (capabilities.pathfinding && pathfindDue) {
+        activityState.current.lastPathAt = nowMs;
+        stepNpc(`kid-${name}`, ref.current, activityTarget, playerRef.current, delta, 1.15);
+      } else {
+        // Coasting: Tier C always, and Tier B between its pathfinding ticks.
+        // Still walking, just not paying for pathfinding or collision.
+        // Not teleported (an NPC that snaps across the room the instant you
+        // look is a bug you can see) and not frozen (one standing in a doorway
+        // an hour after story time is another). The straight line across a room
+        // nobody is watching is the cheapest thing that stays believable, and
+        // arrival below is unchanged - so shared sessions still advance.
+        const [nx, , nz] = advanceLogicalPosition(
+          [ref.current.position.x, ref.current.position.y, ref.current.position.z],
+          [activityTarget.x, activityTarget.y, activityTarget.z],
+          1.15,
+          delta,
+        );
+        ref.current.position.x = nx;
+        ref.current.position.z = nz;
+      }
       const moved = ref.current.position.distanceTo(activityState.current.lastPosition);
       activityState.current.stuckFor = moved < 0.002
         ? activityState.current.stuckFor + delta
@@ -681,10 +757,11 @@ function Kid({
     }
     if (
       settled
+      && capabilities.socialReactions
       && playerRef.current
       && !hasActiveQuest(quests)
       && state.clock.elapsedTime >= nextGreetingAt
-      && ref.current.position.distanceTo(playerRef.current.position) < 2.15
+      && distanceToPlayer < 2.15
     ) {
       const game = useGameStore.getState();
       if (game.zone === 'hub' && !game.activeDialogue && !game.journalOpen && !game.zoneTransitioning && !game.activeInteractable) {

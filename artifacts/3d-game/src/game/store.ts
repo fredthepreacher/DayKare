@@ -29,6 +29,22 @@ import {
   type GameZone,
 } from './world';
 import { resetTouchInput } from './touchInput';
+import { type QualityPreset, isQualityPreset } from './qualityManager';
+import {
+  type ClockState,
+  type PauseReason as ClockPauseReason,
+  advanceClock as advanceClockState,
+  createClockState,
+  minuteToTimeOfDay,
+  normalizeClockState,
+  pauseClock as pauseClockState,
+  resumeClock as resumeClockState,
+  scheduleIdForMinute,
+  serializeClockState,
+  setTimeScale as setClockTimeScale,
+  startNextDay,
+  timeOfDayToMinute,
+} from './gameClock';
 import {
   appendRewardEvent,
   chooseMaeIntroduction,
@@ -77,10 +93,16 @@ export interface DroppedWorldItem {
 
 export interface GameState {
   // Settings
-  quality: 'low' | 'high';
+  quality: QualityPreset;
 
   // Time and Schedule
   timeOfDay: number; // 9.0 to 17.5
+  /**
+   * The canonical clock. `timeOfDay` remains the fractional-hours value every
+   * existing consumer reads, and is now DERIVED from this - one source of
+   * truth, and no existing component had to change to get it.
+   */
+  clock: ClockState; // 9.0 to 17.5
   dayNumber: number;
   schedule: ScheduleState;
   isRainy: boolean;
@@ -138,9 +160,13 @@ export interface GameState {
   storageWarning: boolean;
   
   // Actions
-  setQuality: (q: 'low' | 'high') => void;
+  setQuality: (q: QualityPreset) => void;
   setTimeOfDay: (time: number) => void;
   advanceSchedule: () => void;
+  /** Advances the clock by real elapsed seconds. Never by frames. */
+  tickClock: (realSeconds: number) => void;
+  setTimeScale: (scale: 1 | 2 | 4) => void;
+  setClockPaused: (paused: boolean, reason?: ClockPauseReason | null) => void;
   toggleImagination: () => void;
   toggleRain: () => void;
   pickUp: (item: string) => void;
@@ -202,13 +228,16 @@ export interface GameState {
   resetGame: () => void;
 }
 
-const getScheduleForTime = (time: number): ScheduleState => {
-  if (time < 10.5) return 'morning-play';
-  if (time < 12.0) return 'art-time';
-  if (time < 13.5) return 'juice-club';
-  if (time < 15.5) return 'outdoor-play';
-  return 'pickup';
-};
+/**
+ * The schedule for a fractional-hours time.
+ *
+ * Delegates to the canonical clock so the thresholds exist in exactly one
+ * place. They used to be four literals here and the same four implied by the
+ * clock; two copies of a boundary is two chances to disagree about when Juice
+ * Club starts.
+ */
+const getScheduleForTime = (time: number): ScheduleState =>
+  scheduleIdForMinute(timeOfDayToMinute(time)) as ScheduleState;
 
 const withQualifiedRoutes = (progression: ProgressionState): ProgressionState => ({
   ...progression,
@@ -235,6 +264,7 @@ const initialFriends: Record<string, FriendState> = {
 const initialState = {
   quality: 'high' as const,
   timeOfDay: 9.0,
+  clock: createClockState(1, 9 * 60),
   dayNumber: 1,
   schedule: 'morning-play' as ScheduleState,
   isRainy: false,
@@ -630,8 +660,20 @@ export function normalizePersistedGameState(value: unknown) {
     : savedItems.droppedItems;
 
   return {
-    quality: persisted.quality === 'low' || persisted.quality === 'high' ? persisted.quality : initialState.quality,
+    // 'low' and 'high' remain valid presets, so every existing save keeps the
+    // setting it had. Widening the field needed no migration - only the guard
+    // widening with it.
+    quality: isQualityPreset(persisted.quality) ? persisted.quality : initialState.quality,
     timeOfDay,
+    // A save written before the clock existed carries no `clock` key at all.
+    // It is migrated from the timeOfDay and dayNumber it does have, never
+    // discarded - losing a player's day because we shipped a feature would be
+    // the worst trade available to us.
+    clock: normalizeClockState(
+      persisted.clock,
+      timeOfDay,
+      safeInteger(persisted.dayNumber, initialState.dayNumber, 1, 9999),
+    ),
     dayNumber: safeInteger(persisted.dayNumber, initialState.dayNumber, 1, 9999),
     schedule,
     isRainy: persisted.isRainy === true,
@@ -683,6 +725,7 @@ export function serializeGameState(state: GameState) {
   return {
     quality: state.quality,
     timeOfDay: state.timeOfDay,
+    clock: serializeClockState(state.clock),
     dayNumber: state.dayNumber,
     schedule: state.schedule,
     isRainy: state.isRainy,
@@ -723,12 +766,22 @@ export const useGameStore = create<GameState>()(
       ...initialState,
       
       setQuality: (quality) => set({
-        quality: quality === 'low' || quality === 'high' ? quality : initialState.quality,
+        // Presets are authored in qualityManager; an unknown one falls back
+        // rather than being stored, so a stray value cannot poison a save.
+        quality: isQualityPreset(quality) ? quality : initialState.quality,
       }),
       setTimeOfDay: (time) => set((state) => {
          const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 17.5);
         const schedule = getScheduleForTime(timeOfDay);
-        return { timeOfDay, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
+        const minute = timeOfDayToMinute(timeOfDay);
+        return {
+          timeOfDay,
+          schedule,
+          // Jumping the clock also settles which boundaries count as already
+          // seen, so a jump forward does not then replay every block it passed.
+          clock: { ...state.clock, minute, lastBoundaryMinute: minute },
+          ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)),
+        };
       }),
       
       advanceSchedule: () => set((state) => {
@@ -748,11 +801,60 @@ export const useGameStore = create<GameState>()(
              teacherSuspicion: 0,
              optionalRewardBoostUntil: 0,
              ambientMessage: `Day ${state.dayNumber + 1} is ready. Yesterday’s progress is safe in your Journal.`,
+             // The day rollover stays here, in the one place that already knows
+             // a new day also means the hub, the origin, no suspicion and a
+             // reset Juice Club. The clock follows it rather than owning it.
+             clock: startNextDay(state.clock),
              ...resetJuiceClubCustomerState(state),
            };
          }
-         return { timeOfDay: nextTime, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
+         const advancedMinute = timeOfDayToMinute(nextTime);
+         return {
+           timeOfDay: nextTime,
+           schedule,
+           clock: { ...state.clock, minute: advancedMinute, lastBoundaryMinute: advancedMinute },
+           ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)),
+         };
       }),
+
+      /**
+       * Advances the clock by REAL elapsed seconds.
+       *
+       * Called from a single driver that measures wall-clock time. Frame count
+       * is never an input: the game day is a promise to the player, not a
+       * property of their hardware, so a 30 FPS phone and a 144 FPS desktop
+       * must reach lunch at the same moment.
+       *
+       * Schedule boundaries crossed by the tick are applied here, in order and
+       * once each - including when a single tick under fast-forward skips a
+       * whole block.
+       */
+      tickClock: (realSeconds) => set((state) => {
+        const tick = advanceClockState(state.clock, realSeconds);
+        if (tick.advancedMinutes <= 0) return {};
+
+        const timeOfDay = minuteToTimeOfDay(tick.clock.minute);
+        const schedule = getScheduleForTime(timeOfDay);
+        if (schedule === state.schedule) {
+          return { clock: tick.clock, timeOfDay };
+        }
+        // Leaving Juice Club tears down its customer state exactly as the
+        // manual advance always did - the same teardown, reached a new way.
+        return {
+          clock: tick.clock,
+          timeOfDay,
+          schedule,
+          ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)),
+        };
+      }),
+
+      setTimeScale: (scale) => set((state) => ({ clock: setClockTimeScale(state.clock, scale) })),
+
+      setClockPaused: (paused, reason = null) => set((state) => ({
+        clock: paused
+          ? pauseClockState(state.clock, reason ?? 'menu')
+          : resumeClockState(state.clock),
+      })),
       
       toggleImagination: () => set((state) => ({ isImaginationMode: !state.isImaginationMode })),
       toggleRain: () => set((state) => ({ isRainy: !state.isRainy })),

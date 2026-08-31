@@ -1,4 +1,6 @@
 import { useGameStore } from './store';
+import { zoneLabel } from './world';
+import { formatClock, timeOfDayToMinute } from './gameClock';
 import { lazy, Suspense, useEffect, useRef, type KeyboardEvent } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import { Controls } from './Controls';
@@ -698,13 +700,15 @@ export function UI() {
     }
   };
 
-  const formatTime = (time: number) => {
-    const hours = Math.floor(time);
-    const minutes = Math.floor((time - hours) * 60);
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours > 12 ? hours - 12 : hours;
-    return `${displayHours}:${minutes === 0 ? '00' : minutes} ${ampm}`;
-  };
+  /**
+   * Formatting now comes from the canonical clock.
+   *
+   * The old local formatter padded only the exact hour - `minutes === 0 ? '00'
+   * : minutes` - so 9:05 rendered as "9:5". Nobody saw it because time only
+   * ever landed on :00 or :30. A clock that runs continuously lands on every
+   * minute, and the first one it reached read "9:1 AM".
+   */
+  const formatTime = (time: number) => formatClock(timeOfDayToMinute(time));
 
   const getScheduleLabel = (s: string) => {
     return s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
@@ -892,9 +896,32 @@ export function UI() {
           <div className="text-xs font-bold text-muted-foreground">{progression.reputation} REP</div>
         </div>
 
-        <div className="daykare-hud-zone bg-card/90 backdrop-blur border-2 border-emerald-500/25 px-3 py-2 rounded-xl shadow flex items-center gap-2 text-card-foreground">
-          <MapPinned className="w-4 h-4 text-emerald-600" />
-          <span className="text-xs font-black uppercase tracking-wide">{zone === 'garden' ? 'Garden District' : 'DayKare Hub'}</span>
+        {/*
+          The current-location readout. NOT a control, and never was.
+          
+          It sits directly under the Menu and Journal buttons and used to share
+          their exact card styling - same blur, same border weight, same
+          rounding - so it read as a third button that did nothing when tapped.
+          It has no handler because district travel is diegetic: you walk to
+          the portal and press E. Adding HUD fast-travel here would quietly
+          replace a designed mechanic with a menu.
+          
+          So the fix is to stop it claiming to be a button. It is now labelled
+          as a location, styled flatter than the real controls, and announced
+          to screen readers when the zone changes.
+        */}
+        <div
+          className="daykare-hud-zone daykare-hud-readout bg-card/70 backdrop-blur border border-emerald-500/30 px-3 py-1.5 rounded-lg flex items-center gap-2 text-card-foreground cursor-default select-none"
+          role="status"
+          aria-live="polite"
+          aria-label={`Current location: ${zoneLabel(zone)}`}
+          data-testid="status-current-zone"
+        >
+          <MapPinned className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+          <span className="flex flex-col leading-tight">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">You are in</span>
+            <span className="text-xs font-black uppercase tracking-wide">{zoneLabel(zone)}</span>
+          </span>
         </div>
         
         {schedule === 'juice-club' && (

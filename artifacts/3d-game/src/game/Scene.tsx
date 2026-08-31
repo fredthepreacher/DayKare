@@ -13,6 +13,8 @@ import * as THREE from 'three';
 import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
 import { isGameplayBlocked } from './gameplayGate';
+import { ClockDriver } from './ClockDriver';
+import { useQualitySettings } from './useQualitySettings';
 import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetryPanel';
 import { GameFrontEnd } from './GameFrontEnd';
 import { useModeStore } from './modeStore';
@@ -97,12 +99,11 @@ function GameScene() {
 }
 
 export function DayKareApp() {
-  const quality = useGameStore(s => s.quality);
-  const initialDpr = quality === 'low'
-    ? 1
-    : typeof window === 'undefined'
-      ? 1
-      : window.devicePixelRatio;
+  // Renderer cost now comes from the resolved preset rather than a binary.
+  // The adaptive layer still overrides dpr and shadows at runtime through
+  // PerformanceTelemetryPanel; this is the starting point it adjusts from.
+  const quality = useQualitySettings();
+  const initialDpr = quality.pixelRatio;
 
   // Ask the browser for a throwaway WebGL context before mounting the real
   // renderer. Without this the Canvas mounts regardless and a failure surfaces
@@ -156,13 +157,16 @@ export function DayKareApp() {
       <div className="daykare-app-shell w-full relative bg-black overflow-hidden">
         <Canvas
           dpr={initialDpr}
-          shadows={quality === 'high'}
+          shadows={quality.settings.shadows}
           camera={{ position: [0, 5, 8], fov: 60 }}
           onCreated={handleCanvasCreated}
         >
           <GameScene />
         </Canvas>
         <UI />
+        {/* Outside the Canvas on purpose: the day advances on wall-clock time,
+            not on the render loop. */}
+        <ClockDriver />
         <PerformanceTelemetryPanel />
         <GameFrontEnd />
         {/* The canvas stays mounted so the browser can restore the context. */}
