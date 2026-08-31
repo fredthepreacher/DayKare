@@ -1,4 +1,5 @@
 import type { CloudSaveRow, SaveScope, SyncMeta } from './types';
+import { describeSave, type SaveFact } from './summary';
 
 /**
  * Conflict handling for DayKare cloud saves.
@@ -20,6 +21,12 @@ export interface SaveSummary {
   dayNumber?: number;
   rep?: number;
   deviceLabel?: string | null;
+  /**
+   * Scope-appropriate, player-readable facts about this save, in display
+   * order. Empty when we have no payload to describe - never padded with
+   * zeroes, because "$0" and "no data" must not look the same on screen.
+   */
+  facts?: SaveFact[];
 }
 
 export interface ConflictReport {
@@ -91,10 +98,18 @@ export function buildConflictReport(
     saveVersion: cloudRow.save_version,
     revision: cloudRow.revision,
     updatedAt: Date.parse(cloudRow.updated_at) || null,
-    dayNumber: cloudRow.day_number,
-    rep: cloudRow.rep,
+    // Story rows carry these columns; Online rows do not carry day_number, and
+    // their `rep` column is a default rather than a fact, so neither is
+    // surfaced for Online.
+    dayNumber: scope === 'story' ? cloudRow.day_number : undefined,
+    rep: scope === 'story' ? cloudRow.rep : undefined,
     deviceLabel: cloudRow.device_label,
+    facts: describeSave(scope, cloudRow.payload),
   };
+  // The suggestion is computed from the same few fields as before. The added
+  // facts are shown to the player and deliberately do NOT feed the ranking:
+  // scoring saves by how much currency they hold would be this layer deciding
+  // which progress matters, which is exactly the judgement we refuse to make.
   const { choice, reason } = suggestResolution(local, cloud);
   return { scope, local, cloud, suggested: choice, reason };
 }

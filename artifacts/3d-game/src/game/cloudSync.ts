@@ -5,6 +5,7 @@ import {
   buildConflictReport,
   claimLocalMigration,
   decideInitialAction,
+  describeSave,
   ensureSession,
   getCloudClient,
   payloadHash,
@@ -168,10 +169,17 @@ async function pushScope(scope: SaveScope): Promise<void> {
         scope,
         saveVersion: scope === 'story' ? PROGRESSION_VERSION : 1,
         revision: meta[scope].revision,
-        updatedAt: Date.now(),
+        // Deliberately null, not Date.now(). A local save carries no written
+        // timestamp, and stamping "now" would tell the player this device was
+        // saved seconds ago - which is when we NOTICED it, not when they last
+        // played. A wrong time is worse than no time in a choice this final.
+        updatedAt: null,
         dayNumber: scope === 'story' ? gameState.dayNumber : undefined,
         rep: scope === 'story' ? gameState.progression?.reputation : undefined,
         deviceLabel: deviceLabel(),
+        // Described from what the game is holding right now, which IS the
+        // local save - the same object that would be uploaded.
+        facts: describeSave(scope, scope === 'story' ? storyPayload() : onlinePayload()),
       }, row));
     }
     setStatus(scope, { state: 'conflict', lastError: result.reason });
@@ -332,10 +340,17 @@ async function initialiseScope(scope: SaveScope): Promise<void> {
         scope,
         saveVersion: scope === 'story' ? PROGRESSION_VERSION : 1,
         revision: row.revision,
-        updatedAt: Date.now(),
+        // Deliberately null, not Date.now(). A local save carries no written
+        // timestamp, and stamping "now" would tell the player this device was
+        // saved seconds ago - which is when we NOTICED it, not when they last
+        // played. A wrong time is worse than no time in a choice this final.
+        updatedAt: null,
         dayNumber: scope === 'story' ? gameState.dayNumber : undefined,
         rep: scope === 'story' ? gameState.progression?.reputation : undefined,
         deviceLabel: deviceLabel(),
+        // Described from what the game is holding right now, which IS the
+        // local save - the same object that would be uploaded.
+        facts: describeSave(scope, scope === 'story' ? storyPayload() : onlinePayload()),
       }, row));
       setStatus(scope, { state: 'conflict', revision: row.revision, lastError: 'local and cloud saves differ' });
       return;

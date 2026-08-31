@@ -5,4 +5,5 @@ export * from './settings';
 export * from './migration';
 export * from './client';
 export * from './auth';
+export * from './summary';
 export * from './saves';

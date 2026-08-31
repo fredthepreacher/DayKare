@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import {
   ACCOUNT_SETTINGS_KEY,
   decideInitialAction,
+  describeOnlineSave,
+  describeSave,
+  describeStorySave,
+  formatRelativeTime,
   DEVICE_SETTINGS_KEY,
   MIGRATED_FLAG_KEY,
   accountSettingsFromLegacyOnlineSave,
@@ -509,3 +513,146 @@ assert.equal(
 
 delete (globalThis as Record<string, unknown>).window;
 resetBootSnapshotForTests();
+
+
+// --- conflict save summaries -------------------------------------------------
+//
+// The chooser used to offer "Day 7, 100 REP" against "Day 7, 100 REP" - two
+// identical lines describing saves that differed by a full Juice Club float and
+// a restock. Choosing "the other save" would silently have cost real progress
+// and nothing on screen said so.
+
+const storyFacts = describeStorySave({
+  dayNumber: 7,
+  progression: { reputation: 100, tokens: 42 },
+  rivalStory: { chapter: 3 },
+  juiceClubCash: 8,
+  juiceStock: 5,
+  crackerStock: 5,
+  inventory: ['a', 'b', 'c'],
+  collectibles: ['rock'],
+});
+const factValue = (facts: { label: string; value: string }[], label: string) =>
+  facts.find((f) => f.label === label)?.value ?? null;
+
+assert.equal(factValue(storyFacts, 'Day'), '7', 'Story shows the day');
+assert.equal(factValue(storyFacts, 'REP'), '100', 'Story shows REP');
+assert.equal(factValue(storyFacts, 'Chapter'), '3', 'Story shows the story chapter marker');
+assert.equal(factValue(storyFacts, 'Star Tokens'), '42', 'Story shows the major currency');
+assert.equal(factValue(storyFacts, 'Juice Club cash'), '$8', 'Story shows Juice Club cash - the field that made this necessary');
+assert.equal(factValue(storyFacts, 'Juice stock'), '5', 'Story shows juice stock');
+assert.equal(factValue(storyFacts, 'Cracker stock'), '5', 'Story shows cracker stock');
+assert.equal(factValue(storyFacts, 'Items'), '3', 'Story shows how many items are owned');
+
+// The two saves from the real conflict: identical Day and REP, different money.
+const richer = describeStorySave({ dayNumber: 7, progression: { reputation: 100 }, juiceClubCash: 8, juiceStock: 5, crackerStock: 5 });
+const poorer = describeStorySave({ dayNumber: 7, progression: { reputation: 100 }, juiceClubCash: 0, juiceStock: 0, crackerStock: 0 });
+assert.equal(factValue(richer, 'Day'), factValue(poorer, 'Day'), 'the two saves really do agree on the day');
+assert.equal(factValue(richer, 'REP'), factValue(poorer, 'REP'), 'and on REP');
+assert.notEqual(
+  factValue(richer, 'Juice Club cash'),
+  factValue(poorer, 'Juice Club cash'),
+  'but the summary now distinguishes them, which is the entire point of the change',
+);
+
+// Zero is a fact. Absent is not. These must never render the same.
+assert.equal(factValue(poorer, 'Juice Club cash'), '$0', 'a real zero is shown as zero');
+const sparse = describeStorySave({ dayNumber: 2 });
+assert.equal(factValue(sparse, 'Juice Club cash'), null, 'a save with no Juice Club data omits the row entirely');
+assert.equal(factValue(sparse, 'Star Tokens'), null, 'a missing currency is omitted, never shown as 0');
+assert.equal(factValue(sparse, 'Day'), '2', 'the fields it does have are still reported');
+assert.deepEqual(describeStorySave(null), [], 'an absent payload describes nothing rather than inventing defaults');
+assert.deepEqual(describeStorySave('nonsense'), [], 'a malformed payload describes nothing');
+
+// Online is described in Online's terms.
+const onlineFacts = describeOnlineSave({
+  version: 1,
+  visibility: 'invite',
+  inviteCode: 'DAYKARE',
+  appearance: { outfitIndex: 2, accessoryIndex: 0 },
+});
+assert.equal(factValue(onlineFacts, 'Who can join'), 'Invite code', 'Online shows visibility in words, not a raw enum');
+assert.equal(factValue(onlineFacts, 'Outfit'), '#3', 'Online shows the outfit, counted from one as players see it');
+assert.equal(factValue(onlineFacts, 'Accessory'), '#1', 'Online shows the accessory');
+assert.equal(factValue(onlineFacts, 'Invite code'), 'DAYKARE', 'Online shows the invite code');
+assert.equal(factValue(onlineFacts, 'Day'), null, 'Online never shows a day - it does not have one');
+assert.equal(
+  factValue(onlineFacts, 'REP'),
+  null,
+  'Online never shows REP: online_saves.rep is a column default, and reporting it would invent a fact',
+);
+assert.equal(factValue(onlineFacts, 'Juice Club cash'), null, 'Story-only fields stay out of an Online summary');
+
+// describeSave routes by scope rather than guessing from the payload shape.
+assert.deepEqual(
+  describeSave('online', { visibility: 'public' }),
+  describeOnlineSave({ visibility: 'public' }),
+  'describeSave uses the Online describer for the Online scope',
+);
+assert.deepEqual(
+  describeSave('story', { dayNumber: 4 }),
+  describeStorySave({ dayNumber: 4 }),
+  'and the Story describer for the Story scope',
+);
+
+// The summary describes; it must not rank. Adding money to one side cannot
+// change which side is suggested.
+const base = { scope: 'story' as const, saveVersion: 4, revision: 14, updatedAt: 1000, dayNumber: 5, rep: 50 };
+const withoutFacts = suggestResolution({ ...base }, { ...base, revision: 15, updatedAt: 2000 });
+const withFacts = suggestResolution(
+  { ...base, facts: describeStorySave({ dayNumber: 5, progression: { reputation: 50 }, juiceClubCash: 9999 }) },
+  { ...base, revision: 15, updatedAt: 2000, facts: describeStorySave({ dayNumber: 5, progression: { reputation: 50 }, juiceClubCash: 0 }) },
+);
+assert.equal(
+  withFacts.choice,
+  withoutFacts.choice,
+  'the displayed facts do not feed the suggestion - the sync layer never decides whose progress matters more',
+);
+
+// Relative times, used only where a real timestamp exists.
+const now = Date.UTC(2026, 0, 2, 12, 0, 0);
+assert.equal(formatRelativeTime(now - 5_000, now), 'just now', 'seconds ago reads as just now');
+assert.equal(formatRelativeTime(now - 60_000, now), '1 minute ago', 'singular minute');
+assert.equal(formatRelativeTime(now - 120_000, now), '2 minutes ago', 'plural minutes');
+assert.equal(formatRelativeTime(now - 3 * 3_600_000, now), '3 hours ago', 'hours');
+assert.equal(formatRelativeTime(now - 2 * 86_400_000, now), '2 days ago', 'days');
+assert.equal(formatRelativeTime(now + 5_000, now), 'just now', 'a clock skewed into the future does not read as negative');
+
+// A conflict report carries both summaries, each in its own scope's terms.
+const reportWithFacts = buildConflictReport('story', {
+  scope: 'story', saveVersion: 4, revision: 14, updatedAt: null, dayNumber: 7, rep: 100,
+  facts: describeStorySave({ dayNumber: 7, progression: { reputation: 100 }, juiceClubCash: 8 }),
+}, {
+  save_version: 4,
+  payload: { dayNumber: 7, progression: { reputation: 100 }, juiceClubCash: 0 },
+  revision: 15,
+  payload_hash: null,
+  updated_at: new Date(now).toISOString(),
+  device_label: 'Windows',
+  rep: 100,
+  day_number: 7,
+});
+assert.equal(factValue(reportWithFacts.local.facts ?? [], 'Juice Club cash'), '$8', 'the local side describes the local save');
+assert.equal(factValue(reportWithFacts.cloud.facts ?? [], 'Juice Club cash'), '$0', 'the cloud side is described from the cloud payload');
+assert.notEqual(
+  factValue(reportWithFacts.local.facts ?? [], 'Juice Club cash'),
+  factValue(reportWithFacts.cloud.facts ?? [], 'Juice Club cash'),
+  'the difference that was invisible is now on the card',
+);
+
+const onlineReport = buildConflictReport('online', {
+  scope: 'online', saveVersion: 1, revision: 1, updatedAt: null,
+  facts: describeOnlineSave({ visibility: 'public', appearance: { outfitIndex: 0, accessoryIndex: 0 } }),
+}, {
+  save_version: 1,
+  payload: { visibility: 'invite', appearance: { outfitIndex: 2, accessoryIndex: 1 } },
+  revision: 2,
+  payload_hash: null,
+  updated_at: new Date(now).toISOString(),
+  device_label: 'Windows',
+  rep: 0,
+  day_number: 1,
+});
+assert.equal(onlineReport.cloud.dayNumber, undefined, 'an Online conflict carries no day number, even though the column exists');
+assert.equal(onlineReport.cloud.rep, undefined, 'and no REP, because the column value is a default and not a fact');
+assert.equal(factValue(onlineReport.cloud.facts ?? [], 'Who can join'), 'Invite code', 'the Online summary is in Online terms');

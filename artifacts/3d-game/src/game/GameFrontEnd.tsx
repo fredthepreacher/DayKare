@@ -15,6 +15,7 @@ import { useGameStore } from './store';
 import { useModeStore, type FrontEndPanel } from './modeStore';
 import { useSettingsStore } from './settingsStore';
 import { useCloudSyncStore, resolveConflict } from './cloudSync';
+import { formatRelativeTime } from '@workspace/cloud-sync';
 import { setGameAudioEnabled } from './audio';
 
 const panelCopy: Record<Exclude<FrontEndPanel, 'menu'>, { title: string; eyebrow: string }> = {
@@ -148,12 +149,31 @@ function ConflictChooser() {
     }
   };
 
-  const dayOf = (side: { dayNumber?: number; rep?: number }) =>
-    side.dayNumber === undefined ? null : `Day ${side.dayNumber}, ${side.rep ?? 0} REP`;
-
-  const localLine = dayOf(conflict.local);
-  const cloudLine = dayOf(conflict.cloud);
   const otherDevice = conflict.cloud.deviceLabel;
+
+  /**
+   * The two saves side by side, on the rows that actually differ where
+   * possible.
+   *
+   * This card used to read "Day 7, 100 REP" against "Day 7, 100 REP" - two
+   * identical lines describing saves that differed by a full Juice Club float.
+   * The player was asked to choose and shown nothing to choose on. Every field
+   * either side reports is listed, and a field a save does not carry is left
+   * blank rather than shown as 0, because "$0" and "no data" mean opposite
+   * things and only one of them should talk you out of a save.
+   */
+  const rowLabels: string[] = [];
+  for (const side of [conflict.local, conflict.cloud]) {
+    for (const fact of side.facts ?? []) {
+      if (!rowLabels.includes(fact.label)) rowLabels.push(fact.label);
+    }
+  }
+  const valueFor = (side: { facts?: { label: string; value: string }[] }, label: string) =>
+    side.facts?.find((f) => f.label === label)?.value ?? null;
+
+  const cloudSavedAt = conflict.cloud.updatedAt !== null
+    ? formatRelativeTime(conflict.cloud.updatedAt)
+    : null;
 
   const modeName = conflict.scope === 'online' ? 'DayKare Online' : 'Story Mode';
 
@@ -166,6 +186,38 @@ function ConflictChooser() {
           one is kept as a backup, not deleted.
         </p>
       </div>
+      {rowLabels.length > 0 && (
+        <table className="daykare-conflict-table" data-testid="table-cloud-conflict">
+          <thead>
+            <tr>
+              <th scope="col"><span className="daykare-visually-hidden">What</span></th>
+              <th scope="col">This device</th>
+              <th scope="col">{otherDevice ? `Your account (${otherDevice})` : 'Your account'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rowLabels.map((label) => {
+              const mine = valueFor(conflict.local, label);
+              const theirs = valueFor(conflict.cloud, label);
+              return (
+                <tr key={label} className={mine !== theirs ? 'is-different' : ''}>
+                  <th scope="row">{label}</th>
+                  <td>{mine ?? <span aria-label="not in this save">{"\u2014"}</span>}</td>
+                  <td>{theirs ?? <span aria-label="not in this save">{"\u2014"}</span>}</td>
+                </tr>
+              );
+            })}
+            {cloudSavedAt && (
+              <tr>
+                <th scope="row">Last saved</th>
+                <td>{"\u2014"}</td>
+                <td>{cloudSavedAt}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+
       <div className="daykare-conflict-choices">
         <button
           type="button"
@@ -176,7 +228,7 @@ function ConflictChooser() {
         >
           <span>
             <strong>Keep this device{"\u2019"}s save</strong>
-            <span>{localLine ?? 'The progress on this device'}</span>
+            <span>The progress on this device</span>
           </span>
           {conflict.suggested === 'keep-local' ? <Check aria-hidden="true" /> : null}
         </button>
@@ -189,7 +241,7 @@ function ConflictChooser() {
         >
           <span>
             <strong>Use the other save</strong>
-            <span>{cloudLine ?? 'The progress saved to your account'}{otherDevice ? ` (from ${otherDevice})` : ''}</span>
+            <span>The progress saved to your account{otherDevice ? ` (from ${otherDevice})` : ''}</span>
           </span>
           {conflict.suggested === 'keep-cloud' ? <Check aria-hidden="true" /> : null}
         </button>
