@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { useGameStore } from './store';
 import { resolveInteractionCandidate } from './interactionFocus';
 import { isGameplayBlocked } from './gameplayGate';
+import { ClockDriver } from './ClockDriver';
 import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetryPanel';
 import { GameFrontEnd } from './GameFrontEnd';
 import { useModeStore } from './modeStore';
@@ -163,6 +164,9 @@ export function DayKareApp() {
           <GameScene />
         </Canvas>
         <UI />
+        {/* Outside the Canvas on purpose: the day advances on wall-clock time,
+            not on the render loop. */}
+        <ClockDriver />
         <PerformanceTelemetryPanel />
         <GameFrontEnd />
         {/* The canvas stays mounted so the browser can restore the context. */}

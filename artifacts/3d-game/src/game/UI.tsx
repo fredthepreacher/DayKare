@@ -1,4 +1,5 @@
 import { useGameStore } from './store';
+import { formatClock, timeOfDayToMinute } from './gameClock';
 import { lazy, Suspense, useEffect, useRef, type KeyboardEvent } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import { Controls } from './Controls';
@@ -698,13 +699,15 @@ export function UI() {
     }
   };
 
-  const formatTime = (time: number) => {
-    const hours = Math.floor(time);
-    const minutes = Math.floor((time - hours) * 60);
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours > 12 ? hours - 12 : hours;
-    return `${displayHours}:${minutes === 0 ? '00' : minutes} ${ampm}`;
-  };
+  /**
+   * Formatting now comes from the canonical clock.
+   *
+   * The old local formatter padded only the exact hour - `minutes === 0 ? '00'
+   * : minutes` - so 9:05 rendered as "9:5". Nobody saw it because time only
+   * ever landed on :00 or :30. A clock that runs continuously lands on every
+   * minute, and the first one it reached read "9:1 AM".
+   */
+  const formatTime = (time: number) => formatClock(timeOfDayToMinute(time));
 
   const getScheduleLabel = (s: string) => {
     return s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
