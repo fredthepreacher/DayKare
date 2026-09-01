@@ -1,7 +1,8 @@
 import type { ScheduleBlockId } from './gameClock';
+import type { GameZone } from './world';
 
 export interface SchedulePolicy {
-  zone: 'hub' | 'garden';
+  zone: GameZone;
   anchor: [number, number, number];
   radius: number;
   teacher: 'Ms. Harper' | 'Mr. Davis';
@@ -78,7 +79,7 @@ export function schedulePolicy(id: ScheduleBlockId): SchedulePolicy | null {
   return POLICIES[id] ?? null;
 }
 
-export function playerFollowsSchedule(id: ScheduleBlockId, zone: 'hub' | 'garden', position: readonly number[]) {
+export function playerFollowsSchedule(id: ScheduleBlockId, zone: GameZone, position: readonly number[]) {
   const policy = schedulePolicy(id);
   if (!policy || zone !== policy.zone) return policy ? false : true;
   const dx = (position[0] ?? 0) - policy.anchor[0];

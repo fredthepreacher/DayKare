@@ -1,4 +1,5 @@
 import type { QualityPreset } from './qualityManager';
+import type { GameZone } from './world';
 
 export interface FrameTelemetryContext {
   renderer: string;
@@ -12,7 +13,7 @@ export interface FrameTelemetryContext {
   geometries: number;
   textures: number;
   sceneChildren: number;
-  zone: 'hub' | 'garden';
+  zone: GameZone;
   npcCount: number;
   quality: QualityPreset;
   renderCostMs?: number;

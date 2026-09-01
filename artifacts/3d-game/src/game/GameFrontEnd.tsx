@@ -365,7 +365,7 @@ export function GameFrontEnd() {
     return () => window.removeEventListener('keydown', closePanel);
   }, [menuOpen, panel]);
 
-  if (activeMode === 'online-preview') {
+  if (activeMode === 'multiplayer-lobby') {
     return <OnlineLobby />;
   }
   if (!menuOpen) return null;

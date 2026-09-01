@@ -246,7 +246,7 @@ useGameStore.getState().resetGame();
 useGameStore.setState((state) => ({
   progression: { ...state.progression, reputation: 17, tokens: 26, trustedHelperPass: true },
 }));
-useGameStore.getState().setTimeOfDay(17.5);
+useGameStore.getState().setTimeOfDay(18.5);
 const dayBeforeRollover = useGameStore.getState().dayNumber;
 useGameStore.getState().advanceSchedule();
 const rolledDay = useGameStore.getState();
@@ -2276,7 +2276,7 @@ const tickRealSeconds = (seconds: number) => {
 // The day rollover still owns what a new day means, and now moves the clock too.
 {
   useGameStore.getState().resetGame();
-  useGameStore.setState({ timeOfDay: 17.5, teacherSuspicion: 40 });
+  useGameStore.setState({ timeOfDay: 18.5, teacherSuspicion: 40 });
   const dayBefore = useGameStore.getState().dayNumber;
   useGameStore.getState().advanceSchedule();
   const rolled = useGameStore.getState();
@@ -2299,9 +2299,10 @@ const tickRealSeconds = (seconds: number) => {
 
 assert.equal(zoneLabel('hub'), 'DayKare Hub', 'the hub has a player-facing name');
 assert.equal(zoneLabel('garden'), 'Garden District', 'and so does the garden');
+assert.equal(zoneLabel('storybook'), 'Storybook Lane', 'and so does the after-hours neighborhood');
 assert.deepEqual(
   Object.keys(ZONE_LABELS).sort(),
-  ['garden', 'hub'],
+  ['garden', 'hub', 'storybook'],
   'every zone has a label - a future district must fail to compile rather than silently render as the hub',
 );
 

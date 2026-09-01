@@ -50,6 +50,7 @@ import {
 import {
   GARDEN_SPAWN,
   GARDEN_RETURN_SPAWN,
+  STORYBOOK_SPAWN,
   getTrackedPlayerPosition,
   isWalkable,
   type GameZone,
@@ -101,6 +102,8 @@ import {
 } from './storyProgression';
 import { monetizedReputation } from './monetizationStore';
 import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GummyCropState } from './gardenEconomy';
+import { STORYBOOK_CLOSE_MINUTE, storybookIsOpen } from './storybookLaneConfig';
+import { useStorybookLaneStore } from './storybookLaneStore';
 
 export type ScheduleState = import('./gameClock').ScheduleBlockId;
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -124,13 +127,13 @@ export interface GameState {
   quality: QualityPreset;
 
   // Time and Schedule
-  timeOfDay: number; // 9.0 to 17.5
+  timeOfDay: number; // 9.0 to 18.5
   /**
    * The canonical clock. `timeOfDay` remains the fractional-hours value every
    * existing consumer reads, and is now DERIVED from this - one source of
    * truth, and no existing component had to change to get it.
    */
-  clock: ClockState; // 9.0 to 17.5
+  clock: ClockState; // 9.0 to 18.5
   dayNumber: number;
   schedule: ScheduleState;
   isRainy: boolean;
@@ -196,6 +199,7 @@ export interface GameState {
   playerPosition: [number, number, number];
   hubPosition: [number, number, number];
   gardenPosition: [number, number, number];
+  storybookPosition: [number, number, number];
   zoneTransitioning: boolean;
   pendingZone: GameZone | null;
   gardenActivityStep: number;
@@ -288,6 +292,9 @@ export interface GameState {
   setTrustedHelperPass: () => void;
   setPlayerPosition: (position: [number, number, number]) => void;
   enterGarden: () => boolean;
+  enterStorybookLane: () => boolean;
+  leaveStorybookLane: () => boolean;
+  finishDay: () => boolean;
   returnToHub: () => boolean;
   completeZoneTransition: () => void;
   resetGame: () => void;
@@ -378,6 +385,7 @@ const initialState = {
   playerPosition: [0, 0, 0] as [number, number, number],
   hubPosition: [0, 0, 0] as [number, number, number],
   gardenPosition: GARDEN_SPAWN,
+  storybookPosition: STORYBOOK_SPAWN,
   zoneTransitioning: false,
   pendingZone: null,
   gardenActivityStep: 0,
@@ -576,17 +584,24 @@ function safeBinkyStatus(value: unknown, quests: QuestStates): BinkyStatus {
 export function restoreZoneState(persisted: Partial<GameState>, progression: ProgressionState) {
   const hubPosition = safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub');
   const gardenPosition = safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden');
+  const storybookPosition = safePosition(persisted.storybookPosition, STORYBOOK_SPAWN, 'storybook');
   const gardenAuthorized = getUnlockedRoutes(progression).includes('garden-district');
-  const requestedZone: GameZone = persisted.zone === 'garden' ? 'garden' : 'hub';
-  const zone: GameZone = requestedZone === 'garden' && gardenAuthorized ? 'garden' : 'hub';
+  const storybookAuthorized = getUnlockedRoutes(progression).includes('storybook-lane')
+    && storybookIsOpen(normalizeClockState(persisted.clock, persisted.timeOfDay ?? 9, persisted.dayNumber ?? 1).minute);
+  const requestedZone: GameZone = persisted.zone === 'garden' || persisted.zone === 'storybook' ? persisted.zone : 'hub';
+  const zone: GameZone = requestedZone === 'garden'
+    ? (gardenAuthorized ? 'garden' : 'hub')
+    : requestedZone === 'storybook'
+      ? (storybookAuthorized ? 'storybook' : 'hub')
+      : 'hub';
   const playerPosition = requestedZone === zone
     ? safePosition(
         persisted.playerPosition,
-        zone === 'garden' ? gardenPosition : hubPosition,
+        zone === 'garden' ? gardenPosition : zone === 'storybook' ? storybookPosition : hubPosition,
         zone,
       )
     : hubPosition;
-  return { zone, playerPosition, hubPosition, gardenPosition };
+  return { zone, playerPosition, hubPosition, gardenPosition, storybookPosition };
 }
 
 function reconcilePersistedProgression(
@@ -789,7 +804,7 @@ export function normalizePersistedGameState(value: unknown) {
     && !inventory.includes('binky')
     && !savedItems.droppedItems.some((item) => item.item === 'binky')
   );
-  const timeOfDay = safeNumber(persisted.timeOfDay, initialState.timeOfDay, 9, 17.5);
+  const timeOfDay = safeNumber(persisted.timeOfDay, initialState.timeOfDay, 9, 18.5);
   const schedule = getScheduleForTime(timeOfDay);
   const restoredZone = restoreZoneState(persisted, progression);
   const clubState = normalizeJuiceClubState(persisted, schedule);
@@ -920,6 +935,7 @@ export function serializeGameState(state: GameState) {
     playerPosition: state.playerPosition,
     hubPosition: state.hubPosition,
     gardenPosition: state.gardenPosition,
+    storybookPosition: state.storybookPosition,
     gummyCrop: state.gummyCrop,
     rivalStory: state.rivalStory,
     caper: state.caper,
@@ -938,7 +954,7 @@ export const useGameStore = create<GameState>()(
         quality: isQualityPreset(quality) ? quality : initialState.quality,
       }),
       setTimeOfDay: (time) => set((state) => {
-         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 17.5);
+         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 18.5);
         const schedule = getScheduleForTime(timeOfDay);
         const minute = timeOfDayToMinute(timeOfDay);
         return {
@@ -952,9 +968,9 @@ export const useGameStore = create<GameState>()(
       }),
       
       advanceSchedule: () => set((state) => {
-         const currentTime = safeNumber(state.timeOfDay, initialState.timeOfDay, 9, 17.5);
-         const isNewDay = currentTime >= 17.5;
-         const nextTime = isNewDay ? 9.0 : Math.min(17.5, currentTime + 1.5);
+         const currentTime = safeNumber(state.timeOfDay, initialState.timeOfDay, 9, 18.5);
+         const isNewDay = currentTime >= 18.5;
+         const nextTime = isNewDay ? 9.0 : Math.min(18.5, currentTime + 1.5);
         const schedule = getScheduleForTime(nextTime);
          if (isNewDay) {
            return {
@@ -964,14 +980,15 @@ export const useGameStore = create<GameState>()(
              zone: 'hub',
              playerPosition: [0, 0, 0],
              hubPosition: [0, 0, 0],
-             gardenActivityStep: 0,
+              gardenActivityStep: 0,
+              storybookPosition: STORYBOOK_SPAWN,
              teacherSuspicion: 0,
              optionalRewardBoostUntil: 0,
              ambientMessage: `Day ${state.dayNumber + 1} is ready. Yesterday’s progress is safe in your Journal.`,
              // The day rollover stays here, in the one place that already knows
              // a new day also means the hub, the origin, no suspicion and a
              // reset Juice Club. The clock follows it rather than owning it.
-             clock: startNextDay(state.clock),
+              clock: startNextDay(state.clock),
              ...resetJuiceClubCustomerState(state),
            };
          }
@@ -1957,6 +1974,7 @@ export const useGameStore = create<GameState>()(
               playerPosition: position,
               hubPosition: state.zone === 'hub' ? position : state.hubPosition,
               gardenPosition: state.zone === 'garden' ? position : state.gardenPosition,
+              storybookPosition: state.zone === 'storybook' ? position : state.storybookPosition,
             }
           : {}),
       })),
@@ -1983,6 +2001,75 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      enterStorybookLane: () => {
+        let changed = false;
+        set((state) => {
+          if (
+            state.zone !== 'hub'
+            || state.zoneTransitioning
+            || !storybookIsOpen(state.clock.minute)
+            || !getUnlockedRoutes(state.progression).includes('storybook-lane')
+          ) return state;
+          changed = true;
+          useStorybookLaneStore.getState().resetSession();
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'storybook' as GameZone,
+            hubPosition: currentPosition(state),
+            storybookPosition: STORYBOOK_SPAWN,
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+            ...resetJuiceClubCustomerState(state),
+          };
+        });
+        return changed;
+      },
+      leaveStorybookLane: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'storybook' || state.zoneTransitioning) return state;
+          changed = true;
+          useStorybookLaneStore.getState().resetSession();
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'hub' as GameZone,
+            storybookPosition: currentPosition(state),
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
+      finishDay: () => {
+        let changed = false;
+        set((state) => {
+          if (state.clock.minute < STORYBOOK_CLOSE_MINUTE) return state;
+          changed = true;
+          useStorybookLaneStore.getState().resetSession();
+          const clock = startNextDay(state.clock);
+          return {
+            clock,
+            timeOfDay: minuteToTimeOfDay(clock.minute),
+            dayNumber: state.dayNumber + 1,
+            schedule: scheduleIdForMinute(clock.minute),
+            zone: 'hub' as GameZone,
+            playerPosition: [0, 0, 0] as [number, number, number],
+            hubPosition: [0, 0, 0] as [number, number, number],
+            storybookPosition: STORYBOOK_SPAWN,
+            zoneTransitioning: false,
+            pendingZone: null,
+            teleportTrigger: state.teleportTrigger + 1,
+            gardenActivityStep: 0,
+            teacherSuspicion: 0,
+            optionalRewardBoostUntil: 0,
+            ambientMessage: `Day ${state.dayNumber + 1} is ready. Storybook Lane is tucked in until pickup time.`,
+            ...resetJuiceClubCustomerState(state),
+          };
+        });
+        return changed;
+      },
       returnToHub: () => {
         let changed = false;
         set((state) => {
@@ -2004,7 +2091,7 @@ export const useGameStore = create<GameState>()(
       completeZoneTransition: () => set((state) => {
         if (!state.zoneTransitioning || !state.pendingZone) return state;
         const zone = state.pendingZone;
-        const position = zone === 'garden' ? state.gardenPosition : state.hubPosition;
+        const position = zone === 'garden' ? state.gardenPosition : zone === 'storybook' ? state.storybookPosition : state.hubPosition;
         resetTouchInput();
         return {
           zone,

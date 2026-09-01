@@ -77,6 +77,7 @@ const ROOM_LABELS: Record<string, string> = {
   storage: 'Storage',
   playground: 'Playground',
   garden: 'Garden District',
+  'storybook-neighborhood': 'Storybook Lane',
 };
 
 /**
@@ -131,7 +132,7 @@ export function buildMapView(input: MapInput): MapView {
   const { zone, progression } = input;
 
   const rooms: MapRect[] = WORLD_WALKABLE_REGIONS
-    .filter((region) => (zone === 'garden' ? region.id === 'garden' : region.id !== 'garden'))
+    .filter((region) => (region.zone ?? 'hub') === zone)
     .map((region) => ({
       id: region.id,
       label: ROOM_LABELS[region.id] ?? region.id,

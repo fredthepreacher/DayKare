@@ -72,17 +72,17 @@ export function GameMenu({
     },
     { 
       id: 'online', 
-      label: 'DayKare Online', 
+      label: 'Multiplayer',
       icon: Globe2, 
       onClick: onDayKareOnline, 
       bgClass: 'bg-[#33cccc]', 
       borderClass: 'border-[#29b3b3]', 
       hoverClass: 'hover:bg-[#4dd2d2]', 
       titleColor: 'text-[#004d4d]', 
-      description: 'Preview the future 8–10 player lobby',
+      description: 'Join friends in a shared 20-player room',
       extra: onlineSeatCount !== undefined ? (
         <div className="flex items-center gap-2 mt-2 text-[#004d4d] font-black text-[11px] uppercase tracking-wide bg-white/40 w-max px-3 py-1 rounded-full shadow-sm" data-testid="status-online-players">
-          {onlineSeatCount}/10 local preview seats · Offline
+          Up to 20 players · Friends room
         </div>
       ) : null
     },

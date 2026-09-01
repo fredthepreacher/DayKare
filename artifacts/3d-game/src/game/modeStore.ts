@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type GameMode = 'story' | 'online-preview';
+export type GameMode = 'story' | 'multiplayer-lobby' | 'multiplayer';
 export type FrontEndPanel = 'menu' | 'shop' | 'customize' | 'progress' | 'settings' | 'accessibility';
 export type OnlineVisibility = 'public' | 'friends' | 'invite';
 
 export const ONLINE_STORAGE_KEY = 'daykare-online-preview';
-export const ONLINE_MAX_PLAYERS = 10;
+export const ONLINE_MAX_PLAYERS = 20;
 const STORY_SESSION_KEY = 'daykare-story-session-active';
 
 function storySessionIsActive() {
@@ -33,6 +33,8 @@ export interface OnlinePreviewState {
   seats: OnlineSeat[];
   selectedOutfit: number;
   selectedAccessory: number;
+  displayName: string;
+  roomId: string;
 }
 
 export interface ModeStore {
@@ -44,6 +46,8 @@ export interface ModeStore {
   closeMenu: () => void;
   enterStory: () => void;
   enterOnlinePreview: () => void;
+  startMultiplayer: () => void;
+  setDisplayName: (name: string) => void;
   openPanel: (panel: Exclude<FrontEndPanel, 'menu'>) => void;
   backToMenu: () => void;
   setOnlineVisibility: (visibility: OnlineVisibility) => void;
@@ -66,6 +70,8 @@ export const createInitialOnlinePreview = (): OnlinePreviewState => ({
   ],
   selectedOutfit: 0,
   selectedAccessory: 0,
+  displayName: 'New Kid',
+  roomId: 'friends-1',
 });
 
 const visibilitySet = new Set<OnlineVisibility>(['public', 'friends', 'invite']);
@@ -83,11 +89,19 @@ export function normalizeOnlinePreview(value: unknown): OnlinePreviewState {
   const selectedAccessory = typeof candidate.selectedAccessory === 'number' && Number.isFinite(candidate.selectedAccessory)
     ? Math.max(0, Math.min(3, Math.floor(candidate.selectedAccessory)))
     : initial.selectedAccessory;
+  const displayName = typeof candidate.displayName === 'string' && candidate.displayName.trim()
+    ? candidate.displayName.trim().slice(0, 24)
+    : initial.displayName;
+  const roomId = typeof candidate.roomId === 'string' && /^[a-z0-9-]{1,32}$/i.test(candidate.roomId)
+    ? candidate.roomId.toLowerCase()
+    : initial.roomId;
   return {
     ...initial,
     visibility,
     selectedOutfit,
     selectedAccessory,
+    displayName,
+    roomId,
   };
 }
 
@@ -96,6 +110,8 @@ export const serializeOnlinePreview = (state: OnlinePreviewState) => ({
   inviteCode: state.inviteCode,
   selectedOutfit: state.selectedOutfit,
   selectedAccessory: state.selectedAccessory,
+  displayName: state.displayName,
+  roomId: state.roomId,
 });
 
 export const useModeStore = create<ModeStore>()(
@@ -119,8 +135,15 @@ export const useModeStore = create<ModeStore>()(
       },
       enterOnlinePreview: () => {
         setStorySessionActive(false);
-        set({ activeMode: 'online-preview', menuOpen: false, panel: 'menu' });
+        set({ activeMode: 'multiplayer-lobby', menuOpen: false, panel: 'menu' });
       },
+      startMultiplayer: () => {
+        setStorySessionActive(true);
+        set({ activeMode: 'multiplayer', menuOpen: false, panel: 'menu' });
+      },
+      setDisplayName: (name) => set((state) => ({
+        online: { ...state.online, displayName: name.trim().slice(0, 24) || 'New Kid' },
+      })),
       openPanel: (panel) => set({ menuOpen: true, panel }),
       backToMenu: () => {
         setStorySessionActive(false);

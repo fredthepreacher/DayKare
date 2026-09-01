@@ -34,7 +34,7 @@ export const GAME_MINUTES_PER_REAL_SECOND = 0.5;
  * with the phase that builds the clock. The bounds are one edit away when it is.
  */
 export const DAY_START_MINUTE = 9 * 60;      // 09:00
-export const DAY_END_MINUTE = 17 * 60 + 30;  // 17:30
+export const DAY_END_MINUTE = 18 * 60 + 30;  // 18:30, after Storybook Lane
 
 export type ScheduleBlockId =
   | 'breakfast'
@@ -46,7 +46,8 @@ export type ScheduleBlockId =
   | 'nap'
   | 'recess'
   | 'outdoor-play'
-  | 'pickup';
+  | 'pickup'
+  | 'storybook-lane';
 
 /**
  * A schedule block. Phase 4A defines the SHAPE and the transition machinery;
@@ -89,7 +90,7 @@ export interface ScheduleBlock {
   /** Minutes since midnight, exclusive. */
   endMinute: number;
   label: string;
-  activityType: 'meal' | 'free-play' | 'group' | 'craft' | 'business' | 'rest' | 'outdoor' | 'departure';
+  activityType: 'meal' | 'free-play' | 'group' | 'craft' | 'business' | 'rest' | 'outdoor' | 'departure' | 'social';
   /** Reserved for 4C. Absent means "unchanged from the previous block". */
   npcProfile?: string;
   /** Reserved for 4C. */
@@ -122,7 +123,8 @@ export const SCHEDULE_BLOCKS: readonly ScheduleBlock[] = [
   { id: 'nap', startMinute: 13 * 60, endMinute: 13 * 60 + 30, label: 'Nap Time', activityType: 'rest', lightingProfile: 'midday', musicContext: 'quiet' },
   { id: 'recess', startMinute: 13 * 60 + 30, endMinute: 14 * 60, label: 'Garden Recess', activityType: 'outdoor', lightingProfile: 'afternoon', musicContext: 'outdoor' },
   { id: 'outdoor-play', startMinute: 14 * 60, endMinute: 15 * 60 + 30, label: 'Afternoon Play', activityType: 'outdoor', lightingProfile: 'afternoon', musicContext: 'outdoor' },
-  { id: 'pickup', startMinute: 15 * 60 + 30, endMinute: DAY_END_MINUTE, label: 'Pickup', activityType: 'departure', lightingProfile: 'late-afternoon', musicContext: 'pickup' },
+  { id: 'pickup', startMinute: 15 * 60 + 30, endMinute: 17 * 60 + 30, label: 'Pickup', activityType: 'departure', lightingProfile: 'late-afternoon', musicContext: 'pickup' },
+  { id: 'storybook-lane', startMinute: 17 * 60 + 30, endMinute: DAY_END_MINUTE, label: 'Storybook Lane', activityType: 'social', lightingProfile: 'evening', musicContext: 'storybook' },
 ];
 
 /** The minute each block begins, excluding the first (the day's own start). */

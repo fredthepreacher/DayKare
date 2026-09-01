@@ -3,6 +3,7 @@ import { useGameStore } from './store';
 import { useModeStore } from './modeStore';
 import { isGameplayBlocked } from './gameplayGate';
 import type { PauseReason } from './gameClock';
+import { STORYBOOK_CLOSE_MINUTE, STORYBOOK_OPEN_MINUTE, STORYBOOK_WARNING_MINUTE } from './storybookLaneConfig';
 
 /**
  * Drives the canonical clock from real elapsed time.
@@ -29,7 +30,7 @@ function currentPauseReason(): PauseReason | null {
 
   const game = useGameStore.getState();
   const mode = useModeStore.getState();
-  const frontEndBlocked = mode.menuOpen || mode.activeMode === 'online-preview';
+  const frontEndBlocked = mode.menuOpen || mode.activeMode === 'multiplayer-lobby';
 
   if (!isGameplayBlocked({
     journalOpen: game.journalOpen,
@@ -50,6 +51,7 @@ function currentPauseReason(): PauseReason | null {
 
 export function ClockDriver() {
   const lastTickRef = useRef<number>(0);
+  const noticeRef = useRef('');
 
   useEffect(() => {
     lastTickRef.current = performance.now();
@@ -61,6 +63,12 @@ export function ClockDriver() {
 
       const reason = currentPauseReason();
       const store = useGameStore.getState();
+
+      if (store.clock.minute >= STORYBOOK_CLOSE_MINUTE) {
+        store.finishDay();
+        noticeRef.current = '';
+        return;
+      }
 
       if (reason !== null) {
         if (!store.clock.paused || store.clock.pauseReason !== reason) {
@@ -77,6 +85,15 @@ export function ClockDriver() {
       }
 
       store.tickClock(Math.min(elapsedSeconds, MAX_TICK_SECONDS));
+      const next = useGameStore.getState();
+      const noticeKey = `${next.dayNumber}:${next.clock.minute >= STORYBOOK_WARNING_MINUTE ? 'close' : next.clock.minute >= STORYBOOK_OPEN_MINUTE - 5 ? 'open' : ''}`;
+      if (noticeKey.endsWith(':close') && noticeRef.current !== noticeKey) {
+        noticeRef.current = noticeKey;
+        next.setAmbientMessage('Storybook Lane closes in 5 minutes.');
+      } else if (noticeKey.endsWith(':open') && noticeRef.current !== noticeKey && next.clock.minute < STORYBOOK_OPEN_MINUTE) {
+        noticeRef.current = noticeKey;
+        next.setAmbientMessage('Pickup time is almost here. Storybook Lane opens at 5:30 PM.');
+      }
     };
 
     const interval = window.setInterval(tick, TICK_MS);

@@ -40,6 +40,15 @@ import {
   getChildActivityPlan,
   type ChildActivityPlan,
 } from './npcActivities';
+import {
+  getEscapeRetrievalSnapshot,
+  markEscapePlayerCaught,
+  resetEscapeRetrieval,
+  retrieverDestination,
+  RETRIEVER_RUN_SPEED,
+  TEACHER_PERSONAL_SPACE,
+  type EscapeTeacher,
+} from './escapeRetrieval';
 
 type KidDefinition = {
   name: string;
@@ -78,22 +87,22 @@ export interface TeacherPatrolProfile extends TeacherScanProfile {
 
 const TEACHER_PATROL_PROFILES: Record<string, TeacherPatrolProfile> = {
   'Ms. Harper': {
-    scanRadius: 8.5,
-    crowdRadius: 2.4,
+    scanRadius: 4.5,
+    crowdRadius: 1.8,
     disruptionWeight: 10,
-    speed: 1.38,
-    patrolDwell: 2.4,
-    scanHold: 2.8,
-    scanInterval: 1.15,
+    speed: 1.08,
+    patrolDwell: 3.8,
+    scanHold: 1.5,
+    scanInterval: 2.5,
   },
   'Mr. Davis': {
-    scanRadius: 10.5,
-    crowdRadius: 2.8,
+    scanRadius: 5.5,
+    crowdRadius: 2,
     disruptionWeight: 7,
-    speed: 1.2,
-    patrolDwell: 1.7,
-    scanHold: 3.4,
-    scanInterval: 1.75,
+    speed: 1.02,
+    patrolDwell: 3.2,
+    scanHold: 1.8,
+    scanInterval: 3.2,
   },
 };
 
@@ -123,7 +132,11 @@ function NpcTierCoordinator() {
 export function NPCs({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   useEffect(() => {
     resetTeacherInterventions();
-    return resetTeacherInterventions;
+    resetEscapeRetrieval();
+    return () => {
+      resetTeacherInterventions();
+      resetEscapeRetrieval();
+    };
   }, []);
   // The hub's cast leaves with the hub. A stale tier from a previous visit
   // would otherwise decide how a child behaves on the first frame back.
@@ -212,13 +225,18 @@ export function stepNpc(
   delta: number,
   speed: number,
   zone: 'hub' | 'garden' = 'hub',
+  personalSpace = 1.2,
 ) {
   const navTarget = getNavigationTarget(id, ref.position, destination, zone);
   const direction = navTarget.clone().sub(ref.position).setY(0);
   if (player) {
     const fromPlayer = ref.position.clone().sub(player.position).setY(0);
     const playerDistance = fromPlayer.length();
-    if (playerDistance < 1.2 && playerDistance > 0.001) direction.add(fromPlayer.normalize().multiplyScalar(1.2 - playerDistance));
+    if (playerDistance < personalSpace && playerDistance > 0.001) {
+      const away = fromPlayer.normalize();
+      const inwardComponent = Math.max(0, -direction.dot(away));
+      direction.addScaledVector(away, inwardComponent + (personalSpace - playerDistance) * 2);
+    }
   }
   if (direction.lengthSq() < 0.002) return false;
   direction.normalize();
@@ -338,13 +356,16 @@ function Teacher({
     const teacherDistance = playerRef.current
       ? ref.current.position.distanceTo(playerRef.current.position)
       : 0;
+    const retrievalAssignment = getEscapeRetrievalSnapshot();
+    const retrievalEngaged = retrievalAssignment.assignedTeacher === name
+      && (retrievalAssignment.phase === 'chasing' || retrievalAssignment.phase === 'carrying');
     reportNpc({
       id: `teacher-${name}`,
       distance: teacherDistance,
       visible: teacherDistance <= 30,
       // An intervention aimed at the player, or a teacher you are talking to,
       // must never be downgraded mid-sentence.
-      engaged: active || interventionIsActive(liveIntervention),
+      engaged: active || interventionIsActive(liveIntervention) || retrievalEngaged,
     });
     const teacherTier = tierFor(`teacher-${name}`);
     const teacherCapabilities = capabilitiesForTier(teacherTier);
@@ -355,7 +376,22 @@ function Teacher({
       patrol.current = { key, index: 0, dwellUntil: 0, nextScanAt: state.clock.elapsedTime, scanUntil: 0, scanTarget: null };
       stuckFor.current = 0;
     }
-    const interventionTarget = teacherInterventionDestination(liveIntervention, ref.current.position);
+    const escapeRetrieval = getEscapeRetrievalSnapshot();
+    const escapeTeacher = name as EscapeTeacher;
+    const assignedRetriever = escapeRetrieval.assignedTeacher === escapeTeacher
+      && (escapeRetrieval.phase === 'chasing' || escapeRetrieval.phase === 'carrying');
+    const escapeTarget = assignedRetriever && playerRef.current
+      ? retrieverDestination(escapeTeacher, playerRef.current.position)
+      : null;
+    if (
+      assignedRetriever
+      && escapeRetrieval.phase === 'chasing'
+      && playerRef.current
+      && ref.current.position.distanceTo(playerRef.current.position) <= 1.35
+    ) {
+      markEscapePlayerCaught(escapeTeacher, state.clock.elapsedTime);
+    }
+    const interventionTarget = escapeTarget ?? teacherInterventionDestination(liveIntervention, ref.current.position);
     if (!interventionTarget && state.clock.elapsedTime >= patrol.current.nextScanAt) {
       const scan = getTeacherSupervisionTarget(
         `hub:${name}`,
@@ -404,7 +440,16 @@ function Teacher({
         || teacherNowMs - lastTeacherPathAt.current >= teacherInterval;
       if (teacherCapabilities.pathfinding && teacherPathDue) {
         lastTeacherPathAt.current = teacherNowMs;
-        stepNpc(`teacher-${name}`, ref.current, destination, playerRef.current, delta, profile.speed);
+        stepNpc(
+          `teacher-${name}`,
+          ref.current,
+          destination,
+          assignedRetriever ? null : playerRef.current,
+          delta,
+          assignedRetriever ? RETRIEVER_RUN_SPEED : profile.speed,
+          'hub',
+          assignedRetriever ? 0 : TEACHER_PERSONAL_SPACE,
+        );
       } else {
         // Same coasting rule the children use: keep walking the straight line,
         // just stop paying for pathfinding and separation. Supervision itself is
@@ -453,18 +498,10 @@ function Teacher({
           && store.caper.setupReady
         );
       if (inStorage && !storageAuthorized) {
-        store.setTeacherSuspicion((current) => {
-          const next = current + suspicionDelta * 20;
-          if (next >= 100) {
-            store.triggerTeleport();
-            store.setActiveDialogue({
-              name: 'Ms. Harper',
-              text: 'Storage is adults-only. A Helper Pass lets you help at the Lost & Found shelf, not enter this room. Let’s head back together.',
-            });
-            return 0;
-          }
-          return Math.min(100, next);
-        });
+        // The shared escape-retrieval state machine now owns the return. Keep
+        // suspicion as readable feedback, but never teleport or repeatedly
+        // reopen a dialogue while the assigned teacher is running over.
+        store.setTeacherSuspicion((current) => Math.min(100, current + suspicionDelta * 20));
       } else {
         store.setTeacherSuspicion((current) => Math.max(0, current - suspicionDelta * 10));
       }

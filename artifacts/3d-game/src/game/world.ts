@@ -14,7 +14,7 @@ export type SolidKind =
   | 'activity-station'
   | 'camera-blocker';
 
-export type GameZone = 'hub' | 'garden';
+export type GameZone = 'hub' | 'garden' | 'storybook';
 
 export interface WorldSolid {
   id: string;
@@ -59,6 +59,7 @@ export interface WorldAnchor {
 
 export interface WalkableRegion {
   id: string;
+  zone?: GameZone;
   minX: number;
   maxX: number;
   minZ: number;
@@ -130,6 +131,16 @@ const gardenCircle = (
   z + radius,
   { shape: 'circle', radius, ...options },
 );
+
+const storybookBox = (
+  id: string,
+  kind: SolidKind,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number,
+  options: Partial<WorldSolid> = {},
+): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'storybook', ...options });
 
 export const PLAY_SLIDE_RAMP = {
   position: [12, 0.5, -3.5] as [number, number, number],
@@ -236,6 +247,12 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   // The arch is a real threshold: its footprint matches the visible return
   // gate and keeps the southern edge from reading as open terrain.
   gardenBox('garden-return-threshold', 'route-gate', -1.2, 1.2, 15.75, 16.25, { maxY: 2.5 }),
+  storybookBox('storybook-north-boundary', 'boundary', -24.3, 24.3, -24.3, -23.7),
+  storybookBox('storybook-south-boundary-west', 'boundary', -24.3, -2.8, 23.7, 24.3),
+  storybookBox('storybook-south-boundary-east', 'boundary', 2.8, 24.3, 23.7, 24.3),
+  storybookBox('storybook-west-boundary', 'boundary', -24.3, -23.7, -24, 24),
+  storybookBox('storybook-east-boundary', 'boundary', 23.7, 24.3, -24, 24),
+  storybookBox('storybook-ice-cream-stand', 'counter', -2.1, 2.1, -9.1, -6.9, { cameraRole: 'substantial', maxY: 2.6 }),
 ];
 
 export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {
@@ -346,17 +363,19 @@ export const WORLD_PORTALS: WorldPortal[] = [
 ];
 
 export const WORLD_WALKABLE_REGIONS: WalkableRegion[] = [
-  { id: 'classroom', minX: -7.7, maxX: 7.7, minZ: -7.7, maxZ: 7.7 },
-  { id: 'hallway', minX: -15.7, maxX: -8.3, minZ: -7.7, maxZ: 7.7 },
-  { id: 'art-room', minX: -15.7, maxX: -8.3, minZ: -15.7, maxZ: -8.3 },
-  { id: 'storage', minX: -15.7, maxX: -8.3, minZ: 8.3, maxZ: 15.7 },
-  { id: 'playground', minX: 8.3, maxX: 15.7, minZ: -15.7, maxZ: 15.7 },
-  { id: 'garden', minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 },
+  { id: 'classroom', zone: 'hub', minX: -7.7, maxX: 7.7, minZ: -7.7, maxZ: 7.7 },
+  { id: 'hallway', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: -7.7, maxZ: 7.7 },
+  { id: 'art-room', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: -15.7, maxZ: -8.3 },
+  { id: 'storage', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: 8.3, maxZ: 15.7 },
+  { id: 'playground', zone: 'hub', minX: 8.3, maxX: 15.7, minZ: -15.7, maxZ: 15.7 },
+  { id: 'garden', zone: 'garden', minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 },
+  { id: 'storybook-neighborhood', zone: 'storybook', minX: -23.7, maxX: 23.7, minZ: -23.7, maxZ: 23.7 },
 ];
 
 export const GARDEN_SPAWN: [number, number, number] = [0, 0, 14];
 export const GARDEN_RETURN_SPAWN: [number, number, number] = [12, 0, -10.4];
 export const GARDEN_BOUNDS = { minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 };
+export const STORYBOOK_SPAWN: [number, number, number] = [0, 0, 19.5];
 
 export const WORLD_ANCHORS: WorldAnchor[] = [
   { id: 'classroom-circle', position: [0, 0, 0], room: 'classroom', activity: 'morning-play' },
@@ -453,11 +472,9 @@ export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_
     && position.z >= region.minZ + radius
     && position.z <= region.maxZ - radius
   );
-  if (zone === 'garden') {
-    const garden = WORLD_WALKABLE_REGIONS.find((region) => region.id === 'garden');
-    return garden ? contains(garden) : false;
-  }
-  if (WORLD_WALKABLE_REGIONS.filter((region) => region.id !== 'garden').some(contains)) return true;
+  if (WORLD_WALKABLE_REGIONS.filter((region) => (region.zone ?? 'hub') === zone).some(contains)) return true;
+
+  if (zone !== 'hub') return false;
 
   // Door openings occupy the thin divider strips between authored floor regions.
   return WORLD_PORTALS.some((portal) => {
@@ -650,6 +667,7 @@ export function findApproachPoint(
 export const ZONE_LABELS: Record<GameZone, string> = {
   hub: 'DayKare Hub',
   garden: 'Garden District',
+  storybook: 'Storybook Lane',
 };
 
 export const zoneLabel = (zone: GameZone): string => ZONE_LABELS[zone] ?? ZONE_LABELS.hub;

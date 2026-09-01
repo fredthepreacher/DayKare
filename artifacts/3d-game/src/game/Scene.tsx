@@ -22,8 +22,10 @@ import { useModeStore } from './modeStore';
 import { GraphicsUnavailable } from './GraphicsUnavailable';
 import { probeWebGL, watchContextLoss, type WebGLStatus } from './webglSupport';
 import { startCloudSync } from './cloudSync';
+import { MultiplayerWorld } from './MultiplayerWorld';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
+const StorybookLane = lazy(() => import('./StorybookLane').then(({ StorybookLane }) => ({ default: StorybookLane })));
 
 function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   const forward = useRef(new THREE.Vector3());
@@ -38,7 +40,7 @@ function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THRE
       journalOpen: store.journalOpen,
       activeDialogue: store.activeDialogue,
       zoneTransitioning: store.zoneTransitioning,
-      frontEndBlocked: useModeStore.getState().menuOpen || useModeStore.getState().activeMode === 'online-preview',
+      frontEndBlocked: useModeStore.getState().menuOpen || useModeStore.getState().activeMode === 'multiplayer-lobby',
     })) {
       if (store.activeInteractable !== null) store.setActiveInteractable(null);
       return;
@@ -91,12 +93,17 @@ function GameScene() {
           <Interactables playerRef={playerRef} />
           <NPCs playerRef={playerRef} />
         </>
-      ) : (
+      ) : zone === 'garden' ? (
         <Suspense fallback={null}>
           <Garden />
         </Suspense>
+      ) : (
+        <Suspense fallback={null}>
+          <StorybookLane />
+        </Suspense>
       )}
       <Player ref={playerRef} />
+      <MultiplayerWorld playerRef={playerRef} />
       <InteractionFocusSystem playerRef={playerRef} />
     </>
   );

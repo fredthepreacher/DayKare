@@ -12,7 +12,9 @@ import { isGameplayBlocked } from './gameplayGate';
 import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, resolveMovement, trackPlayerPosition } from './world';
 import { CameraRig, advanceCameraPosition } from './cameraRig';
 import { useModeStore } from './modeStore';
-import { playerFollowsSchedule, schedulePolicy } from './schedulePolicy';
+import { useStorybookLaneStore } from './storybookLaneStore';
+import { ESCAPE_GRACE_SECONDS, advanceCarriedPlayer, beginEscapeRetrieval, getEscapeRetrievalSnapshot, isDaycareEscape, updateEscapeGrace } from './escapeRetrieval';
+import { objectiveIsActive } from './quests';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -29,8 +31,9 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const zone = useGameStore((s) => s.zone);
   const playerPosition = useGameStore((s) => s.playerPosition);
   const zoneTransitioning = useGameStore((s) => s.zoneTransitioning);
+  const recoveringUntil = useStorybookLaneStore((s) => s.recoveringUntil);
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition);
-  const frontEndBlocked = useModeStore((s) => s.menuOpen || s.activeMode === 'online-preview');
+  const frontEndBlocked = useModeStore((s) => s.menuOpen || s.activeMode === 'multiplayer-lobby');
   
   // State
   const velocity = useRef(new THREE.Vector3());
@@ -57,7 +60,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
   const positionSaveAccumulator = useRef(0);
-  const scheduleEscort = useRef({ key: '', outsideSince: 0, announced: false });
+  const retrievalNoticeSequence = useRef(0);
   gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning, frontEndBlocked });
   const cameraProfile = getCameraProfile(size.width, size.height);
   const zoneCameraBlockers = useMemo(
@@ -152,7 +155,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     desiredVelocity.current.set(0, 0, 0);
 
     const blocked = gameplayBlocked.current;
-    if (!blocked) {
+    const movementLocked = useStorybookLaneStore.getState().recoveringUntil > Date.now();
+    if (!blocked && !movementLocked) {
       if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
       if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
       if (keys.left) desiredVelocity.current.addScaledVector(right.current, -speed);
@@ -167,7 +171,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       desiredVelocity.current.normalize().multiplyScalar(speed);
     }
 
-    if (blocked) {
+    if (blocked || movementLocked) {
       velocity.current.set(0, 0, 0);
       desiredVelocity.current.set(0, 0, 0);
       turnVelocity.current = 0;
@@ -206,25 +210,30 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     localRef.current.position.x = resolvedPosition.x;
     localRef.current.position.z = resolvedPosition.z;
     const liveGame = useGameStore.getState();
-    const policy = schedulePolicy(liveGame.schedule);
-    const follows = playerFollowsSchedule(liveGame.schedule, liveGame.zone, localRef.current.position.toArray());
-    const escortKey = `${liveGame.schedule}:${liveGame.zone}`;
-    if (scheduleEscort.current.key !== escortKey || follows) scheduleEscort.current = { key: escortKey, outsideSince: follows ? 0 : state.clock.elapsedTime, announced: false };
-    if (policy && !follows && !blocked && state.clock.elapsedTime - scheduleEscort.current.outsideSince >= 2.5) {
-      if (!scheduleEscort.current.announced) {
-        scheduleEscort.current.announced = true;
-        liveGame.setAmbientMessage(`${policy.teacher} takes your hand. ${policy.instruction}`);
+    const storageAuthorized = objectiveIsActive(liveGame.quests, 'where-binky', 'search-storage')
+      || ((liveGame.caper.step === 'retrieve' || liveGame.caper.step === 'escape')
+        && liveGame.caper.teacherApproved && liveGame.caper.patrolObserved && liveGame.caper.setupReady);
+    let retrieval = updateEscapeGrace(state.clock.elapsedTime);
+    if (!blocked && isDaycareEscape(localRef.current.position.toArray(), liveGame.zone, storageAuthorized)) {
+      retrieval = beginEscapeRetrieval(state.clock.elapsedTime, localRef.current.position.toArray());
+      if (retrieval.phase === 'chasing' && retrieval.sequence !== retrievalNoticeSequence.current) {
+        retrievalNoticeSequence.current = retrieval.sequence;
+        liveGame.setAmbientMessage(`${retrieval.assignedTeacher}: “Oh no you don’t!”`);
       }
-      if (liveGame.zone !== policy.zone && !liveGame.zoneTransitioning) {
-        if (policy.zone === 'garden') liveGame.enterGarden(); else liveGame.returnToHub();
-      } else if (liveGame.zone === policy.zone) {
-        const target = new THREE.Vector3(...policy.anchor);
-        const remaining = localRef.current.position.distanceTo(target);
-        const escorted = localRef.current.position.clone().add(target.sub(localRef.current.position).setY(0).normalize().multiplyScalar(Math.min(7.5 * delta, remaining)));
-        const corrected = resolveMovement(localRef.current.position, escorted, PLAYER_RADIUS, 0.38, zone);
-        localRef.current.position.x = corrected.x;
-        localRef.current.position.z = corrected.z;
-        velocity.current.set(0, 0, 0);
+    }
+    const carried = advanceCarriedPlayer(state.clock.elapsedTime, localRef.current.position, delta);
+    if (getEscapeRetrievalSnapshot().phase === 'carrying' || carried.released) {
+      localRef.current.position.copy(carried.position);
+      velocity.current.set(0, 0, 0);
+      desiredVelocity.current.set(0, 0, 0);
+    }
+    if (carried.released) {
+      liveGame.setAmbientMessage(`Back inside — escape catch ${carried.strikes}. You have ${ESCAPE_GRACE_SECONDS} seconds of free-movement grace.`);
+      if (carried.penalty) {
+        liveGame.setActiveDialogue({
+          name: 'Escape Artist Headcount',
+          text: 'Seven escapes! Your lighthearted consequence is helping with one very serious headcount. One toddler, two toddler, three… all here. You are released and free to move.',
+        });
       }
     }
     trackPlayerPosition(localRef.current.position);
@@ -335,7 +344,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
           camera: [number, number, number];
           cameraTarget: [number, number, number];
           cameraSide: string | null;
-          zone: 'hub' | 'garden';
+          zone: 'hub' | 'garden' | 'storybook';
           updatedAt: number;
         };
       };
@@ -362,8 +371,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
             drive the rig's colours directly; unequipped slots fall back to the
             original palette rather than to grey. */}
         <CharacterModel
-          bodyColor={appearance.top ?? '#f47b43'}
-          accentColor={appearance.accent ?? '#ffc857'}
+          bodyColor={recoveringUntil > Date.now() ? '#78b86d' : appearance.top ?? '#f47b43'}
+          accentColor={recoveringUntil > Date.now() ? '#b8d98a' : appearance.accent ?? '#ffc857'}
           hairColor="#713f32"
           hairStyle={appearance.hat ? 'cap' : 'cap'}
           mood="excited"
@@ -371,6 +380,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
           imaginationMode={isImaginationMode}
           motionSeed={1.3}
           idleEnergy={1.05}
+          activityMode={recoveringUntil > Date.now() ? 'napping' : 'standing'}
         />
         {/* Hat and shoes have no slot in the rig, so they are drawn here as
             simple shapes rather than left invisible. */}

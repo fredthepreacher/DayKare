@@ -66,10 +66,10 @@ const runFor = (clock: ReturnType<typeof createClockState>, realSeconds: number,
 }
 assert.equal(GAME_MINUTES_PER_REAL_SECOND * 60, 30, 'the base rate is 30x real time');
 
-// A full 9:00-17:30 day is 8.5 game hours, so 17 real minutes at 1x.
+// A full 9:00-18:30 day includes the after-hours Storybook hour: 19 real minutes at 1x.
 {
-  const { clock } = runFor(createClockState(1, DAY_START_MINUTE), 17 * 60, 2040);
-  assert.ok(clock.minute >= DAY_END_MINUTE - 1e-6, 'the daycare day takes 17 real minutes at 1x');
+  const { clock } = runFor(createClockState(1, DAY_START_MINUTE), 19 * 60, 2280);
+  assert.ok(clock.minute >= DAY_END_MINUTE - 1e-6, 'the daycare plus Storybook day takes 19 real minutes at 1x');
 }
 
 // --- frame rate must not change game time ----------------------------------
@@ -176,7 +176,7 @@ assert.equal(setTimeScale(createClockState(), 8 as unknown as 1).timeScale, 1, '
   const tick = advanceClock(clock, 600, 600);
   assert.deepEqual(
     tick.crossed.map((b) => b.id),
-    ['morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'recess', 'outdoor-play', 'pickup'],
+    ['morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'recess', 'outdoor-play', 'pickup', 'storybook-lane'],
     'a single tick spanning the day reports every boundary once, in order',
   );
   assert.ok(tick.reachedDayEnd, 'and reports that the day ended');
@@ -245,7 +245,8 @@ assert.equal(scheduleIdForMinute(13 * 60), 'nap');
 assert.equal(scheduleIdForMinute(13 * 60 + 30), 'recess');
 assert.equal(scheduleIdForMinute(14 * 60), 'outdoor-play');
 assert.equal(scheduleIdForMinute(15 * 60 + 30), 'pickup');
-assert.equal(scheduleIdForMinute(DAY_END_MINUTE), 'pickup', 'the last block owns the end of the day');
+assert.equal(scheduleIdForMinute(17 * 60 + 30), 'storybook-lane');
+assert.equal(scheduleIdForMinute(DAY_END_MINUTE), 'storybook-lane', 'the last block owns the end of the day');
 assert.equal(blockForMinute(12 * 60).label, 'Juice Club', 'blocks carry a player-facing label');
 
 // Time-of-day phases, for lighting and music to read later.

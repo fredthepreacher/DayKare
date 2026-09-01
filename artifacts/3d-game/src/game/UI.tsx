@@ -3,7 +3,7 @@ import { useIsRainy, useWeatherLabel } from './WeatherSystem';
 import { useGameStore } from './store';
 import { zoneLabel } from './world';
 import { formatClock, timeOfDayToMinute } from './gameClock';
-import { lazy, Suspense, useEffect, useRef, type KeyboardEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
 import { Controls } from './Controls';
 import {
@@ -32,6 +32,10 @@ import {
 } from './teacherInterventions';
 import { useMonetizationStore } from './monetizationStore';
 import { absoluteGameMinute, cropIsReady, cropProgress, GUMMY_HARVEST_SIZE } from './gardenEconomy';
+import { useStorybookLaneStore } from './storybookLaneStore';
+import { STORYBOOK_OPEN_MINUTE, STORYBOOK_PRICES, storybookIsOpen, type StorybookItemId } from './storybookLaneConfig';
+import { playStorybookSound } from './storybookLaneAudio';
+import { purchaseMultiplayerStorybookItem, useMultiplayerStore } from './multiplayer';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -88,6 +92,8 @@ export function UI() {
     zoneTransitioning,
     pendingZone,
     enterGarden,
+    enterStorybookLane,
+    leaveStorybookLane,
     returnToHub,
     gardenActivityStep,
     startGardenActivity,
@@ -132,16 +138,40 @@ export function UI() {
     return () => window.clearTimeout(timer);
   }, [activeInstruction, dismissInstruction]);
   const weatherLabel = useWeatherLabel();
-  const frontEndBlocked = useModeStore((state) => state.menuOpen || state.activeMode === 'online-preview');
+  const frontEndBlocked = useModeStore((state) => state.menuOpen || state.activeMode === 'multiplayer-lobby');
   const openMenu = useModeStore((state) => state.openMenu);
   const openPanel = useModeStore((state) => state.openPanel);
+  const activeMode = useModeStore((state) => state.activeMode);
+  const multiplayerStatus = useMultiplayerStore((state) => state.status);
+  const multiplayerOccupancy = useMultiplayerStore((state) => state.occupancy);
   const careCoins = useMonetizationStore((state) => state.careCoins);
   const careGems = useMonetizationStore((state) => state.careGems);
+  const storybook = useStorybookLaneStore();
+  const storybookRoute = HUB_ROUTES.find((route) => route.id === 'storybook-lane');
+  const canEnterStorybookNow = zone === 'hub'
+    && schedule === 'storybook-lane'
+    && Boolean(storybookRoute && isRouteUnlocked(storybookRoute, progression));
+  const [recoverySeconds, setRecoverySeconds] = useState(0);
   const reconcileGameplayRewards = useMonetizationStore((state) => state.reconcileGameplayRewards);
 
   useEffect(() => {
     reconcileGameplayRewards(progression.reputation);
   }, [progression.reputation, reconcileGameplayRewards]);
+
+  useEffect(() => {
+    if (storybook.recoveringUntil <= 0) { setRecoverySeconds(0); return undefined; }
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((storybook.recoveringUntil - Date.now()) / 1000));
+      setRecoverySeconds(remaining);
+      if (remaining === 0) {
+        useStorybookLaneStore.getState().recover();
+        playStorybookSound('recovery');
+      }
+    };
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, [storybook.recoveringUntil]);
 
   const [subscribe] = useKeyboardControls<Controls>();
   const interactRef = useRef<() => void>(() => undefined);
@@ -387,6 +417,83 @@ export function UI() {
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
           }
+        } else if (activeInteractable === 'storybook-ice-cream') {
+          const buyScoop = async () => {
+            let result: 'purchased' | 'insufficient' | 'recovering' | 'sick';
+            if (useModeStore.getState().activeMode === 'multiplayer') {
+              const purchase = await purchaseMultiplayerStorybookItem('ice-cream');
+              if (!purchase.accepted || !('save' in purchase)) {
+                setActiveDialogue({ name: 'Scoop Stop', text: purchase.reason === 'insufficient-rb' ? 'You need 25 RB for a scoop. Your balance stays unchanged.' : `The stand could not complete that purchase: ${purchase.reason}.` });
+                return;
+              }
+              result = useStorybookLaneStore.getState().recordAuthorizedIceCream(purchase.save.ribbonBucks);
+            } else {
+              result = useStorybookLaneStore.getState().buyIceCream();
+            }
+            if (result === 'insufficient') {
+              setActiveDialogue({ name: 'Scoop Stop', text: 'You need 25 RB for a scoop. Your balance will never go below zero.' });
+            } else if (result === 'recovering') {
+              setActiveDialogue({ name: 'Scoop Stop', text: 'The stand keeper says your tummy needs a little recovery time first.' });
+            } else if (result === 'sick') {
+              playStorybookSound('warning');
+              window.setTimeout(() => playStorybookSound('flop'), 650);
+              setActiveDialogue({ name: 'You', text: 'Uh oh… I think that was one scoop too many. Worth it.' });
+            } else {
+              playStorybookSound('purchase');
+              const state = useStorybookLaneStore.getState();
+              setActiveDialogue({
+                name: 'Scoop Stop',
+                text: `${state.lastFlavor}! Scoop ${state.sessionScoops} was delicious. ${7 - state.sessionScoops > 0 ? `${7 - state.sessionScoops} safe scoop${7 - state.sessionScoops === 1 ? '' : 's'} before things get wobbly.` : 'Maybe stop while you are ahead.'}`,
+                options: [
+                  { label: 'Get another · 25 RB', action: () => { void buyScoop(); } },
+                  { label: 'All done', action: () => setActiveDialogue(null) },
+                ],
+              });
+            }
+          };
+          setActiveDialogue({
+            name: 'Scoop Stop',
+            text: `Get Ice Cream — 25 RB. Balance: ${storybook.ribbonBucks} RB. The first seven scoops each visit are safe.`,
+            options: [
+              { label: 'Buy a scoop · 25 RB', action: () => { void buyScoop(); } },
+              { label: 'Leave', action: () => setActiveDialogue(null) },
+            ],
+          });
+        } else if (activeInteractable.startsWith('storybook-home-')) {
+          const homeId = activeInteractable.replace('storybook-home-', '');
+          if (homeId !== 'my-home') {
+            setActiveDialogue({ name: `${homeId.charAt(0).toUpperCase()}${homeId.slice(1)} House`, text: 'The front room is open for a quiet neighborhood visit. The furniture is intentionally simple in this MVP.' });
+          } else {
+            const buyItem = async (item: StorybookItemId, label: string) => {
+              let result: 'purchased' | 'owned' | 'insufficient';
+              if (useModeStore.getState().activeMode === 'multiplayer') {
+                const purchase = await purchaseMultiplayerStorybookItem(item);
+                result = purchase.accepted ? 'purchased' : purchase.reason === 'already-owned' ? 'owned' : 'insufficient';
+              } else {
+                result = useStorybookLaneStore.getState().purchaseItem(item);
+              }
+              if (result === 'purchased') {
+                playStorybookSound(item === 'dog' ? 'pet' : item === 'tricycle' ? 'trike' : item === 'mini-ride-on' ? 'rideOn' : 'purchase');
+                setActiveDialogue({ name: 'My Home', text: `${label} purchased and saved. It is now displayed at your Storybook Lane home.` });
+              } else {
+                setActiveDialogue({ name: 'My Home', text: result === 'owned' ? `${label} is already owned.` : `Not enough RB for ${label}. Your balance stays unchanged.` });
+              }
+            };
+            const owned = storybook.ownedItems;
+            setActiveDialogue({
+              name: 'My Home & Garage',
+              text: `Starter home access is free. Balance: ${storybook.ribbonBucks} RB. Crib tier ${storybook.cribTier} is saved; additional crib upgrades are coming soon. Owned items are marked below.`,
+              options: [
+                { label: owned.includes('tricycle') ? 'Tricycle · Owned' : `Tricycle · ${STORYBOOK_PRICES.tricycle} RB`, action: () => { void buyItem('tricycle', 'Tricycle'); } },
+                { label: owned.includes('dog') ? 'Dog · Owned' : `Dog · ${STORYBOOK_PRICES.dog} RB`, action: () => { void buyItem('dog', 'Dog companion'); } },
+                { label: owned.includes('crib') ? 'Personal Crib · Owned' : `Personal Crib · ${STORYBOOK_PRICES.crib} RB`, action: () => { void buyItem('crib', 'Personal Crib'); } },
+                { label: owned.includes('mini-ride-on') ? 'Mini Ride-On · Owned' : `Mini Ride-On · ${STORYBOOK_PRICES.miniRideOn} RB`, action: () => { void buyItem('mini-ride-on', 'Mini Ride-On'); } },
+                { label: 'Close', action: () => setActiveDialogue(null) },
+              ],
+            });
+          }
+        } else if (activeInteractable === 'storybook-exit') {
+          leaveStorybookLane();
         } else if (activeInteractable === 'garden-return') {
           returnToHub();
         } else if (activeInteractable === 'garden-activity-host') {
@@ -571,6 +678,8 @@ export function UI() {
             const unlocked = isRouteUnlocked(route, progression);
             if (route.id === 'garden-district' && unlocked) {
               enterGarden();
+            } else if (route.id === 'storybook-lane' && unlocked && storybookIsOpen(useGameStore.getState().clock.minute)) {
+              if (enterStorybookLane()) playStorybookSound('arrival');
             } else {
               if (unlocked && route.id === 'maker-market') advanceDistrictPreview('makerMarket');
               if (unlocked && route.id === 'storybook-lane') advanceDistrictPreview('storybookLane');
@@ -580,7 +689,9 @@ export function UI() {
               setActiveDialogue({
                 name: route.label,
                 text: unlocked
-                  ? `${route.description} Foundation ${Math.min(3, foundationProgress + 1)}/3 is now sketched at this entrance; the full district remains a future route.`
+                  ? route.id === 'storybook-lane'
+                    ? `Storybook Lane is ready. It opens from 5:30 PM to 6:30 PM; current time is ${formatClock(useGameStore.getState().clock.minute)}.`
+                    : `${route.description} Foundation ${Math.min(3, foundationProgress + 1)}/3 is now sketched at this entrance; the full district remains a future route.`
                   : route.id === 'garden-district'
                     ? `${route.subtitle}. Garden District opens at 10 hub reputation (${requirementProgressLabel(route, progression)}). Complete helpful quests and activities to earn reputation.`
                     : `${route.subtitle}. Build ${requirementProgressLabel(route, progression)} to prepare this route.`,
@@ -603,7 +714,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
@@ -799,6 +910,9 @@ export function UI() {
       return `Place ${name}`;
     }
     if (activeInteractable === 'garden-return') return 'Return to DayKare';
+    if (activeInteractable === 'storybook-ice-cream') return 'Get Ice Cream · 25 RB';
+    if (activeInteractable === 'storybook-exit') return 'Return to DayKare';
+    if (activeInteractable.startsWith('storybook-home-')) return activeInteractable === 'storybook-home-my-home' ? 'Visit My Home & Garage' : 'Visit Home';
     if (activeInteractable === 'garden-activity-host') {
       if (gardenActivityStep === 0) return 'Start Planting';
       if (gardenActivityStep < 3) return `Tend Seedlings · ${gardenActivityStep}/3`;
@@ -829,7 +943,9 @@ export function UI() {
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Check Route';
-      return `${isRouteUnlocked(route, progression) && route.id === 'garden-district' ? 'Enter' : 'Check'} ${route.label}`;
+      const canEnter = isRouteUnlocked(route, progression)
+        && (route.id === 'garden-district' || (route.id === 'storybook-lane' && storybookIsOpen(useGameStore.getState().clock.minute)));
+      return `${canEnter ? 'Enter' : 'Check'} ${route.label}`;
     }
     if (activeInteractable.startsWith('teacher-')) return `Talk to ${activeInteractable.replace('teacher-', '')}`;
     if (activeInteractable.startsWith('kid-')) return `Talk to ${activeInteractable.split('-')[1]}`;
@@ -843,6 +959,9 @@ export function UI() {
     if (!activeInteractable) return null;
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
+    if (activeInteractable === 'storybook-ice-cream') return `${storybook.ribbonBucks} RB balance · scoop ${storybook.sessionScoops + 1}`;
+    if (activeInteractable === 'storybook-exit') return 'Leave the neighborhood';
+    if (activeInteractable.startsWith('storybook-home-')) return activeInteractable === 'storybook-home-my-home' ? 'Starter home · pets, crib and vehicle shop' : 'Visitable social home';
     if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
     if (activeInteractable === 'gummy-drop-bed') return 'Five-hour crop · $30 per full basket · REP from sharing';
     if (activeInteractable === 'caper-board') return 'Safe caper · planned with teacher supervision';
@@ -854,7 +973,11 @@ export function UI() {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Future access point';
       return isRouteUnlocked(route, progression)
-        ? route.id === 'garden-district' ? 'Connected route · Garden spawn' : 'Route prepared'
+        ? route.id === 'garden-district'
+          ? 'Connected route · Garden spawn'
+          : route.id === 'storybook-lane'
+            ? storybookIsOpen(useGameStore.getState().clock.minute) ? 'Open now · closes 6:30 PM' : 'Opens 5:30 PM'
+            : 'Route prepared'
         : `Locked · ${requirementProgressLabel(route, progression)}`;
     }
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
@@ -894,7 +1017,7 @@ export function UI() {
             disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-card border-2 border-transparent hover:border-primary/20 transition-all pointer-events-auto"
           >
-            {timeOfDay >= 17.5 ? 'Next day' : '+1.5h'}
+            {timeOfDay >= 18.5 ? 'Next day' : '+1.5h'}
           </button>
           <button 
             onClick={toggleRain}
@@ -954,6 +1077,11 @@ export function UI() {
           <span className="font-bold hidden sm:block">Menu</span>
           <Menu className="w-6 h-6 text-primary" />
         </button>
+        {activeMode === 'multiplayer' && (
+          <div className="bg-[#e8ffff]/95 backdrop-blur border-2 border-[#33cccc]/35 px-3 py-2 rounded-xl shadow text-[#004d4d] font-black text-xs" role="status" data-testid="status-multiplayer-hud">
+            DayKare Room · {multiplayerStatus === 'connected' ? `${multiplayerOccupancy}/20` : multiplayerStatus}
+          </div>
+        )}
         <button
           type="button"
           onClick={() => openPanel('shop')}
@@ -1030,9 +1158,29 @@ export function UI() {
             )}
           </div>
         )}
+        {zone === 'storybook' && (
+          <div className="bg-[#fff6d9]/95 backdrop-blur border-2 border-[#b77b22]/30 px-3 py-2 rounded-xl shadow flex items-center gap-2 text-[#5c3a21] font-black" data-testid="status-ribbon-bucks">
+            <span aria-hidden="true">🎀</span>
+            <span>{storybook.ribbonBucks.toLocaleString()} RB</span>
+          </div>
+        )}
       </div>
 
       <div className="daykare-center-notices" aria-live="polite">
+        {canEnterStorybookNow && !activeDialogue && !journalOpen && !zoneTransitioning && (
+          <button
+            type="button"
+            className="daykare-gameplay-instruction"
+            onClick={() => {
+              if (enterStorybookLane()) playStorybookSound('arrival');
+            }}
+            data-testid="button-enter-storybook-lane"
+          >
+            <strong>Storybook Lane is open</strong>
+            <span>Head over for the after-day hangout before 6:30 PM.</span>
+            <small>Enter Storybook Lane</small>
+          </button>
+        )}
         {activeInstruction && !activeDialogue && !journalOpen && !zoneTransitioning && (
           <button
             type="button"
@@ -1059,6 +1207,11 @@ export function UI() {
         {ambientMessage && !activeDialogue && !journalOpen && !zoneTransitioning && (
           <div className="daykare-ambient-message max-w-md rounded-full bg-[#fff8e8]/94 border-2 border-[#e6ae2f]/45 px-5 py-3 text-sm font-bold text-[#5c3a21] shadow-xl">
             {ambientMessage}
+          </div>
+        )}
+        {recoverySeconds > 0 && (
+          <div className="max-w-md rounded-full bg-[#dff3d3]/96 border-2 border-[#5b934d]/50 px-5 py-3 text-sm font-black text-[#31542a] shadow-xl" role="status" data-testid="status-icecream-recovery">
+            Recovering from too much ice cream… 0:{String(recoverySeconds).padStart(2, '0')}
           </div>
         )}
       </div>
@@ -1137,9 +1290,9 @@ export function UI() {
           <div className="text-center px-6">
             <div className="w-14 h-14 mx-auto rounded-full border-4 border-white/25 border-t-[#ffd166] animate-spin" />
             <div className="font-serif text-3xl font-bold mt-5">
-              {pendingZone === 'garden' ? 'Opening Garden District' : 'Returning to DayKare'}
+              {pendingZone === 'garden' ? 'Opening Garden District' : pendingZone === 'storybook' ? 'STORYBOOK LANE' : 'Returning to DayKare'}
             </div>
-            <div className="text-sm text-white/75 mt-2">Following the connected garden path…</div>
+            <div className="text-sm text-white/75 mt-2">{pendingZone === 'storybook' ? '5:30 PM – 6:30 PM · Hang out before heading home.' : 'Following the connected path…'}</div>
           </div>
         </div>
       )}
@@ -1172,7 +1325,7 @@ export function UI() {
       )}
 
       <TouchControls
-        movementEnabled={!journalOpen && !activeDialogue && !zoneTransitioning}
+        movementEnabled={!journalOpen && !activeDialogue && !zoneTransitioning && recoverySeconds === 0}
         interactionLabel={journalOpen || activeDialogue || zoneTransitioning ? null : interactionLabel}
         interactionDetail={journalOpen || activeDialogue || zoneTransitioning ? null : interactionDetail}
         onInteract={() => interactRef.current()}

@@ -84,6 +84,9 @@ importers:
       '@react-three/fiber':
         specifier: ^9.7.0
         version: 9.7.0(@types/react@19.2.17)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(three@0.185.1)
+      '@supabase/supabase-js':
+        specifier: ^2.58.0
+        version: 2.112.4
       '@types/three':
         specifier: ^0.185.4
         version: 0.185.4
