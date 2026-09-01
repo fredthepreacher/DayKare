@@ -19,13 +19,13 @@ export function HubDetails() {
       <ActivityStationDressing imaginationMode={isImaginationMode} />
       <ArtGallery imaginationMode={isImaginationMode} />
       <RoomFinishing imaginationMode={isImaginationMode} />
+      {schedule === 'nap' && <NapMats />}
       <PlaygroundDetails />
       <CeilingMobile imaginationMode={isImaginationMode} />
       <ScheduleBeacon schedule={schedule} imaginationMode={isImaginationMode} />
       <SuppliedArtwork fileName="02_wall_mural_welcome.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 0 }} size={[4.25, 3.15]} support="frame" />
       <SuppliedArtwork fileName="03_wall_decals_set.png" surfaceAnchor={{ solidId: 'hall-divider-south', face: 'east', height: 1.6, along: 4.5 }} size={[2.15, 1.6]} support="corkboard" />
       <SuppliedArtwork fileName="06_posters_charts.png" surfaceAnchor={{ solidId: 'north-boundary', face: 'south', height: 1.72, along: -12 }} size={[2.5, 1.88]} semanticRole="wayfinding" support="corkboard" />
-      <SuppliedArtwork fileName="07_classroom_signs.png" surfaceAnchor={{ solidId: 'hall-divider-north', face: 'east', height: 1.6, along: -4.5 }} size={[2.15, 1.6]} semanticRole="wayfinding" support="rail" />
       <SuppliedArtwork fileName="17_motivational_banner.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.65, along: 0 }} size={[2.55, 1.9]} semanticRole="wayfinding" support="rail" />
       <SuppliedArtwork fileName="18_door_sign.png" surfaceAnchor={{ solidId: 'hall-divider-north', face: 'east', height: 1.7, along: -6.65 }} size={[1.35, 1]} semanticRole="wayfinding" support="signboard" />
       <SuppliedArtwork fileName="04_classroom_scene.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 4.6 }} size={[2.55, 1.9]} support="frame" />
@@ -423,4 +423,15 @@ function LostAndFoundOrganizer() {
       </mesh>
     </group>
   );
+}
+
+function NapMats() {
+  return <group>{Array.from({ length: 11 }, (_, index) => {
+    const column = index % 4;
+    const row = Math.floor(index / 4);
+    return <group key={index} position={[-4.5 + column * 3, 0.025, 2.5 + row * 2]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[1.45, 0.82]} /><meshStandardMaterial color={index % 2 ? '#a8dadc' : '#f3d6a0'} roughness={0.95} /></mesh>
+      <mesh position={[-0.5, 0.08, 0]} scale={[0.34, 0.12, 0.34]}><sphereGeometry args={[0.35, 10, 7]} /><meshStandardMaterial color="#fff1cf" /></mesh>
+    </group>;
+  })}</group>;
 }

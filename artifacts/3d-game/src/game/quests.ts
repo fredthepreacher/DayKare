@@ -7,12 +7,28 @@ export interface QuestObjectiveDefinition {
   guidance: string;
 }
 
+/**
+ * Story quests are one-time and gate progression. Activities are grindable and
+ * must never present themselves as unfinished Story content - that confusion is
+ * the whole reason Rainbow Tidy-Up read as a stuck main quest.
+ */
+export type QuestKind = 'story' | 'activity';
+
 export interface QuestDefinition {
   id: string;
   title: string;
   summary: string;
   objectives: QuestObjectiveDefinition[];
   repeatable?: boolean;
+  kind: QuestKind;
+  /** Quest that must be COMPLETE before this one is offered, and why - shown to the player. */
+  prerequisite?: { questId: string; label: string };
+  /** What finishing this opens. Rendered so "complete" is never a dead end. */
+  unlocks?: string[];
+  /** Short reward line for the Journal. */
+  rewardSummary?: string;
+  /** Where the player should go. The Journal shows this for AVAILABLE quests. */
+  locationHint?: string;
 }
 
 export interface QuestState {
@@ -29,6 +45,10 @@ export const QUEST_DEFINITIONS: QuestDefinition[] = [
     id: 'where-binky',
     title: "Where's Binky?",
     summary: "Help Leo track down his lost favorite toy.",
+    kind: 'story',
+    rewardSummary: '+8 REP · +5 Star Tokens · Trusted Helper Pass',
+    unlocks: ['Rainbow Tidy-Up', 'the Sticker Parade board'],
+    locationHint: 'Leo is in the main classroom.',
     objectives: [
       { id: 'talk-to-leo', label: 'Talk to Leo', guidance: 'Leo is waiting in the main classroom.' },
       { id: 'ask-mia', label: 'Ask Mia what she saw', guidance: 'Mia remembers something near the playground.' },
@@ -46,6 +66,11 @@ export const QUEST_DEFINITIONS: QuestDefinition[] = [
     title: 'Rainbow Tidy-Up',
     summary: 'Carry the misplaced toys back to the activity station.',
     repeatable: true,
+    kind: 'activity',
+    prerequisite: { questId: 'where-binky', label: 'Return Binky to Leo first' },
+    rewardSummary: '+2 REP · +2 Star Tokens each round',
+    unlocks: ['Storybook Lane at 3 rounds'],
+    locationHint: 'The Rainbow Tidy-Up station is in the classroom.',
     objectives: [
       { id: 'collect-blue-block', label: 'Find and carry the blue block', guidance: 'The blue block is in the classroom.' },
       { id: 'place-blue-block', label: 'Place the blue block at the station', guidance: 'Carry it to the Rainbow Tidy-Up station.' },
@@ -117,6 +142,18 @@ export function advanceObjective(states: QuestStates, questId: string, objective
   const objectiveStates = { ...current.objectiveStates, [objectiveId]: 'complete' as const };
 
   if (!next) {
+    const completionCount = current.completionCount + 1;
+    // A repeatable quest finishing a ROUND is not a finished quest. Resetting
+    // here rather than in the caller is what makes 'complete' unreachable for a
+    // repeatable - the state that used to be persistable and permanently
+    // unrecoverable, because activateQuest refuses complete quests and the only
+    // reset lived inside completeTidyToy, which itself needs a live objective.
+    if (definition.repeatable) {
+      return {
+        ...states,
+        [questId]: { ...createQuestState(definition, 'active'), completionCount },
+      };
+    }
     return {
       ...states,
       [questId]: {
@@ -124,7 +161,7 @@ export function advanceObjective(states: QuestStates, questId: string, objective
         status: 'complete',
         currentObjectiveId: null,
         objectiveStates,
-        completionCount: current.completionCount + 1,
+        completionCount,
       },
     };
   }
@@ -139,10 +176,27 @@ export function advanceObjective(states: QuestStates, questId: string, objective
   };
 }
 
+/**
+ * Did this transition finish a round of `questId`? Works for one-time quests and
+ * repeatables alike, because it compares the completion counter rather than
+ * looking for a 'complete' status a repeatable never shows.
+ */
+export function roundWasCompleted(before: QuestStates, after: QuestStates, questId: string): boolean {
+  return (after[questId]?.completionCount ?? 0) > (before[questId]?.completionCount ?? 0);
+}
+
 export function activateQuest(states: QuestStates, questId: string): QuestStates {
   const definition = getQuestDefinition(questId);
   const current = states[questId];
-  if (!definition || !current || current.status === 'complete') return states;
+  if (!definition || !current) return states;
+  // A finished repeatable is just one waiting for its next round.
+  if (current.status === 'complete') {
+    if (!definition.repeatable) return states;
+    return {
+      ...states,
+      [questId]: { ...createQuestState(definition, 'active'), completionCount: current.completionCount },
+    };
+  }
   return {
     ...states,
     [questId]: {
@@ -204,9 +258,21 @@ function validObjectiveStates(definition: QuestDefinition, state: unknown): Ques
   const completionCount = typeof candidate.completionCount === 'number' && Number.isFinite(candidate.completionCount)
     ? Math.min(99_999, Math.max(0, Math.floor(candidate.completionCount)))
     : 0;
-  const firstIncomplete = definition.objectives.find((objective) => objectiveStates[objective.id] !== 'complete');
+  let firstIncomplete = definition.objectives.find((objective) => objectiveStates[objective.id] !== 'complete');
   if (status === 'complete' && firstIncomplete) status = 'active';
   if (status === 'active' && !firstIncomplete) status = 'complete';
+  // A repeatable can never REST at complete. A save carrying one - whether
+  // written before the reset moved into advanceObjective, or hand-edited - used
+  // to be terminal: activateQuest refused it, the blocks stopped spawning, and
+  // Storybook Lane became unreachable. Start its next round instead.
+  if (status === 'complete' && definition.repeatable) {
+    definition.objectives.forEach((objective) => {
+      objectiveStates[objective.id] = 'pending';
+    });
+    status = 'active';
+    firstIncomplete = definition.objectives[0];
+    currentObjectiveId = null;
+  }
   if (status === 'active') {
     currentObjectiveId = currentObjectiveId && objectiveStates[currentObjectiveId] !== 'complete'
       ? currentObjectiveId

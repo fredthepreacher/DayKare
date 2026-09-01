@@ -2,6 +2,10 @@
 
 A stylized 3D open-world daycare game. You play a toddler in a living daycare — exploring, running errands and quests, building reputation, running the Juice Club, and pulling off supervised, family-friendly capers.
 
+The current feature branch also contains Storybook Lane, a 5:30–6:30 PM social
+neighborhood, and an optional authenticated 20-player friends room. Setup and
+architecture are documented in [`docs/STORYBOOK_MULTIPLAYER.md`](docs/STORYBOOK_MULTIPLAYER.md).
+
 The playable game is a browser 3D app (React + Vite + Three.js) with browser-side persistence. It needs no database, no API server and no multiplayer server to run.
 
 ## Quick start
@@ -106,7 +110,11 @@ Two separate `localStorage` namespaces, and they must stay separate:
 
 Online writes must never touch the Story save. When changing anything persisted, bump `PROGRESSION_VERSION` and extend the normalizer — never silently drop player progress.
 
-DayKare Online is currently a **truthful local preview**: it says plainly that it is not connected, and it does not fake other players. Keep it that way until a real authoritative server exists.
+DayKare Multiplayer is a real optional Supabase Realtime friends room. When its
+public environment values or migration are absent, the lobby disables Join and
+says exactly what is missing; it never substitutes fake remote players. See
+[`docs/STORYBOOK_MULTIPLAYER.md`](docs/STORYBOOK_MULTIPLAYER.md) for setup and
+authority boundaries.
 
 ## Deployment
 

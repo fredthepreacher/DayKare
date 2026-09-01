@@ -222,21 +222,21 @@ try {
 
   await waitFor(client, 'Boolean(document.querySelector("[data-testid=button-story]"))', 'front-end menu');
   assert.equal(
-    await evaluate(client, 'document.querySelector("[data-testid=status-online-players]")?.textContent?.includes("Offline") === true'),
+    await evaluate(client, 'document.querySelector("[data-testid=status-online-players]")?.textContent?.includes("20 players") === true'),
     true,
-    'Online menu entry is explicitly offline',
+    'Multiplayer menu truthfully advertises the configured room capacity',
   );
   await evaluate(client, 'document.querySelector("[data-testid=button-online]")?.click()');
   await waitFor(client, 'Boolean(document.querySelector("[data-testid=overlay-online-lobby]"))', 'Online preview lobby');
   assert.equal(
-    await evaluate(client, 'document.querySelector("[data-testid=status-networking]")?.textContent?.includes("not connected yet") === true'),
+    await evaluate(client, 'document.querySelector("[data-testid=status-networking]")?.textContent?.includes("not configured") === true'),
     true,
-    'Online lobby truthfully reports the disconnected networking boundary',
+    'Multiplayer lobby truthfully reports missing local service credentials',
   );
   assert.equal(
-    await evaluate(client, 'document.querySelectorAll("[data-testid^=card-online-seat-]").length'),
-    8,
-    'Online preview renders its local NPC and staff fill seats',
+    await evaluate(client, 'document.querySelector("[data-testid=button-join-multiplayer]")?.disabled === true'),
+    true,
+    'the room cannot fake a connection while its service is unconfigured',
   );
   await evaluate(client, 'document.querySelector("[data-testid=button-online-back]")?.click()');
   await waitFor(client, 'Boolean(document.querySelector("[data-testid=button-story]"))', 'return to front-end menu');
@@ -1062,13 +1062,18 @@ try {
         '.daykare-touch-look',
         '.daykare-touch-recenter',
         '.daykare-touch-interact',
+        '.daykare-touch-actions',
       ];
+      // Sprint/Crouch moved to the right thumb, into a band shared with Center
+      // Camera above and the interaction button below. If it is not in this
+      // matrix the overlap audit silently stops covering the crowded side.
       const collisionSelectors = [
         '.daykare-hud-left',
         '.daykare-hud-right',
         '.daykare-touch-movement',
         '.daykare-touch-interact',
         '.daykare-touch-recenter',
+        '.daykare-touch-actions',
       ];
       const rectFor = (selector) => {
         const element = document.querySelector(selector);

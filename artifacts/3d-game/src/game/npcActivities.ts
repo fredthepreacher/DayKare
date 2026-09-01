@@ -11,6 +11,7 @@ export type ChildActivity =
   | 'pretend-play'
   | 'circle-time'
   | 'snacking'
+  | 'napping'
   | 'conversation'
   | 'parallel-play'
   | 'following'
@@ -29,6 +30,7 @@ export type ChildActivityMode =
   | 'pretend-play'
   | 'circle-time'
   | 'snacking'
+  | 'napping'
   | 'following'
   | 'reacting';
 
@@ -50,6 +52,7 @@ export const MIN_CHILD_ACTIVITY_DWELL_SECONDS = 7.2;
 export const MAX_CHILD_ACTIVITY_DWELL_SECONDS = 8.5;
 
 const HUB_STATIONS: Record<string, Station[]> = {
+  breakfast: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [-4.5 + (index % 6) * 1.7, 0, -0.4 + Math.floor(index / 6) * 1.8], focus: [0, 0, -1.4], duration: 6.4 })),
   'morning-play': [
     { activity: 'blocks', mode: 'toy-play', position: [-2.8, 0, 1.4], focus: [-1.8, 0, 1.4], duration: 6.2 },
     { activity: 'picture-books', mode: 'reading', position: [4.05, 0, -5.05], focus: [4.8, 0, -5.5], duration: 6 },
@@ -76,6 +79,8 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'picture-books', mode: 'reading', position: [-11.2, 0, -14.7], focus: [-12.1, 0, -14.45], duration: 5.9 },
     { activity: 'drawing', mode: 'coloring', position: [-12.1, 0, -9.05], focus: [-12.1, 0, -10.05], duration: 6.1 },
   ],
+  'show-and-tell': CHILD_ORDER.map((_, index) => { const angle = index / CHILD_ORDER.length * Math.PI * 2; return { activity: 'circle-time', mode: 'circle-time', position: [Math.cos(angle) * 2.1, 0, 2.3 + Math.sin(angle) * 2.1], focus: [0, 0, 2.3], duration: 6.4 }; }),
+  lunch: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [-4.5 + (index % 6) * 1.7, 0, -0.4 + Math.floor(index / 6) * 1.8], focus: [0, 0, -1.4], duration: 6.4 })),
   'juice-club': [
     { activity: 'snacking', mode: 'snacking', position: [5.2, 0, -3.8], focus: [4.4, 0, -3.2], duration: 4.6 },
     { activity: 'conversation', mode: 'conversation', position: [4.8, 0, -0.7], focus: [3.8, 0, -0.7], duration: 4.2 },
@@ -89,6 +94,8 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'toy-play', mode: 'toy-play', position: [1.6, 0, -5.7], focus: [1.6, 0, -4.7], duration: 4.5 },
     { activity: 'conversation', mode: 'conversation', position: [-5.2, 0, 1.6], focus: [-4.2, 0, 1.6], duration: 4.4 },
   ],
+  nap: CHILD_ORDER.map((_, index) => ({ activity: 'napping', mode: 'napping', position: [-4.5 + (index % 4) * 3, 0, 2.5 + Math.floor(index / 4) * 2], focus: [0, 0, 4.5], duration: 30 })),
+  recess: CHILD_ORDER.map((_, index) => ({ activity: 'toy-play', mode: 'playing', position: [10 + (index % 3) * 1.8, 0, -10 + Math.floor(index / 3) * 2.2], focus: [12, 0, -5], duration: 6.4 })),
   'outdoor-play': [
     { activity: 'toy-play', mode: 'toy-play', position: [10.3, 0, -10.7], focus: [11.2, 0, -10.7], duration: 5.8 },
     { activity: 'dancing', mode: 'dancing', position: [13.6, 0, -8.2], focus: [12.7, 0, -8.2], duration: 5.3 },
@@ -162,7 +169,7 @@ export function getChildActivityPlan(
     mode: station.mode,
     position,
     focus,
-    duration: schedule === 'juice-club'
+    duration: schedule === 'nap' ? station.duration : schedule === 'juice-club'
       ? station.duration + deterministicOffset
       : Math.max(MIN_CHILD_ACTIVITY_DWELL_SECONDS, station.duration * 1.25) + deterministicOffset,
     soloFallback: true,

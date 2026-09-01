@@ -1,9 +1,17 @@
+import { useEffect, useMemo, useState } from 'react';
+import { CollisionDebug, collisionDebugEnabled } from './CollisionDebug';
+import { RIDEABLES, claimantOf } from './rideables';
+import { useWeather } from './WeatherSystem';
 import { useGameStore } from './store';
+import { useQualitySettings } from './useQualitySettings';
 import { getWorldSolidTransform, PLAY_SLIDE_RAMP, WORLD_SOLIDS } from './world';
 
 export function Environment() {
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
-  const quality = useGameStore(s => s.quality);
+  // Opt-in developer overlay (?collision). Unmounted otherwise.
+  const debugCollision = useMemo(() => collisionDebugEnabled(), []);
+  const { sky } = useWeather();
+  const quality = useQualitySettings();
   
   // Colors adjust based on imagination mode
   const floorMain = isImaginationMode ? "#2b1055" : "#e4d0b6";
@@ -16,16 +24,35 @@ export function Environment() {
 
   return (
     <group>
-      {/* Lighting */}
-      <ambientLight intensity={isImaginationMode ? 0.4 : 0.7} color={isImaginationMode ? "#8a4fff" : "#ffffff"} />
-      <directionalLight 
-        position={[10, 20, 10]} 
-        intensity={isImaginationMode ? 1.5 : 1} 
-        color={isImaginationMode ? "#ff0a54" : "#ffeedd"}
-        castShadow={quality === 'high'}
-        shadow-mapSize-width={quality === 'high' ? 1024 : 256}
-        shadow-mapSize-height={quality === 'high' ? 1024 : 256}
+      {debugCollision && <CollisionDebug zone="hub" />}
+      {/* Lighting.
+          The sun used to be the literal vector [10, 20, 10] with a fixed colour,
+          so a whole 9:00-to-17:30 day looked the same at every hour. It now
+          follows the canonical clock and the weather, through a keyframe table
+          quantised to two game minutes so React is not churned four times a
+          second. Imagination Mode still overrides everything - it is a different
+          world, not a time of day. */}
+      <ambientLight
+        intensity={isImaginationMode ? 0.4 : sky.ambientIntensity}
+        color={isImaginationMode ? '#8a4fff' : sky.ambientColor}
       />
+      <directionalLight
+        position={isImaginationMode ? [10, 20, 10] : sky.sunPosition}
+        intensity={isImaginationMode ? 1.5 : sky.sunIntensity}
+        color={isImaginationMode ? '#ff0a54' : sky.sunColor}
+        castShadow={quality.settings.shadows}
+        shadow-mapSize-width={quality.settings.shadowMapSize}
+        shadow-mapSize-height={quality.settings.shadowMapSize}
+      />
+      {/* Indoor fill. As it darkens or greys outside this warms and strengthens,
+          which is what keeps the classroom readable at dusk and under rain
+          without flattening the outdoor grading. */}
+      {!isImaginationMode && (
+        <hemisphereLight
+          args={[sky.windowLight, '#6b5a48', sky.windowIntensity]}
+          position={[0, 6, 0]}
+        />
+      )}
       {isImaginationMode && (
         <pointLight position={[-5, 5, -5]} intensity={2} color="#4cc9f0" distance={20} />
       )}
@@ -97,6 +124,11 @@ export function Environment() {
       
       {/* Playground Sandbox */}
       <AuthoredSolidSurface id="sandbox" color="#e9c46a" />
+
+      {/* Ride-on toys, parked. A trike vanishes from its parking spot while a
+          child is riding it - the rider draws its own - so the toy is never in
+          two places at once. */}
+      <IdleRideables />
       
       {/* Art Room Tables */}
       <group>
@@ -150,5 +182,65 @@ function WallTrim({ position, size, color }: { position: [number, number, number
       <boxGeometry args={[size[0], 0.16, size[2] + 0.015]} />
       <meshStandardMaterial color={color} roughness={0.88} />
     </mesh>
+  );
+}
+
+
+/**
+ * The parked ride-on toys.
+ *
+ * Polls the claim registry rather than subscribing to it: claims change a couple
+ * of times a minute at most, so a 500 ms poll is far cheaper than pushing store
+ * updates through React on a system nothing else needs to observe.
+ */
+function IdleRideables() {
+  const [claimed, setClaimed] = useState<string[]>([]);
+
+  useEffect(() => {
+    const sync = () => {
+      setClaimed((previous) => {
+        const next = RIDEABLES.filter((entry) => claimantOf(entry.id) !== null).map((entry) => entry.id);
+        return next.length === previous.length && next.every((id, index) => id === previous[index])
+          ? previous
+          : next;
+      });
+    };
+    sync();
+    const timer = window.setInterval(sync, 500);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return (
+    <group>
+      {RIDEABLES.map((rideable, index) => {
+        if (claimed.includes(rideable.id)) return null;
+        const colors = ['#e76f51', '#2a9d8f'];
+        const color = colors[index % colors.length];
+        return (
+          <group key={rideable.id} position={[rideable.home[0], 0.16, rideable.home[1]]}>
+            <mesh position={[0, 0.2, 0]} castShadow>
+              <boxGeometry args={[0.36, 0.12, 0.62]} />
+              <meshStandardMaterial color={color} roughness={0.6} />
+            </mesh>
+            <mesh position={[0, 0.32, -0.28]} castShadow>
+              <boxGeometry args={[0.42, 0.06, 0.06]} />
+              <meshStandardMaterial color="#f4f1de" />
+            </mesh>
+            <mesh position={[0, 0.14, -0.3]} rotation={[0, 0, Math.PI / 2]} castShadow>
+              <cylinderGeometry args={[0.15, 0.15, 0.07, 10]} />
+              <meshStandardMaterial color="#3b3b45" />
+            </mesh>
+            <mesh position={[-0.19, 0.1, 0.26]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.11, 0.11, 0.06, 10]} />
+              <meshStandardMaterial color="#3b3b45" />
+            </mesh>
+            <mesh position={[0.19, 0.1, 0.26]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.11, 0.11, 0.06, 10]} />
+              <meshStandardMaterial color="#3b3b45" />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
   );
 }

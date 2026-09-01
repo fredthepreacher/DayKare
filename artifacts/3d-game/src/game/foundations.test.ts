@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { ZONE_LABELS, zoneLabel } from './world';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
@@ -244,13 +246,13 @@ useGameStore.getState().resetGame();
 useGameStore.setState((state) => ({
   progression: { ...state.progression, reputation: 17, tokens: 26, trustedHelperPass: true },
 }));
-useGameStore.getState().setTimeOfDay(17.5);
+useGameStore.getState().setTimeOfDay(18.5);
 const dayBeforeRollover = useGameStore.getState().dayNumber;
 useGameStore.getState().advanceSchedule();
 const rolledDay = useGameStore.getState();
 assert.equal(rolledDay.dayNumber, dayBeforeRollover + 1);
 assert.equal(rolledDay.timeOfDay, 9);
-assert.equal(rolledDay.schedule, 'morning-play');
+assert.equal(rolledDay.schedule, 'breakfast');
 assert.equal(rolledDay.progression.tokens, 26, 'day rollover preserves permanent progression');
 assert.equal(rolledDay.progression.reputation, 17);
 
@@ -782,7 +784,19 @@ const artTable = getWorldSolidTransform('art-table', 1);
 assert.deepEqual(artTable.position, [-12, 0.5, -12]);
 assert.deepEqual(artTable.size, [3.3999999999999986, 1, 3.3999999999999986]);
 assert.ok(PLAY_SLIDE_RAMP.solid.minZ <= PLAY_SLIDE_RAMP.position[2] - 1);
-assert.ok(PLAY_SLIDE_RAMP.solid.maxZ >= PLAY_SLIDE_RAMP.position[2] + 1);
+// The ramp is a 3-long box rotated -45 degrees about X, so it crosses y = 0 at
+// z = -3 and everything south of that is buried under the playground floor. The
+// collider now stops there. It used to run to the full rotated footprint, which
+// put 0.28 m of invisible wall over bare grass at the bottom of the slide.
+assert.equal(
+  PLAY_SLIDE_RAMP.solid.maxZ,
+  -3,
+  'the ramp collider ends where the ramp stops being above the floor',
+);
+assert.ok(
+  PLAY_SLIDE_RAMP.solid.maxZ < PLAY_SLIDE_RAMP.position[2] + 1.06,
+  'the collider does not extend past the visible ramp geometry',
+);
 const upperStorageBox = getWorldSolidTransform('storage-box-upper', 0.8, 1.4);
 assert.deepEqual(upperStorageBox.position, [-14, 1.4, 10]);
 assert.deepEqual(upperStorageBox.size, [0.8000000000000007, 0.8, 0.8000000000000007]);
@@ -931,6 +945,16 @@ const validSaveSource = {
 };
 const validSave = normalizePersistedGameState(validSaveSource);
 assert.equal(validSave.quality, 'low');
+// The preset field was widened from 'low' | 'high' to the five presets. Every
+// existing save keeps its setting because both legacy values are still valid,
+// and the new ones round-trip rather than being normalised away.
+for (const preset of ['auto', 'low', 'medium', 'high', 'ultra'] as const) {
+  assert.equal(
+    (normalizePersistedGameState({ quality: preset }) as { quality: string }).quality,
+    preset,
+    `the ${preset} preset survives a save round trip`,
+  );
+}
 assert.equal(validSave.timeOfDay, 12.25);
 assert.equal(validSave.schedule, 'juice-club');
 assert.equal(validSave.isRainy, true);
@@ -946,7 +970,11 @@ assert.equal(validSave.zone, 'garden');
 assert.deepEqual(validSave.playerPosition, [1, 0, 12]);
 
 const corruptSave = normalizePersistedGameState({
-  quality: 'ultra',
+  // Was 'ultra', which this block used as an example of nonsense. 'ultra' is a
+  // real preset now, so the forged value has to be something that genuinely is
+  // not one - otherwise this stops testing the guard and starts asserting that
+  // a valid setting gets thrown away.
+  quality: 'cinematic-raytraced',
   timeOfDay: Number.POSITIVE_INFINITY,
   schedule: 'juice-club',
   isRainy: 'yes',
@@ -986,9 +1014,9 @@ const corruptSave = normalizePersistedGameState({
   zoneTransitioning: true,
   pendingZone: 'garden',
 });
-assert.equal(corruptSave.quality, 'high');
+assert.equal(corruptSave.quality, 'high', 'an unknown quality preset falls back rather than being stored');
 assert.equal(corruptSave.timeOfDay, 9);
-assert.equal(corruptSave.schedule, 'morning-play');
+assert.equal(corruptSave.schedule, 'breakfast');
 assert.equal(corruptSave.isRainy, false);
 assert.deepEqual(corruptSave.inventory, []);
 assert.deepEqual(corruptSave.collectibles, []);
@@ -1226,7 +1254,7 @@ for (const teacher of [
   { name: 'Ms. Harper', defaultPos: [-2, 0, 2] as [number, number, number] },
   { name: 'Mr. Davis', defaultPos: [4, 0, 4] as [number, number, number] },
 ]) {
-  for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+  for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'outdoor-play', 'pickup']) {
     for (const rainy of [false, true]) {
       for (const patrolPoint of teacherPatrolSpots(teacher.name, scheduleName, rainy, teacher.defaultPos)) {
         assert.equal(
@@ -1239,16 +1267,16 @@ for (const teacher of [
   }
 }
 
-for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'outdoor-play', 'pickup']) {
   assert.ok(
-    ['standing', 'walking', 'sitting', 'playing', 'gathering', 'coloring', 'toy-play', 'conversation', 'reading', 'singing', 'dancing', 'pretend-play', 'circle-time', 'snacking', 'following', 'reacting', 'intervening']
+    ['standing', 'walking', 'sitting', 'playing', 'gathering', 'coloring', 'toy-play', 'conversation', 'reading', 'singing', 'dancing', 'pretend-play', 'circle-time', 'snacking', 'napping', 'following', 'reacting', 'intervening']
       .includes(kidActivityMode(scheduleName, false, 4.2)),
     `kid activity mode is defined for ${scheduleName}`,
   );
 }
 
 const authoredActivityKinds = new Set<string>();
-for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'outdoor-play', 'pickup']) {
   for (const rainy of [false, true]) {
     const firstCyclePositions = new Set<string>();
     for (const [index, kid] of KID_CAST.entries()) {
@@ -1261,11 +1289,11 @@ for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-p
           `${kid.name} ${scheduleName} ${rainy ? 'rainy' : 'dry'} activity ${plan.activity} must be reachable`,
         );
         assert.ok(
-          scheduleName === 'juice-club'
+          scheduleName === 'nap' ? plan.duration === 30 : scheduleName === 'juice-club'
             ? plan.duration >= 4 && plan.duration < 5
             : plan.duration >= MIN_CHILD_ACTIVITY_DWELL_SECONDS
               && plan.duration <= MAX_CHILD_ACTIVITY_DWELL_SECONDS,
-          scheduleName === 'juice-club'
+          scheduleName === 'nap' ? 'Nap activities remain settled for the full rest block' : scheduleName === 'juice-club'
             ? 'Juice Club keeps its original customer turnover timing'
             : 'authored toddler activities remain visible long enough to notice while staying bounded',
         );
@@ -2124,3 +2152,242 @@ const forged = useGameStore.getState();
 assert.equal(forged.juiceClubCash, 8, 'a forged price is ignored - the authored price is charged');
 assert.equal(forged.juiceStock, 5, 'a forged amount is ignored - the authored amount is granted');
 assert.equal(forged.crackerStock, 5, 'a forged amount cannot inflate crackers either');
+
+// --- canonical clock: store integration and save migration -------------------
+//
+// The clock is new state in an existing save. The risk is not that the clock is
+// wrong - clock.test.ts covers the maths - it is that adding it disturbs a save
+// that predates it. These assertions run through the REAL store normalizer.
+
+// tickClock caps a single tick at one real second, so a tab that was
+// backgrounded cannot fast-forward the day when it returns. Real ticking runs
+// four times a second; these helpers tick the same way rather than pretending a
+// single 60-second frame exists.
+const tickRealSeconds = (seconds: number) => {
+  for (let i = 0; i < seconds; i += 1) useGameStore.getState().tickClock(1);
+};
+
+// A save written before the clock existed has timeOfDay and dayNumber and no
+// clock at all. It must migrate, never reset.
+{
+  const legacySave = {
+    timeOfDay: 13.5,
+    dayNumber: 6,
+    juiceStock: 4,
+    crackerStock: 2,
+    juiceClubCash: 11,
+    progression: { version: 4, reputation: 30, tokens: 12 },
+  };
+  const migrated = normalizePersistedGameState(legacySave) as {
+    clock: { minute: number; dayIndex: number; timeScale: number; paused: boolean };
+    timeOfDay: number; dayNumber: number; schedule: string;
+    juiceStock: number; crackerStock: number; juiceClubCash: number;
+  };
+  assert.equal(migrated.clock.minute, 13.5 * 60, 'a pre-clock save gets a clock built from its own timeOfDay');
+  assert.equal(migrated.clock.dayIndex, 6, 'and from its own day number');
+  assert.equal(migrated.timeOfDay, 13.5, 'the legacy timeOfDay is untouched');
+  assert.equal(migrated.dayNumber, 6, 'the legacy day number is untouched');
+  assert.equal(migrated.schedule, 'recess', 'and the save resolves into the newly authored recess block');
+  assert.equal(migrated.juiceStock, 4, 'unrelated progress survives the migration');
+  assert.equal(migrated.crackerStock, 2, 'including crackers');
+  assert.equal(migrated.juiceClubCash, 11, 'including Juice Club cash');
+  assert.equal(migrated.clock.paused, false, 'a migrated save never loads frozen');
+  assert.equal(migrated.clock.timeScale, 1, 'and never loads fast-forwarded');
+}
+
+// A save WITH a clock round-trips it.
+{
+  useGameStore.getState().resetGame();
+  useGameStore.setState({ timeOfDay: 11.25, dayNumber: 3 });
+  useGameStore.getState().setTimeOfDay(11.25);
+  const roundTripped = normalizePersistedGameState(serializeGameState(useGameStore.getState())) as {
+    clock: { minute: number; dayIndex: number }; timeOfDay: number;
+  };
+  assert.equal(roundTripped.clock.minute, 11.25 * 60, 'the logical minute survives a save round trip');
+  assert.equal(roundTripped.timeOfDay, 11.25, 'and stays consistent with timeOfDay');
+}
+
+// Ticking the store clock moves the legacy timeOfDay with it, so every existing
+// consumer - the HUD, the teachers, the Juice Club window - keeps working
+// without knowing the clock exists.
+{
+  useGameStore.getState().resetGame();
+  const before = useGameStore.getState().timeOfDay;
+  tickRealSeconds(60); // one real minute -> 30 game minutes
+  const after = useGameStore.getState();
+  assert.ok(after.timeOfDay > before, 'ticking the clock advances the legacy timeOfDay too');
+  assert.ok(Math.abs(after.timeOfDay - (before + 0.5)) < 1e-6, 'by exactly half an hour');
+  assert.equal(after.clock.minute, after.timeOfDay * 60, 'the two never disagree');
+}
+
+// The per-tick cap, at the store level: one enormous tick is not an hour of
+// free progress.
+{
+  useGameStore.getState().resetGame();
+  const start = useGameStore.getState().clock.minute;
+  useGameStore.getState().tickClock(3600);
+  assert.ok(
+    useGameStore.getState().clock.minute - start <= 0.5 + 1e-9,
+    'a single huge tick advances at most one real second of game time',
+  );
+}
+
+// Crossing into Juice Club by clock, and back out of it, behaves exactly as the
+// manual "+1.5h" advance always did - including tearing down customer state.
+{
+  useGameStore.getState().resetGame();
+  useGameStore.getState().setTimeOfDay(11.9);
+  tickRealSeconds(30); // 15 game minutes -> 12:05, into Juice Club
+  assert.equal(useGameStore.getState().schedule, 'juice-club', 'the clock opens Juice Club at noon');
+  useGameStore.setState({ waitingCustomers: ['Max'], juiceClubActiveCustomer: 'Max' });
+  useGameStore.getState().setTimeOfDay(13.4);
+  tickRealSeconds(30); // out of Juice Club
+  const left = useGameStore.getState();
+  assert.notEqual(left.schedule, 'juice-club', 'and closes it again on time');
+  assert.deepEqual(left.waitingCustomers, [], 'leaving Juice Club by clock clears customers, as leaving it always did');
+}
+
+// Pausing the store clock stops it, and no time is repaid on resume.
+{
+  useGameStore.getState().resetGame();
+  tickRealSeconds(60);
+  const parked = useGameStore.getState().clock.minute;
+  useGameStore.getState().setClockPaused(true, 'dialogue');
+  tickRealSeconds(60);
+  assert.equal(useGameStore.getState().clock.minute, parked, 'a paused store clock does not advance');
+  assert.equal(useGameStore.getState().clock.pauseReason, 'dialogue', 'and records why it stopped');
+  useGameStore.getState().setClockPaused(false);
+  tickRealSeconds(60);
+  assert.ok(
+    Math.abs(useGameStore.getState().clock.minute - (parked + 30)) < 1e-6,
+    'resuming continues from where it stopped rather than catching up',
+  );
+}
+
+// Fast-forward is limited to the three authored speeds.
+{
+  useGameStore.getState().resetGame();
+  useGameStore.getState().setTimeScale(4);
+  assert.equal(useGameStore.getState().clock.timeScale, 4, '4x is allowed');
+  useGameStore.getState().setTimeScale(16 as unknown as 4);
+  assert.equal(useGameStore.getState().clock.timeScale, 4, 'an unauthored speed is refused, leaving the last valid one');
+}
+
+// The day rollover still owns what a new day means, and now moves the clock too.
+{
+  useGameStore.getState().resetGame();
+  useGameStore.setState({ timeOfDay: 18.5, teacherSuspicion: 40 });
+  const dayBefore = useGameStore.getState().dayNumber;
+  useGameStore.getState().advanceSchedule();
+  const rolled = useGameStore.getState();
+  assert.equal(rolled.dayNumber, dayBefore + 1, 'the day still advances');
+  assert.equal(rolled.clock.dayIndex, dayBefore + 1, 'and the clock advances with it');
+  assert.equal(rolled.clock.minute, 9 * 60, 'the clock returns to the start of the daycare day');
+  assert.equal(rolled.teacherSuspicion, 0, 'and the existing rollover effects still happen');
+}
+
+// --- district travel and the current-location readout ------------------------
+//
+// The HUD's "DAYKARE HUB" chip looked like a button and did nothing when
+// tapped. It is a LOCATION READOUT, not a control, and it never had a handler:
+// district travel is diegetic - walk to the portal, press E - and the chip
+// simply shared the card styling of the Menu and Journal buttons above it.
+//
+// These assertions pin both halves: the readout stays a readout, and the real
+// travel path stays guarded against the duplicate triggers a portal can produce
+// on a touchscreen.
+
+assert.equal(zoneLabel('hub'), 'DayKare Hub', 'the hub has a player-facing name');
+assert.equal(zoneLabel('garden'), 'Garden District', 'and so does the garden');
+assert.equal(zoneLabel('storybook'), 'Storybook Lane', 'and so does the after-hours neighborhood');
+assert.deepEqual(
+  Object.keys(ZONE_LABELS).sort(),
+  ['garden', 'hub', 'storybook'],
+  'every zone has a label - a future district must fail to compile rather than silently render as the hub',
+);
+
+// The readout must not become a control again. A styled div that does nothing
+// is the exact defect that was reported, so this checks the markup directly.
+{
+  const uiSource = readFileSync(new URL('./UI.tsx', import.meta.url), 'utf8');
+  const start = uiSource.indexOf('daykare-hud-zone');
+  assert.ok(start > -1, 'the zone readout still exists');
+  const block = uiSource.slice(start, start + 900);
+  assert.ok(block.includes('role="status"'), 'the zone readout announces itself as status, not as a control');
+  assert.ok(block.includes('cursor-default'), 'and does not present a clickable cursor');
+  assert.ok(
+    !/onClick/.test(block),
+    'the zone readout must not gain a click handler here - district travel is diegetic, and HUD fast-travel would replace a designed mechanic with a menu',
+  );
+}
+
+// Travel itself: guarded, and safe against the double-fire a portal can produce.
+{
+  useGameStore.getState().resetGame();
+  // Returning to the hub from the hub is a no-op, not a transition.
+  assert.equal(useGameStore.getState().returnToHub(), false, 'you cannot return to the hub while already in it');
+  assert.equal(useGameStore.getState().zoneTransitioning, false, 'and no transition is started');
+}
+{
+  // Entering the garden needs the route unlocked - the readout never bypassed that.
+  useGameStore.getState().resetGame();
+  const locked = useGameStore.getState().enterGarden();
+  assert.equal(locked, false, 'the garden cannot be entered before its route is unlocked');
+}
+{
+  useGameStore.getState().resetGame();
+  // The garden route unlocks at 10 REP - that gate is progression's business
+  // and this test must not pretend to bypass it.
+  useGameStore.setState({
+    progression: { ...useGameStore.getState().progression, reputation: 10 },
+  });
+  const first = useGameStore.getState().enterGarden();
+  assert.equal(first, true, 'an unlocked garden route starts the transition');
+  assert.equal(useGameStore.getState().zoneTransitioning, true, 'and marks the transition in flight');
+
+  // The duplicate trigger. A touch portal can fire twice; the second must do
+  // nothing rather than stack a second transition or reset the saved position.
+  const hubPositionAfterFirst = useGameStore.getState().hubPosition;
+  const second = useGameStore.getState().enterGarden();
+  assert.equal(second, false, 'a second trigger while a transition is in flight is refused');
+  assert.deepEqual(
+    useGameStore.getState().hubPosition,
+    hubPositionAfterFirst,
+    'and does not overwrite the position we are returning to',
+  );
+
+  useGameStore.getState().completeZoneTransition();
+  assert.equal(useGameStore.getState().zone, 'garden', 'the transition completes into the garden');
+  assert.equal(useGameStore.getState().zoneTransitioning, false, 'and clears the in-flight flag');
+
+  // And back, with the same guard.
+  assert.equal(useGameStore.getState().returnToHub(), true, 'the garden return portal works');
+  const gardenPositionAfterFirst = useGameStore.getState().gardenPosition;
+  assert.equal(useGameStore.getState().returnToHub(), false, 'a duplicate return trigger is refused');
+  assert.deepEqual(
+    useGameStore.getState().gardenPosition,
+    gardenPositionAfterFirst,
+    'and does not overwrite where the player left the garden',
+  );
+  useGameStore.getState().completeZoneTransition();
+  assert.equal(useGameStore.getState().zone, 'hub', 'and the player is back in the daycare');
+}
+
+// Save integrity across a round trip: Juice Club progress is untouched by travel.
+{
+  useGameStore.getState().resetGame();
+  useGameStore.setState({
+    progression: { ...useGameStore.getState().progression, reputation: 10 },
+    juiceStock: 7, crackerStock: 3, juiceClubCash: 13, dayNumber: 4,
+  });
+  useGameStore.getState().enterGarden();
+  useGameStore.getState().completeZoneTransition();
+  useGameStore.getState().returnToHub();
+  useGameStore.getState().completeZoneTransition();
+  const after = useGameStore.getState();
+  assert.equal(after.zone, 'hub', 'the round trip ends in the hub');
+  assert.equal(after.juiceStock, 7, 'juice stock survives district travel');
+  assert.equal(after.crackerStock, 3, 'so do crackers');
+  assert.equal(after.juiceClubCash, 13, 'and Juice Club cash');
+  assert.equal(after.dayNumber, 4, 'and the day');
+}

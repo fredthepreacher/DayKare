@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { 
-  Play, 
-  Globe2, 
-  Wand2, 
-  BookOpen, 
-  Settings, 
-  Accessibility, 
+import {
+  Play,
+  Globe2,
+  Wand2,
+  BookOpen,
+  Settings,
+  Accessibility,
   X,
-  ChevronRight
+  ChevronRight,
+  ShoppingBag,
 } from 'lucide-react';
 
 export interface GameMenuProps {
@@ -17,6 +18,7 @@ export interface GameMenuProps {
   onDayKareOnline: () => void;
   onCustomize: () => void;
   onProgress: () => void;
+  onShop: () => void;
   onSettings: () => void;
   onAccessibility: () => void;
   onlineSeatCount?: number;
@@ -29,6 +31,7 @@ export function GameMenu({
   onDayKareOnline,
   onCustomize,
   onProgress,
+  onShop,
   onSettings,
   onAccessibility,
   onlineSeatCount
@@ -69,21 +72,32 @@ export function GameMenu({
     },
     { 
       id: 'online', 
-      label: 'DayKare Online', 
+      label: 'Multiplayer',
       icon: Globe2, 
       onClick: onDayKareOnline, 
       bgClass: 'bg-[#33cccc]', 
       borderClass: 'border-[#29b3b3]', 
       hoverClass: 'hover:bg-[#4dd2d2]', 
       titleColor: 'text-[#004d4d]', 
-      description: 'Preview the future 8–10 player lobby',
+      description: 'Join friends in a shared 20-player room',
       extra: onlineSeatCount !== undefined ? (
         <div className="flex items-center gap-2 mt-2 text-[#004d4d] font-black text-[11px] uppercase tracking-wide bg-white/40 w-max px-3 py-1 rounded-full shadow-sm" data-testid="status-online-players">
-          {onlineSeatCount}/10 local preview seats · Offline
+          Up to 20 players · Friends room
         </div>
       ) : null
     },
     { 
+      id: 'shop',
+      label: 'Kare Shop',
+      icon: ShoppingBag,
+      onClick: onShop,
+      bgClass: 'bg-[#b28ad6]',
+      borderClass: 'border-[#9270b8]',
+      hoverClass: 'hover:bg-[#c19be0]',
+      titleColor: 'text-[#3e245b]',
+      description: 'Care Coins, passes & optional extras'
+    },
+    {
       id: 'customize', 
       label: 'Customize', 
       icon: Wand2, 

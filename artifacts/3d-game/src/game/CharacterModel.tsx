@@ -6,7 +6,7 @@ import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
 type Accessory = 'none' | 'backpack' | 'badge';
-type ActivityMode = 'standing' | 'walking' | 'sitting' | 'playing' | 'gathering' | 'coloring' | 'toy-play' | 'conversation' | 'reading' | 'singing' | 'dancing' | 'pretend-play' | 'circle-time' | 'snacking' | 'following' | 'reacting' | 'intervening';
+type ActivityMode = 'standing' | 'walking' | 'sitting' | 'playing' | 'gathering' | 'coloring' | 'toy-play' | 'conversation' | 'reading' | 'singing' | 'dancing' | 'pretend-play' | 'circle-time' | 'snacking' | 'napping' | 'following' | 'reacting' | 'intervening';
 type SocialReaction = 'smile' | 'wave' | 'cheer' | 'listen';
 type IdleVariant = 'sway' | 'fidget' | 'look-around' | 'bounce';
 
@@ -105,6 +105,7 @@ export function CharacterModel({
     }
 
     const isSitting = activityMode === 'sitting'
+      || activityMode === 'napping'
       || activityMode === 'reading'
       || activityMode === 'circle-time'
       || activityMode === 'snacking'
@@ -250,14 +251,14 @@ export function CharacterModel({
         ? Math.sin(state.clock.elapsedTime * 1.2 + motionSeed) * 0.025
         : activityMode === 'dancing'
           ? Math.sin(state.clock.elapsedTime * 4.2 + motionSeed) * 0.09
-          : activityTransition * 0.16;
+          : activityMode === 'napping' ? Math.PI / 2 : activityTransition * 0.16;
       const targetLean = activityMode === 'coloring'
         ? 0.16
         : activityMode === 'reading' || activityMode === 'snacking'
           ? 0.1
           : activityMode === 'intervening'
             ? 0.06
-            : 0;
+            : activityMode === 'napping' ? -0.05 : 0;
       rig.current.rotation.x = THREE.MathUtils.lerp(
         rig.current.rotation.x,
         targetLean,

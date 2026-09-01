@@ -1,6 +1,9 @@
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { CollisionDebug, collisionDebugEnabled } from './CollisionDebug';
+import { useWeather } from './WeatherSystem';
+import { useQualitySettings } from './useQualitySettings';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { useGameStore } from './store';
 import { getWorldSolidTransform, isWalkable, WORLD_SOLIDS } from './world';
@@ -17,6 +20,7 @@ import {
   type SharedActivityParticipant,
 } from './activitySessions';
 import { getTeacherSupervisionTarget, updateChildBehavior } from './teacherInterventions';
+import { absoluteGameMinute, cropProgress } from './gardenEconomy';
 
 const FLOWERS = [
   [-15, -15, '#e8613c'], [-12.5, -14.2, '#ffd166'], [-9.8, -15, '#8a63c7'],
@@ -113,6 +117,18 @@ export const GARDEN_CAST: GardenNpcDefinition[] = [
   },
 ];
 
+const RECESS_GUESTS: GardenNpcDefinition[] = ([
+  ['Leo','#e8613c','#4c82d4','curls'], ['Mia','#8a63c7','#ffd166','bob'], ['Sam','#55b89b','#e8613c','sprout'],
+  ['Eli','#4c82d4','#55b89b','bob'], ['Noah','#ffd166','#4c82d4','curls'], ['Ruby','#e76f8c','#8a63c7','ponytail'],
+  ['Max','#e88962','#355272','sprout'], ['Mae','#8a63c7','#ffd166','ponytail'], ['Mr. Davis','#355272','#68a9a7','curls'],
+] as const).map(([name, bodyColor, accentColor, hairStyle], index) => ({
+  name, role: name === 'Mr. Davis' ? 'teacher' : 'kid', bodyColor, accentColor, hairColor: '#5a3d32', skinColor: '#e5aa82', hairStyle,
+  route: [
+    { position: [-10 + (index % 5) * 5, 0, -5 + Math.floor(index / 5) * 7], activity: name === 'Mr. Davis' ? 'supervise' : 'play' },
+    { position: [-8 + (index % 4) * 5, 0, 7 - Math.floor(index / 4) * 5], activity: name === 'Mr. Davis' ? 'supervise' : 'social-walk' },
+  ],
+}));
+
 export function Garden() {
   return (
     <group>
@@ -121,6 +137,7 @@ export function Garden() {
       <GardenLandmarks />
       <GardenCast />
       <GardenActivityHost />
+      <GummyDropBed />
       <GardenReturnGate />
     </group>
   );
@@ -137,9 +154,11 @@ export function gardenNpcDestination(name: string, cycle: number) {
 }
 
 function GardenCast() {
+  const recess = useGameStore((state) => state.schedule === 'recess');
+  const cast = recess ? [...GARDEN_CAST, ...RECESS_GUESTS] : GARDEN_CAST;
   return (
     <group>
-      {GARDEN_CAST.map((definition) => (
+      {cast.map((definition) => (
         <GardenNpc key={definition.name} definition={definition} />
       ))}
     </group>
@@ -470,21 +489,31 @@ function GardenActivityProp({ activity, role }: { activity: GardenActivity; role
 function GardenEnvironment() {
   const imagination = useGameStore((state) => state.isImaginationMode);
   const quality = useGameStore((state) => state.quality);
+  const qualitySettings = useQualitySettings();
+  const { sky: gardenSky } = useWeather();
+  const debugCollision = useMemo(() => collisionDebugEnabled(), []);
   const grass = imagination ? '#173d38' : '#91b976';
   const path = imagination ? '#7254b3' : '#e7cf9f';
   const wall = imagination ? '#315f58' : '#779b67';
 
   return (
     <group>
-      <ambientLight intensity={imagination ? 0.48 : 0.78} color={imagination ? '#8edcff' : '#fff7df'} />
-      <directionalLight
-        position={[12, 22, 8]}
-        intensity={imagination ? 1.35 : 1.05}
-        color={imagination ? '#ff8dcc' : '#fff1c7'}
-        castShadow={quality === 'high'}
-        shadow-mapSize-width={quality === 'high' ? 1024 : 256}
-        shadow-mapSize-height={quality === 'high' ? 1024 : 256}
+      {/* The garden rig now follows the same clock and weather as the hub, and
+          reads the quality SETTINGS rather than comparing the raw preset string
+          to 'high' - which quietly turned garden shadows off on Ultra. */}
+      <ambientLight
+        intensity={imagination ? 0.48 : gardenSky.ambientIntensity * 1.1}
+        color={imagination ? '#8edcff' : gardenSky.ambientColor}
       />
+      <directionalLight
+        position={imagination ? [12, 22, 8] : gardenSky.sunPosition}
+        intensity={imagination ? 1.35 : gardenSky.sunIntensity * 1.08}
+        color={imagination ? '#ff8dcc' : gardenSky.sunColor}
+        castShadow={qualitySettings.settings.shadows}
+        shadow-mapSize-width={qualitySettings.settings.shadowMapSize}
+        shadow-mapSize-height={qualitySettings.settings.shadowMapSize}
+      />
+      {debugCollision && <CollisionDebug zone="garden" />}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[36, 36]} />
         <meshStandardMaterial color={grass} roughness={0.96} />
@@ -864,4 +893,23 @@ function GardenReturnGate() {
       </mesh>
     </group>
   );
+}
+
+function GummyDropBed() {
+  const crop = useGameStore((state) => state.gummyCrop);
+  const day = useGameStore((state) => state.dayNumber);
+  const minute = useGameStore((state) => state.clock.minute);
+  const active = useGameStore((state) => state.activeInteractable === 'gummy-drop-bed');
+  const position = useMemo(() => new THREE.Vector3(10.8, 0, 9.8), []);
+  const candidate = useMemo(() => ({ id: 'gummy-drop-bed', position, range: 2.8, priority: 76, valid: true }), [position]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  const progress = cropProgress(crop, absoluteGameMinute(day, minute));
+  return <group position={[10.8, 0, 9.8]}>
+    <mesh position={[0, 0.28, 0]}><boxGeometry args={[2.8, 0.5, 2.1]} /><meshStandardMaterial color="#74492f" roughness={0.96} /></mesh>
+    {crop.plantedAt !== null && [-0.75, 0, 0.75].map((x, index) => <group key={x} position={[x, 0.55, 0]} scale={0.25 + progress * 0.9}>
+      <mesh position={[0, 0.35, 0]}><cylinderGeometry args={[0.035, 0.05, 0.7, 7]} /><meshStandardMaterial color="#4f8d55" /></mesh>
+      <mesh position={[0, 0.82, 0]}><sphereGeometry args={[0.24, 10, 8]} /><meshStandardMaterial color={['#ff6b8a','#ffd166','#8a63c7'][index]} emissive={progress >= 1 ? '#5a3810' : '#000000'} emissiveIntensity={progress >= 1 ? 0.2 : 0} /></mesh>
+    </group>)}
+    <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}><torusGeometry args={[1.7, 0.05, 8, 28]} /><meshBasicMaterial color="#ffd166" transparent opacity={active ? 0.9 : 0.25} /></mesh>
+  </group>;
 }

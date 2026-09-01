@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useMemo, useRef, useImperativeHandle, useState }
 import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { useEquippedAppearance } from './useEquippedAppearance';
 import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
@@ -11,6 +12,9 @@ import { isGameplayBlocked } from './gameplayGate';
 import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, resolveMovement, trackPlayerPosition } from './world';
 import { CameraRig, advanceCameraPosition } from './cameraRig';
 import { useModeStore } from './modeStore';
+import { useStorybookLaneStore } from './storybookLaneStore';
+import { ESCAPE_GRACE_SECONDS, advanceCarriedPlayer, beginEscapeRetrieval, getEscapeRetrievalSnapshot, isDaycareEscape, updateEscapeGrace } from './escapeRetrieval';
+import { objectiveIsActive } from './quests';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -27,8 +31,9 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const zone = useGameStore((s) => s.zone);
   const playerPosition = useGameStore((s) => s.playerPosition);
   const zoneTransitioning = useGameStore((s) => s.zoneTransitioning);
+  const recoveringUntil = useStorybookLaneStore((s) => s.recoveringUntil);
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition);
-  const frontEndBlocked = useModeStore((s) => s.menuOpen || s.activeMode === 'online-preview');
+  const frontEndBlocked = useModeStore((s) => s.menuOpen || s.activeMode === 'multiplayer-lobby');
   
   // State
   const velocity = useRef(new THREE.Vector3());
@@ -55,6 +60,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
   const positionSaveAccumulator = useRef(0);
+  const retrievalNoticeSequence = useRef(0);
   gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning, frontEndBlocked });
   const cameraProfile = getCameraProfile(size.width, size.height);
   const zoneCameraBlockers = useMemo(
@@ -149,7 +155,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     desiredVelocity.current.set(0, 0, 0);
 
     const blocked = gameplayBlocked.current;
-    if (!blocked) {
+    const movementLocked = useStorybookLaneStore.getState().recoveringUntil > Date.now();
+    if (!blocked && !movementLocked) {
       if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
       if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
       if (keys.left) desiredVelocity.current.addScaledVector(right.current, -speed);
@@ -164,7 +171,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       desiredVelocity.current.normalize().multiplyScalar(speed);
     }
 
-    if (blocked) {
+    if (blocked || movementLocked) {
       velocity.current.set(0, 0, 0);
       desiredVelocity.current.set(0, 0, 0);
       turnVelocity.current = 0;
@@ -202,6 +209,33 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     resolvedDisplacement.current.copy(resolvedPosition).sub(localRef.current.position);
     localRef.current.position.x = resolvedPosition.x;
     localRef.current.position.z = resolvedPosition.z;
+    const liveGame = useGameStore.getState();
+    const storageAuthorized = objectiveIsActive(liveGame.quests, 'where-binky', 'search-storage')
+      || ((liveGame.caper.step === 'retrieve' || liveGame.caper.step === 'escape')
+        && liveGame.caper.teacherApproved && liveGame.caper.patrolObserved && liveGame.caper.setupReady);
+    let retrieval = updateEscapeGrace(state.clock.elapsedTime);
+    if (!blocked && isDaycareEscape(localRef.current.position.toArray(), liveGame.zone, storageAuthorized)) {
+      retrieval = beginEscapeRetrieval(state.clock.elapsedTime, localRef.current.position.toArray());
+      if (retrieval.phase === 'chasing' && retrieval.sequence !== retrievalNoticeSequence.current) {
+        retrievalNoticeSequence.current = retrieval.sequence;
+        liveGame.setAmbientMessage(`${retrieval.assignedTeacher}: “Oh no you don’t!”`);
+      }
+    }
+    const carried = advanceCarriedPlayer(state.clock.elapsedTime, localRef.current.position, delta);
+    if (getEscapeRetrievalSnapshot().phase === 'carrying' || carried.released) {
+      localRef.current.position.copy(carried.position);
+      velocity.current.set(0, 0, 0);
+      desiredVelocity.current.set(0, 0, 0);
+    }
+    if (carried.released) {
+      liveGame.setAmbientMessage(`Back inside — escape catch ${carried.strikes}. You have ${ESCAPE_GRACE_SECONDS} seconds of free-movement grace.`);
+      if (carried.penalty) {
+        liveGame.setActiveDialogue({
+          name: 'Escape Artist Headcount',
+          text: 'Seven escapes! Your lighthearted consequence is helping with one very serious headcount. One toddler, two toddler, three… all here. You are released and free to move.',
+        });
+      }
+    }
     trackPlayerPosition(localRef.current.position);
     positionSaveAccumulator.current += delta;
     if (positionSaveAccumulator.current >= 0.5) {
@@ -310,7 +344,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
           camera: [number, number, number];
           cameraTarget: [number, number, number];
           cameraSide: string | null;
-          zone: 'hub' | 'garden';
+          zone: 'hub' | 'garden' | 'storybook';
           updatedAt: number;
         };
       };
@@ -327,20 +361,59 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     }
   });
 
+  const appearance = useEquippedAppearance();
+
   return (
     <group ref={localRef} position={playerPosition}>
       <group position={[0, isRiding ? 0.3 : 0, 0]}>
+        {/* Equipped Drip tints the player. Buying a hoodie and seeing nothing
+            change would make the whole economy abstract, so the cosmetic slots
+            drive the rig's colours directly; unequipped slots fall back to the
+            original palette rather than to grey. */}
         <CharacterModel
-          bodyColor="#f47b43"
-          accentColor="#ffc857"
+          bodyColor={recoveringUntil > Date.now() ? '#78b86d' : appearance.top ?? '#f47b43'}
+          accentColor={recoveringUntil > Date.now() ? '#b8d98a' : appearance.accent ?? '#ffc857'}
           hairColor="#713f32"
-          hairStyle="cap"
+          hairStyle={appearance.hat ? 'cap' : 'cap'}
           mood="excited"
           isCrouching={isCrouching && !isRiding}
           imaginationMode={isImaginationMode}
           motionSeed={1.3}
           idleEnergy={1.05}
+          activityMode={recoveringUntil > Date.now() ? 'napping' : 'standing'}
         />
+        {/* Hat and shoes have no slot in the rig, so they are drawn here as
+            simple shapes rather than left invisible. */}
+        {appearance.hat && (
+          <group position={[0, 1.34, 0]}>
+            <mesh castShadow>
+              <cylinderGeometry args={[0.27, 0.29, 0.12, 12]} />
+              <meshStandardMaterial color={appearance.hat} roughness={0.75} />
+            </mesh>
+            <mesh position={[0, -0.04, 0.2]} castShadow>
+              <boxGeometry args={[0.4, 0.04, 0.26]} />
+              <meshStandardMaterial color={appearance.hat} roughness={0.75} />
+            </mesh>
+          </group>
+        )}
+        {appearance.shoes && (
+          <group position={[0, 0.06, 0.02]}>
+            <mesh position={[-0.12, 0, 0]} castShadow>
+              <boxGeometry args={[0.16, 0.11, 0.28]} />
+              <meshStandardMaterial color={appearance.shoes} roughness={0.7} />
+            </mesh>
+            <mesh position={[0.12, 0, 0]} castShadow>
+              <boxGeometry args={[0.16, 0.11, 0.28]} />
+              <meshStandardMaterial color={appearance.shoes} roughness={0.7} />
+            </mesh>
+          </group>
+        )}
+        {appearance.bottom && (
+          <mesh position={[0, 0.44, 0]} castShadow>
+            <boxGeometry args={[0.44, 0.3, 0.32]} />
+            <meshStandardMaterial color={appearance.bottom} roughness={0.8} />
+          </mesh>
+        )}
       </group>
       
       {/* Dropped shadow indicator */}

@@ -8,27 +8,70 @@ import {
   getUnlockedRoutes,
   MAX_ACTIVITY_RUNS,
   MAX_TOKENS,
+  MAX_REPUTATION,
   normalizeProgression,
   PROGRESSION_VERSION,
   type ProgressionState,
 } from './progression';
+import { normalizeWeatherSeed } from './weather';
+import {
+  achievementsEarned,
+  canPurchase,
+  getDripItem,
+  normalizeDripEquipped,
+  normalizeDripOwned,
+  type AchievementEvidence,
+  type DripCategory,
+  type DripEquipped,
+} from './drip';
+
+/**
+ * The optional Star Token boost.
+ *
+ * 15 seconds was long enough to activate and too short to spend: a Rainbow
+ * Tidy-Up round is three fetch-and-carry trips, so the boost routinely expired
+ * before the round it was started for finished, and doubled nothing.
+ *
+ * It cannot be extended by reloading: the field is deliberately absent from the
+ * save allowlist and is zeroed on load, so a reload cancels a running boost
+ * rather than banking it. It cannot stack either - activateOptionalRewardBoost
+ * refuses while one is live, and the multiplier is a constant 2, not a product.
+ */
+export const OPTIONAL_BOOST_DURATION_MS = 45_000;
 import {
   activateQuest,
   advanceObjective,
   createInitialQuests,
   legacyStatusForQuest,
   normalizeQuestStates,
-  resetRepeatableQuest,
+  roundWasCompleted,
   type QuestStates,
 } from './quests';
 import {
   GARDEN_SPAWN,
   GARDEN_RETURN_SPAWN,
+  STORYBOOK_SPAWN,
   getTrackedPlayerPosition,
   isWalkable,
   type GameZone,
 } from './world';
 import { resetTouchInput } from './touchInput';
+import { type QualityPreset, isQualityPreset } from './qualityManager';
+import {
+  type ClockState,
+  type PauseReason as ClockPauseReason,
+  advanceClock as advanceClockState,
+  createClockState,
+  minuteToTimeOfDay,
+  normalizeClockState,
+  pauseClock as pauseClockState,
+  resumeClock as resumeClockState,
+  scheduleIdForMinute,
+  serializeClockState,
+  setTimeScale as setClockTimeScale,
+  startNextDay,
+  timeOfDayToMinute,
+} from './gameClock';
 import {
   appendRewardEvent,
   chooseMaeIntroduction,
@@ -57,8 +100,12 @@ import {
   type RivalStoryState,
   getOptionalRewardMultiplier,
 } from './storyProgression';
+import { monetizedReputation } from './monetizationStore';
+import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GummyCropState } from './gardenEconomy';
+import { STORYBOOK_CLOSE_MINUTE, storybookIsOpen } from './storybookLaneConfig';
+import { useStorybookLaneStore } from './storybookLaneStore';
 
-export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
+export type ScheduleState = import('./gameClock').ScheduleBlockId;
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
 export type JuiceClubCustomerPhase = 'idle' | 'entry' | 'queue' | 'ordering' | 'service' | 'drink' | 'reaction' | 'departure';
 
@@ -77,13 +124,26 @@ export interface DroppedWorldItem {
 
 export interface GameState {
   // Settings
-  quality: 'low' | 'high';
+  quality: QualityPreset;
 
   // Time and Schedule
-  timeOfDay: number; // 9.0 to 17.5
+  timeOfDay: number; // 9.0 to 18.5
+  /**
+   * The canonical clock. `timeOfDay` remains the fractional-hours value every
+   * existing consumer reads, and is now DERIVED from this - one source of
+   * truth, and no existing component had to change to get it.
+   */
+  clock: ClockState; // 9.0 to 18.5
   dayNumber: number;
   schedule: ScheduleState;
   isRainy: boolean;
+  /**
+   * Seed for the deterministic weather forecast. Only the seed is persisted;
+   * the weather itself is derived from (day, minute, seed), so no save can
+   * carry an impossible weather state and an old save simply starts
+   * forecasting from whatever day it is on.
+   */
+  weatherSeed: number;
   isImaginationMode: boolean;
   
   // Player
@@ -101,6 +161,20 @@ export interface GameState {
   quests: QuestStates;
   droppedItems: DroppedWorldItem[];
   tidyPlacedItems: string[];
+  /**
+   * Has the player been shown where the tidy blocks go?
+   *
+   * The placement popup fired on EVERY block of EVERY round forever - three
+   * interruptions per round, for as many rounds as the player chose to grind.
+   * It is a tutorial, so it runs once. The Journal objective and the interaction
+   * prompt still carry the instruction for anyone who needs reminding; what goes
+   * away is the modal dialogue.
+   */
+  tidyTutorialSeen: boolean;
+  /** Purchased and earned cosmetics. Achievement items are re-derived on load. */
+  dripOwned: string[];
+  /** One equipped item per slot. */
+  dripEquipped: DripEquipped;
   
   // Business
   juiceStock: number;
@@ -125,10 +199,14 @@ export interface GameState {
   playerPosition: [number, number, number];
   hubPosition: [number, number, number];
   gardenPosition: [number, number, number];
+  storybookPosition: [number, number, number];
   zoneTransitioning: boolean;
   pendingZone: GameZone | null;
   gardenActivityStep: number;
+  gummyCrop: GummyCropState;
   ambientMessage: string | null;
+  activeInstruction: GameplayInstruction | null;
+  recentInstructions: GameplayInstruction[];
   rivalStory: RivalStoryState;
   rewardEvents: RewardEvent[];
   caper: CaperState;
@@ -138,9 +216,13 @@ export interface GameState {
   storageWarning: boolean;
   
   // Actions
-  setQuality: (q: 'low' | 'high') => void;
+  setQuality: (q: QualityPreset) => void;
   setTimeOfDay: (time: number) => void;
   advanceSchedule: () => void;
+  /** Advances the clock by real elapsed seconds. Never by frames. */
+  tickClock: (realSeconds: number) => void;
+  setTimeScale: (scale: 1 | 2 | 4) => void;
+  setClockPaused: (paused: boolean, reason?: ClockPauseReason | null) => void;
   toggleImagination: () => void;
   toggleRain: () => void;
   pickUp: (item: string) => void;
@@ -158,6 +240,12 @@ export interface GameState {
   addClue: (clue: string) => void;
   advanceQuestObjective: (questId: string, objectiveId: string) => boolean;
   completeTidyToy: (item: string) => boolean;
+  markTidyTutorialSeen: () => void;
+  purchaseDripItem: (itemId: string) => boolean;
+  /** Grants only known, non-prestige catalog cosmetics after verified fulfillment. */
+  grantMonetizationCosmetics: (itemIds: string[]) => void;
+  equipDripItem: (itemId: string) => boolean;
+  unequipDripCategory: (category: DripCategory) => void;
   
   /** `cost` and `amount` are ignored - prices are authored in the store. */
   buyStock: (type: 'juice' | 'cracker' | 'supplies', cost: number, amount: number) => void;
@@ -179,7 +267,14 @@ export interface GameState {
   startGardenActivity: () => boolean;
   advanceGardenActivity: () => number;
   resetGardenActivity: () => void;
+  plantGummyDrops: () => boolean;
+  harvestGummyDrops: () => boolean;
+  eatGummyDrop: () => boolean;
+  feedGummyDrop: () => boolean;
+  sellGummyCrop: () => boolean;
   setAmbientMessage: (message: string | null) => void;
+  showInstruction: (instruction: Omit<GameplayInstruction, 'shownAt'> & { shownAt?: number }) => boolean;
+  dismissInstruction: () => void;
   chooseRivalResponse: (choice: Exclude<RivalChoice, 'team-up'>) => boolean;
   resolveRivalStory: () => boolean;
   dismissRewardEvent: (id: string) => void;
@@ -197,18 +292,30 @@ export interface GameState {
   setTrustedHelperPass: () => void;
   setPlayerPosition: (position: [number, number, number]) => void;
   enterGarden: () => boolean;
+  enterStorybookLane: () => boolean;
+  leaveStorybookLane: () => boolean;
+  finishDay: () => boolean;
   returnToHub: () => boolean;
   completeZoneTransition: () => void;
   resetGame: () => void;
 }
 
-const getScheduleForTime = (time: number): ScheduleState => {
-  if (time < 10.5) return 'morning-play';
-  if (time < 12.0) return 'art-time';
-  if (time < 13.5) return 'juice-club';
-  if (time < 15.5) return 'outdoor-play';
-  return 'pickup';
-};
+export interface GameplayInstruction {
+  id: string;
+  text: string;
+  shownAt: number;
+}
+
+/**
+ * The schedule for a fractional-hours time.
+ *
+ * Delegates to the canonical clock so the thresholds exist in exactly one
+ * place. They used to be four literals here and the same four implied by the
+ * clock; two copies of a boundary is two chances to disagree about when Juice
+ * Club starts.
+ */
+const getScheduleForTime = (time: number): ScheduleState =>
+  scheduleIdForMinute(timeOfDayToMinute(time)) as ScheduleState;
 
 const withQualifiedRoutes = (progression: ProgressionState): ProgressionState => ({
   ...progression,
@@ -235,9 +342,11 @@ const initialFriends: Record<string, FriendState> = {
 const initialState = {
   quality: 'high' as const,
   timeOfDay: 9.0,
+  clock: createClockState(1, 9 * 60),
   dayNumber: 1,
-  schedule: 'morning-play' as ScheduleState,
+  schedule: 'breakfast' as ScheduleState,
   isRainy: false,
+  weatherSeed: 0x5eed,
   isImaginationMode: false,
   inventory: [],
   collectibles: [],
@@ -251,6 +360,9 @@ const initialState = {
   quests: createInitialQuests(),
   droppedItems: [] as DroppedWorldItem[],
   tidyPlacedItems: [] as string[],
+  tidyTutorialSeen: false,
+  dripOwned: [] as string[],
+  dripEquipped: {} as DripEquipped,
   
   juiceStock: 5,
   crackerStock: 5,
@@ -273,10 +385,14 @@ const initialState = {
   playerPosition: [0, 0, 0] as [number, number, number],
   hubPosition: [0, 0, 0] as [number, number, number],
   gardenPosition: GARDEN_SPAWN,
+  storybookPosition: STORYBOOK_SPAWN,
   zoneTransitioning: false,
   pendingZone: null,
   gardenActivityStep: 0,
+  gummyCrop: createGummyCrop(),
   ambientMessage: null,
+  activeInstruction: null,
+  recentInstructions: [] as GameplayInstruction[],
   rivalStory: createInitialRivalStory(),
   rewardEvents: [] as RewardEvent[],
   caper: createInitialCaper(),
@@ -468,17 +584,24 @@ function safeBinkyStatus(value: unknown, quests: QuestStates): BinkyStatus {
 export function restoreZoneState(persisted: Partial<GameState>, progression: ProgressionState) {
   const hubPosition = safePosition(persisted.hubPosition, GARDEN_RETURN_SPAWN, 'hub');
   const gardenPosition = safePosition(persisted.gardenPosition, GARDEN_SPAWN, 'garden');
+  const storybookPosition = safePosition(persisted.storybookPosition, STORYBOOK_SPAWN, 'storybook');
   const gardenAuthorized = getUnlockedRoutes(progression).includes('garden-district');
-  const requestedZone: GameZone = persisted.zone === 'garden' ? 'garden' : 'hub';
-  const zone: GameZone = requestedZone === 'garden' && gardenAuthorized ? 'garden' : 'hub';
+  const storybookAuthorized = getUnlockedRoutes(progression).includes('storybook-lane')
+    && storybookIsOpen(normalizeClockState(persisted.clock, persisted.timeOfDay ?? 9, persisted.dayNumber ?? 1).minute);
+  const requestedZone: GameZone = persisted.zone === 'garden' || persisted.zone === 'storybook' ? persisted.zone : 'hub';
+  const zone: GameZone = requestedZone === 'garden'
+    ? (gardenAuthorized ? 'garden' : 'hub')
+    : requestedZone === 'storybook'
+      ? (storybookAuthorized ? 'storybook' : 'hub')
+      : 'hub';
   const playerPosition = requestedZone === zone
     ? safePosition(
         persisted.playerPosition,
-        zone === 'garden' ? gardenPosition : hubPosition,
+        zone === 'garden' ? gardenPosition : zone === 'storybook' ? storybookPosition : hubPosition,
         zone,
       )
     : hubPosition;
-  return { zone, playerPosition, hubPosition, gardenPosition };
+  return { zone, playerPosition, hubPosition, gardenPosition, storybookPosition };
 }
 
 function reconcilePersistedProgression(
@@ -508,7 +631,13 @@ function reconcilePersistedProgression(
     routeUnlocks: [],
     activityRuns,
     activityRewards: {},
-    trustedHelperPass: rawProgression.trustedHelperPass === true,
+    // A finished Binky quest IS the Trusted Helper Pass. Deriving it only from
+    // the persisted flag left saves that migrated to complete without one
+    // permanently unable to earn it: the pass is granted in exactly one place,
+    // and that place refuses a quest already marked complete. The player saw
+    // "Where's Binky - complete" and no Sticker Parade board, forever.
+    trustedHelperPass: rawProgression.trustedHelperPass === true
+      || quests['where-binky']?.status === 'complete',
   });
 }
 
@@ -583,10 +712,60 @@ function normalizeJuiceClubState(
   return resetJuiceClubCustomerState({ waitingCustomers: [] });
 }
 
+
+/**
+ * The evidence achievements are judged on.
+ *
+ * Everything here is already recorded elsewhere in the save for its own reasons,
+ * which is the point: a prestige item is a claim about play that happened, so it
+ * is derived from the record of that play rather than from a flag that could be
+ * set directly.
+ */
+function dripEvidenceFrom(input: {
+  quests: QuestStates;
+  caper: { step: string };
+  progression: ProgressionState;
+  juiceClubCustomersServed: number;
+  friends: Record<string, { friendship: number }>;
+}): AchievementEvidence {
+  const runs = input.progression.activityRuns;
+  return {
+    binkyComplete: input.quests['where-binky']?.status === 'complete',
+    caperComplete: input.caper.step === 'complete',
+    rainbowRounds: runs['rainbow-tidy-up'] ?? 0,
+    gardenRuns: runs['garden-planting'] ?? 0,
+    juiceCustomersServed: input.juiceClubCustomersServed,
+    // The art achievement rides on garden/craft activity runs until 4C gives art
+    // its own counter; using a real counter now beats inventing a flag that
+    // nothing increments.
+    artActivities: runs['garden-planting'] ?? 0,
+    bestFriendship: Object.values(input.friends ?? {}).reduce(
+      (best, friend) => Math.max(best, friend?.friendship ?? 0),
+      0,
+    ),
+  };
+}
+
 export function normalizePersistedGameState(value: unknown) {
   const persisted = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Partial<GameState>
     : {};
+  const recentInstructions = Array.isArray(persisted.recentInstructions)
+    ? persisted.recentInstructions
+        .filter((entry): entry is GameplayInstruction => Boolean(
+          entry
+          && typeof entry === 'object'
+          && typeof entry.id === 'string'
+          && typeof entry.text === 'string'
+          && entry.text.trim().length > 0,
+        ))
+        .slice(0, 3)
+        .map((entry) => ({
+          id: entry.id.slice(0, 80),
+          text: entry.text.trim().slice(0, 240),
+          shownAt: safeNumber(entry.shownAt, 0, 0, Number.MAX_SAFE_INTEGER),
+        }))
+    : [];
   const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
   const inventory = savedItems.inventory;
   const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory);
@@ -603,6 +782,18 @@ export function normalizePersistedGameState(value: unknown) {
     quests,
     juiceClubCustomersServed,
   );
+  const normalizedFriends = normalizeFriends(persisted.friends);
+  const normalizedCaper = normalizeCaper(persisted.caper);
+  const normalizedDripOwned = normalizeDripOwned(
+    persisted.dripOwned,
+    dripEvidenceFrom({
+      quests,
+      caper: normalizedCaper,
+      progression,
+      juiceClubCustomersServed,
+      friends: normalizedFriends,
+    }),
+  );
   const shinyRockGenuinelyCollected = (
     quests['where-binky']?.currentObjectiveId === 'trade-with-sam'
     && (progression.collectibleProgress['Shiny Rock'] ?? 0) > 0
@@ -613,7 +804,7 @@ export function normalizePersistedGameState(value: unknown) {
     && !inventory.includes('binky')
     && !savedItems.droppedItems.some((item) => item.item === 'binky')
   );
-  const timeOfDay = safeNumber(persisted.timeOfDay, initialState.timeOfDay, 9, 17.5);
+  const timeOfDay = safeNumber(persisted.timeOfDay, initialState.timeOfDay, 9, 18.5);
   const schedule = getScheduleForTime(timeOfDay);
   const restoredZone = restoreZoneState(persisted, progression);
   const clubState = normalizeJuiceClubState(persisted, schedule);
@@ -630,11 +821,24 @@ export function normalizePersistedGameState(value: unknown) {
     : savedItems.droppedItems;
 
   return {
-    quality: persisted.quality === 'low' || persisted.quality === 'high' ? persisted.quality : initialState.quality,
+    // 'low' and 'high' remain valid presets, so every existing save keeps the
+    // setting it had. Widening the field needed no migration - only the guard
+    // widening with it.
+    quality: isQualityPreset(persisted.quality) ? persisted.quality : initialState.quality,
     timeOfDay,
+    // A save written before the clock existed carries no `clock` key at all.
+    // It is migrated from the timeOfDay and dayNumber it does have, never
+    // discarded - losing a player's day because we shipped a feature would be
+    // the worst trade available to us.
+    clock: normalizeClockState(
+      persisted.clock,
+      timeOfDay,
+      safeInteger(persisted.dayNumber, initialState.dayNumber, 1, 9999),
+    ),
     dayNumber: safeInteger(persisted.dayNumber, initialState.dayNumber, 1, 9999),
     schedule,
     isRainy: persisted.isRainy === true,
+    weatherSeed: normalizeWeatherSeed(persisted.weatherSeed),
     isImaginationMode: false,
     inventory,
     // Early builds pre-granted the rock without recording a world pickup. Keep
@@ -644,7 +848,12 @@ export function normalizePersistedGameState(value: unknown) {
       ? normalizedCollectibles
       : normalizedCollectibles.filter((item) => item !== 'Shiny Rock'),
     isRiding: false,
-    friends: normalizeFriends(persisted.friends),
+    friends: normalizedFriends,
+    // Achievement cosmetics are recomputed from evidence, never trusted from the
+    // save, so a hand-edited dripOwned cannot mint a prestige item - and a
+    // player who earned one can never lose it either.
+    dripOwned: normalizedDripOwned,
+    dripEquipped: normalizeDripEquipped(persisted.dripEquipped, normalizedDripOwned),
     teacherSuspicion: safeNumber(persisted.teacherSuspicion, 0, 0, 100),
     binkyStatus,
     binkyClues: safeStringArray(persisted.binkyClues)
@@ -653,6 +862,12 @@ export function normalizePersistedGameState(value: unknown) {
     quests,
     droppedItems,
     tidyPlacedItems: normalizeTidyItems(persisted.tidyPlacedItems),
+    // Defaulting to false would hand the beginner tutorial back to every
+    // existing player on their next load. A save with completed rounds has
+    // demonstrably seen it, so derive rather than default.
+    tidyTutorialSeen: persisted.tidyTutorialSeen === true
+      || (progression.activityRuns['rainbow-tidy-up'] ?? 0) > 0
+      || quests['rainbow-tidy-up']?.completionCount > 0,
     juiceStock: safeInteger(persisted.juiceStock, initialState.juiceStock, 0, MAX_STOCK),
     crackerStock: safeInteger(persisted.crackerStock, initialState.crackerStock, 0, MAX_STOCK),
     juiceClubCash: safeInteger(persisted.juiceClubCash, initialState.juiceClubCash, 0, MAX_CASH),
@@ -670,10 +885,13 @@ export function normalizePersistedGameState(value: unknown) {
     zoneTransitioning: false,
     pendingZone: null,
     gardenActivityStep: 0,
+    gummyCrop: normalizeGummyCrop(persisted.gummyCrop),
     ambientMessage: null,
+    activeInstruction: null,
+    recentInstructions,
     rivalStory: normalizeRivalStory(persisted.rivalStory),
     rewardEvents: [],
-    caper: normalizeCaper(persisted.caper),
+    caper: normalizedCaper,
     districtProgress: normalizeDistrictProgress(persisted.districtProgress),
     optionalRewardBoostUntil: 0,
   };
@@ -683,11 +901,14 @@ export function serializeGameState(state: GameState) {
   return {
     quality: state.quality,
     timeOfDay: state.timeOfDay,
+    clock: serializeClockState(state.clock),
     dayNumber: state.dayNumber,
     schedule: state.schedule,
     isRainy: state.isRainy,
+    weatherSeed: state.weatherSeed,
     inventory: state.inventory,
     collectibles: state.collectibles,
+    recentInstructions: state.recentInstructions,
     friends: state.friends,
     teacherSuspicion: state.teacherSuspicion,
     binkyStatus: state.binkyStatus,
@@ -695,6 +916,9 @@ export function serializeGameState(state: GameState) {
     quests: state.quests,
     droppedItems: state.droppedItems,
     tidyPlacedItems: state.tidyPlacedItems,
+    tidyTutorialSeen: state.tidyTutorialSeen,
+    dripOwned: state.dripOwned,
+    dripEquipped: state.dripEquipped,
     juiceStock: state.juiceStock,
     crackerStock: state.crackerStock,
     juiceClubCash: state.juiceClubCash,
@@ -711,6 +935,8 @@ export function serializeGameState(state: GameState) {
     playerPosition: state.playerPosition,
     hubPosition: state.hubPosition,
     gardenPosition: state.gardenPosition,
+    storybookPosition: state.storybookPosition,
+    gummyCrop: state.gummyCrop,
     rivalStory: state.rivalStory,
     caper: state.caper,
     districtProgress: state.districtProgress,
@@ -723,18 +949,28 @@ export const useGameStore = create<GameState>()(
       ...initialState,
       
       setQuality: (quality) => set({
-        quality: quality === 'low' || quality === 'high' ? quality : initialState.quality,
+        // Presets are authored in qualityManager; an unknown one falls back
+        // rather than being stored, so a stray value cannot poison a save.
+        quality: isQualityPreset(quality) ? quality : initialState.quality,
       }),
       setTimeOfDay: (time) => set((state) => {
-         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 17.5);
+         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 18.5);
         const schedule = getScheduleForTime(timeOfDay);
-        return { timeOfDay, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
+        const minute = timeOfDayToMinute(timeOfDay);
+        return {
+          timeOfDay,
+          schedule,
+          // Jumping the clock also settles which boundaries count as already
+          // seen, so a jump forward does not then replay every block it passed.
+          clock: { ...state.clock, minute, lastBoundaryMinute: minute },
+          ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)),
+        };
       }),
       
       advanceSchedule: () => set((state) => {
-         const currentTime = safeNumber(state.timeOfDay, initialState.timeOfDay, 9, 17.5);
-         const isNewDay = currentTime >= 17.5;
-         const nextTime = isNewDay ? 9.0 : Math.min(17.5, currentTime + 1.5);
+         const currentTime = safeNumber(state.timeOfDay, initialState.timeOfDay, 9, 18.5);
+         const isNewDay = currentTime >= 18.5;
+         const nextTime = isNewDay ? 9.0 : Math.min(18.5, currentTime + 1.5);
         const schedule = getScheduleForTime(nextTime);
          if (isNewDay) {
            return {
@@ -744,15 +980,65 @@ export const useGameStore = create<GameState>()(
              zone: 'hub',
              playerPosition: [0, 0, 0],
              hubPosition: [0, 0, 0],
-             gardenActivityStep: 0,
+              gardenActivityStep: 0,
+              storybookPosition: STORYBOOK_SPAWN,
              teacherSuspicion: 0,
              optionalRewardBoostUntil: 0,
              ambientMessage: `Day ${state.dayNumber + 1} is ready. Yesterday’s progress is safe in your Journal.`,
+             // The day rollover stays here, in the one place that already knows
+             // a new day also means the hub, the origin, no suspicion and a
+             // reset Juice Club. The clock follows it rather than owning it.
+              clock: startNextDay(state.clock),
              ...resetJuiceClubCustomerState(state),
            };
          }
-         return { timeOfDay: nextTime, schedule, ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)) };
+         const advancedMinute = timeOfDayToMinute(nextTime);
+         return {
+           timeOfDay: nextTime,
+           schedule,
+           clock: { ...state.clock, minute: advancedMinute, lastBoundaryMinute: advancedMinute },
+           ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)),
+         };
       }),
+
+      /**
+       * Advances the clock by REAL elapsed seconds.
+       *
+       * Called from a single driver that measures wall-clock time. Frame count
+       * is never an input: the game day is a promise to the player, not a
+       * property of their hardware, so a 30 FPS phone and a 144 FPS desktop
+       * must reach lunch at the same moment.
+       *
+       * Schedule boundaries crossed by the tick are applied here, in order and
+       * once each - including when a single tick under fast-forward skips a
+       * whole block.
+       */
+      tickClock: (realSeconds) => set((state) => {
+        const tick = advanceClockState(state.clock, realSeconds);
+        if (tick.advancedMinutes <= 0) return {};
+
+        const timeOfDay = minuteToTimeOfDay(tick.clock.minute);
+        const schedule = getScheduleForTime(timeOfDay);
+        if (schedule === state.schedule) {
+          return { clock: tick.clock, timeOfDay };
+        }
+        // Leaving Juice Club tears down its customer state exactly as the
+        // manual advance always did - the same teardown, reached a new way.
+        return {
+          clock: tick.clock,
+          timeOfDay,
+          schedule,
+          ...(schedule === 'juice-club' ? {} : resetJuiceClubCustomerState(state)),
+        };
+      }),
+
+      setTimeScale: (scale) => set((state) => ({ clock: setClockTimeScale(state.clock, scale) })),
+
+      setClockPaused: (paused, reason = null) => set((state) => ({
+        clock: paused
+          ? pauseClockState(state.clock, reason ?? 'menu')
+          : resumeClockState(state.clock),
+      })),
       
       toggleImagination: () => set((state) => ({ isImaginationMode: !state.isImaginationMode })),
       toggleRain: () => set((state) => ({ isRainy: !state.isRainy })),
@@ -942,7 +1228,7 @@ export const useGameStore = create<GameState>()(
           );
           const progression = withQualifiedRoutes({
             ...state.progression,
-            reputation: Math.min(100, state.progression.reputation + 8),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(8)),
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
             trustedHelperPass: true,
           });
@@ -956,7 +1242,7 @@ export const useGameStore = create<GameState>()(
               title: 'Binky is home!',
               detail: 'Trusted Helper Pass earned',
               tokens: 5,
-              reputation: 8,
+              reputation: monetizedReputation(8),
               sticker: 'Binky Buddy',
             }),
             inventory: state.inventory.filter((item) => item !== 'binky'),
@@ -988,6 +1274,100 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      /**
+       * Buy a cosmetic.
+       *
+       * The caller passes ONLY an id. Price, REP requirement and achievement
+       * gate are all read from the catalog here, so a forged call cannot say
+       * what an item costs - the same reason buyStock ignores its own cost
+       * argument. canPurchase is the single authority, shared with the UI, so
+       * the shop can never offer something this would refuse.
+       */
+      purchaseDripItem: (itemId) => {
+        let changed = false;
+        set((state) => {
+          const item = getDripItem(itemId);
+          if (!item) return state;
+          const evidence = dripEvidenceFrom({
+            quests: state.quests,
+            caper: state.caper,
+            progression: state.progression,
+            juiceClubCustomersServed: state.juiceClubCustomersServed,
+            friends: state.friends,
+          });
+          const verdict = canPurchase(
+            item,
+            { reputation: state.progression.reputation, cash: state.juiceClubCash },
+            achievementsEarned(evidence),
+            new Set(state.dripOwned),
+          );
+          if (!verdict.ok) return state;
+          changed = true;
+          const owned = normalizeDripOwned([...state.dripOwned, item.id], evidence);
+          return {
+            juiceClubCash: Math.max(0, state.juiceClubCash - item.priceCash),
+            dripOwned: owned,
+            // Equip it immediately - buying something you cannot see is a poor
+            // reward moment, and the slot it fills is unambiguous.
+            dripEquipped: normalizeDripEquipped(
+              { ...state.dripEquipped, [item.category]: item.id },
+              owned,
+            ),
+            rewardEvents: appendRewardEvent(state.rewardEvents, {
+              id: `drip-${item.id}`,
+              title: item.name,
+              detail: item.prestige ? 'Earned' : 'Added to your wardrobe',
+              tokens: 0,
+              reputation: 0,
+              sticker: item.rarity,
+            }),
+          };
+        });
+        return changed;
+      },
+      grantMonetizationCosmetics: (itemIds) => set((state) => {
+        const safeIds = Array.isArray(itemIds)
+          ? itemIds.filter((id) => {
+              const item = typeof id === 'string' ? getDripItem(id) : undefined;
+              return Boolean(item && !item.prestige);
+            })
+          : [];
+        if (!safeIds.length) return state;
+        const evidence = dripEvidenceFrom({
+          quests: state.quests,
+          caper: state.caper,
+          progression: state.progression,
+          juiceClubCustomersServed: state.juiceClubCustomersServed,
+          friends: state.friends,
+        });
+        const dripOwned = normalizeDripOwned([...state.dripOwned, ...safeIds], evidence);
+        return { dripOwned };
+      }),
+      equipDripItem: (itemId) => {
+        let changed = false;
+        set((state) => {
+          const item = getDripItem(itemId);
+          if (!item || !state.dripOwned.includes(itemId)) return state;
+          if (state.dripEquipped[item.category] === itemId) return state;
+          changed = true;
+          return {
+            dripEquipped: normalizeDripEquipped(
+              { ...state.dripEquipped, [item.category]: itemId },
+              state.dripOwned,
+            ),
+          };
+        });
+        return changed;
+      },
+      unequipDripCategory: (category) => set((state) => {
+        if (!state.dripEquipped[category]) return state;
+        const next = { ...state.dripEquipped };
+        delete next[category];
+        return { dripEquipped: next };
+      }),
+      markTidyTutorialSeen: () => set((state) => (
+        state.tidyTutorialSeen ? state : { tidyTutorialSeen: true }
+      )),
       completeTidyToy: (item) => {
         let changed = false;
         set((state) => {
@@ -1000,13 +1380,16 @@ export const useGameStore = create<GameState>()(
           const quest = state.quests['rainbow-tidy-up'];
           if (!pair || !quest || quest.currentObjectiveId !== pair[1] || !state.inventory.includes(item)) return state;
           const nextQuests = advanceObjective(state.quests, 'rainbow-tidy-up', pair[1]);
-          const completedRound = nextQuests['rainbow-tidy-up'].status === 'complete';
+          // advanceObjective now resets the repeatable itself, so the round is
+          // detected by the completion counter rather than by a 'complete'
+          // status that no longer appears.
+          const completedRound = roundWasCompleted(state.quests, nextQuests, 'rainbow-tidy-up');
           const tokenReward = 2 * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
           const nextProgression = completedRound
             ? withQualifiedRoutes({
                 ...state.progression,
                 tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-                reputation: Math.min(100, state.progression.reputation + 2),
+                reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)),
                 trustedHelperPass: true,
                 activityRuns: {
                   ...state.progression.activityRuns,
@@ -1028,7 +1411,7 @@ export const useGameStore = create<GameState>()(
           return {
             inventory: state.inventory.filter((inventoryItem) => inventoryItem !== item),
             tidyPlacedItems: [...state.tidyPlacedItems.filter((placedItem) => placedItem !== item), item].slice(-3),
-            quests: completedRound ? resetRepeatableQuest(nextQuests, 'rainbow-tidy-up') : nextQuests,
+            quests: nextQuests,
             progression: nextProgression,
             rivalStory: completedRound
               ? recordRainbowStoryMilestone(state.rivalStory)
@@ -1039,7 +1422,7 @@ export const useGameStore = create<GameState>()(
                   title: 'Rainbow Tidy-Up!',
                   detail: 'A fresh round is ready',
                   tokens: tokenReward,
-                  reputation: 2,
+                  reputation: monetizedReputation(2),
                   sticker: 'Rainbow Ribbon',
                 })
               : state.rewardEvents,
@@ -1144,7 +1527,7 @@ export const useGameStore = create<GameState>()(
           const tokenReward = reward.tokenReward * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
           const progression = withQualifiedRoutes({
             ...state.progression,
-            reputation: Math.min(100, state.progression.reputation + reward.reputationReward),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(reward.reputationReward)),
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
             activityRuns: {
               ...state.progression.activityRuns,
@@ -1180,7 +1563,7 @@ export const useGameStore = create<GameState>()(
               title: 'Happy customer!',
               detail: `${servedId} loved the snack`,
               tokens: tokenReward,
-              reputation: reward.reputationReward,
+              reputation: monetizedReputation(reward.reputationReward),
             }),
             friends: {
               ...state.friends,
@@ -1267,7 +1650,7 @@ export const useGameStore = create<GameState>()(
           ...state.progression,
           version: PROGRESSION_VERSION,
           tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-          reputation: Math.min(100, state.progression.reputation + definition.reputationReward),
+          reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(definition.reputationReward)),
           activityRuns: nextRuns,
           activityRewards: nextRewards,
         };
@@ -1280,7 +1663,7 @@ export const useGameStore = create<GameState>()(
             title: 'Seedlings standing tall!',
             detail: 'The garden plan is complete',
             tokens: tokenReward,
-            reputation: definition.reputationReward,
+            reputation: monetizedReputation(definition.reputationReward),
             sticker: 'Garden Helper',
           }),
         };
@@ -1307,10 +1690,75 @@ export const useGameStore = create<GameState>()(
         return nextStep;
       },
       resetGardenActivity: () => set({ gardenActivityStep: 0 }),
+      plantGummyDrops: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'garden' || state.gummyCrop.plantedAt !== null) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, plantedAt: absoluteGameMinute(state.dayNumber, state.clock.minute) } };
+        });
+        return changed;
+      },
+      harvestGummyDrops: () => {
+        let changed = false;
+        set((state) => {
+          const now = absoluteGameMinute(state.dayNumber, state.clock.minute);
+          if (state.zone !== 'garden' || !cropIsReady(state.gummyCrop, now)) return state;
+          changed = true;
+          return { gummyCrop: { plantedAt: null, gummyDrops: Math.min(999, state.gummyCrop.gummyDrops + GUMMY_HARVEST_SIZE), harvests: state.gummyCrop.harvests + 1 } };
+        });
+        return changed;
+      },
+      eatGummyDrop: () => {
+        let changed = false;
+        set((state) => {
+          if (state.gummyCrop.gummyDrops < 1) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - 1 }, progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(1)) }) };
+        });
+        return changed;
+      },
+      feedGummyDrop: () => {
+        let changed = false;
+        set((state) => {
+          if (state.gummyCrop.gummyDrops < 1) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - 1 }, juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_UNIT_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)) }) };
+        });
+        return changed;
+      },
+      sellGummyCrop: () => {
+        let changed = false;
+        set((state) => {
+          if (state.gummyCrop.gummyDrops < GUMMY_HARVEST_SIZE) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - GUMMY_HARVEST_SIZE }, juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_FULL_CROP_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(5)) }) };
+        });
+        return changed;
+      },
       setAmbientMessage: (ambientMessage) => set((state) => (
         state.zone !== 'hub' || state.activeDialogue || state.journalOpen || state.zoneTransitioning
           ? { ambientMessage: null }
           : { ambientMessage }
+      )),
+      showInstruction: (instruction) => {
+        let changed = false;
+        set((state) => {
+          const id = instruction.id.trim().slice(0, 80);
+          const text = instruction.text.trim().slice(0, 240);
+          if (!id || !text || state.recentInstructions.some((entry) => entry.id === id)) return state;
+          const next = { id, text, shownAt: instruction.shownAt ?? Date.now() };
+          changed = true;
+          return {
+            activeInstruction: next,
+            recentInstructions: [next, ...state.recentInstructions.filter((entry) => entry.id !== id)].slice(0, 3),
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
+      dismissInstruction: () => set((state) => (
+        state.activeInstruction ? { activeInstruction: null } : state
       )),
       chooseRivalResponse: (choice) => {
         let changed = false;
@@ -1342,7 +1790,7 @@ export const useGameStore = create<GameState>()(
           const progression = withQualifiedRoutes({
             ...state.progression,
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
-            reputation: Math.min(100, state.progression.reputation + 4),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(4)),
           });
           return {
             rivalStory,
@@ -1361,7 +1809,7 @@ export const useGameStore = create<GameState>()(
               title: 'Two Stars, One Team!',
               detail: 'Nickname earned: Bridge Builder',
               tokens: 5,
-              reputation: 4,
+              reputation: monetizedReputation(4),
               sticker: 'Two Stars',
             }),
           };
@@ -1402,7 +1850,7 @@ export const useGameStore = create<GameState>()(
           const progression = withQualifiedRoutes({
             ...state.progression,
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-            reputation: Math.min(100, state.progression.reputation + 2),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)),
           });
           return {
             caper,
@@ -1413,7 +1861,7 @@ export const useGameStore = create<GameState>()(
               title: 'Sticker Parade complete!',
               detail: 'Everyone had a safe role in the plan',
               tokens: tokenReward,
-              reputation: 2,
+              reputation: monetizedReputation(2),
               sticker: 'Kindness Crew',
             }),
           };
@@ -1481,7 +1929,7 @@ export const useGameStore = create<GameState>()(
         set((state) => {
           if (state.optionalRewardBoostUntil > now) return state;
           changed = true;
-          return { optionalRewardBoostUntil: now + 15_000 };
+          return { optionalRewardBoostUntil: now + OPTIONAL_BOOST_DURATION_MS };
         });
         return changed;
       },
@@ -1526,6 +1974,7 @@ export const useGameStore = create<GameState>()(
               playerPosition: position,
               hubPosition: state.zone === 'hub' ? position : state.hubPosition,
               gardenPosition: state.zone === 'garden' ? position : state.gardenPosition,
+              storybookPosition: state.zone === 'storybook' ? position : state.storybookPosition,
             }
           : {}),
       })),
@@ -1535,7 +1984,7 @@ export const useGameStore = create<GameState>()(
           if (
             state.zone !== 'hub'
             || state.zoneTransitioning
-            || !getUnlockedRoutes(state.progression).includes('garden-district')
+            || (!getUnlockedRoutes(state.progression).includes('garden-district') && state.schedule !== 'recess')
           ) return state;
           changed = true;
           const position = currentPosition(state);
@@ -1547,6 +1996,75 @@ export const useGameStore = create<GameState>()(
             activeInteractable: null,
             activeDialogue: null,
             ambientMessage: null,
+            ...resetJuiceClubCustomerState(state),
+          };
+        });
+        return changed;
+      },
+      enterStorybookLane: () => {
+        let changed = false;
+        set((state) => {
+          if (
+            state.zone !== 'hub'
+            || state.zoneTransitioning
+            || !storybookIsOpen(state.clock.minute)
+            || !getUnlockedRoutes(state.progression).includes('storybook-lane')
+          ) return state;
+          changed = true;
+          useStorybookLaneStore.getState().resetSession();
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'storybook' as GameZone,
+            hubPosition: currentPosition(state),
+            storybookPosition: STORYBOOK_SPAWN,
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+            ...resetJuiceClubCustomerState(state),
+          };
+        });
+        return changed;
+      },
+      leaveStorybookLane: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'storybook' || state.zoneTransitioning) return state;
+          changed = true;
+          useStorybookLaneStore.getState().resetSession();
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'hub' as GameZone,
+            storybookPosition: currentPosition(state),
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
+      finishDay: () => {
+        let changed = false;
+        set((state) => {
+          if (state.clock.minute < STORYBOOK_CLOSE_MINUTE) return state;
+          changed = true;
+          useStorybookLaneStore.getState().resetSession();
+          const clock = startNextDay(state.clock);
+          return {
+            clock,
+            timeOfDay: minuteToTimeOfDay(clock.minute),
+            dayNumber: state.dayNumber + 1,
+            schedule: scheduleIdForMinute(clock.minute),
+            zone: 'hub' as GameZone,
+            playerPosition: [0, 0, 0] as [number, number, number],
+            hubPosition: [0, 0, 0] as [number, number, number],
+            storybookPosition: STORYBOOK_SPAWN,
+            zoneTransitioning: false,
+            pendingZone: null,
+            teleportTrigger: state.teleportTrigger + 1,
+            gardenActivityStep: 0,
+            teacherSuspicion: 0,
+            optionalRewardBoostUntil: 0,
+            ambientMessage: `Day ${state.dayNumber + 1} is ready. Storybook Lane is tucked in until pickup time.`,
             ...resetJuiceClubCustomerState(state),
           };
         });
@@ -1573,7 +2091,7 @@ export const useGameStore = create<GameState>()(
       completeZoneTransition: () => set((state) => {
         if (!state.zoneTransitioning || !state.pendingZone) return state;
         const zone = state.pendingZone;
-        const position = zone === 'garden' ? state.gardenPosition : state.hubPosition;
+        const position = zone === 'garden' ? state.gardenPosition : zone === 'storybook' ? state.storybookPosition : state.hubPosition;
         resetTouchInput();
         return {
           zone,
