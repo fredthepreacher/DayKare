@@ -136,8 +136,12 @@ export function Garden() {
       <GardenDetails />
       <GardenLandmarks />
       <GardenCast />
-      <GardenActivityHost />
-      <GummyDropBed />
+      <GardenActivityHost bed={0} position={[-10.8, 0, 5.35]} />
+      <GardenActivityHost bed={1} position={[-10.8, 0, 10.4]} />
+      <GummyDropBed bed={0} position={[10.8, 0, 9.8]} />
+      <GummyDropBed bed={1} position={[10.8, 0, 5.7]} />
+      <FishingSpot />
+      <SeedInspectionStation />
       <GardenReturnGate />
     </group>
   );
@@ -789,24 +793,25 @@ function GardenLandmark({
   );
 }
 
-function GardenActivityHost() {
+function GardenActivityHost({ bed, position: authoredPosition }: { bed: 0 | 1; position: [number, number, number] }) {
   const ref = useRef<THREE.Group>(null);
-  const step = useGameStore((state) => state.gardenActivityStep);
-  const active = useGameStore((state) => state.activeInteractable === 'garden-activity-host');
-  const position = useMemo(() => new THREE.Vector3(-10.8, 0, 5.35), []);
+  const step = useGameStore((state) => bed === 0 ? state.gardenActivityStep : state.expansion.secondPlantingStep);
+  const interactionId = `garden-activity-host-${bed}`;
+  const active = useGameStore((state) => state.activeInteractable === interactionId);
+  const position = useMemo(() => new THREE.Vector3(...authoredPosition), [authoredPosition]);
   const candidate = useMemo(() => ({
-    id: 'garden-activity-host',
+    id: interactionId,
     position,
     range: 2.4,
     priority: 72,
     valid: true,
-  }), [position]);
+  }), [interactionId, position]);
 
   useEffect(() => {
     return registerInteractionCandidate(candidate);
   }, [candidate]);
   useFrame((state, delta) => {
-    updateInteractionCandidate('garden-activity-host', { position, valid: true });
+    updateInteractionCandidate(interactionId, { position, valid: true });
     if (!ref.current) return;
     ref.current.position.y = Math.sin(state.clock.elapsedTime * 1.7) * 0.018;
     ref.current.rotation.y = THREE.MathUtils.lerp(
@@ -818,8 +823,8 @@ function GardenActivityHost() {
 
   return (
     <group>
-      <group ref={ref} position={[-10.8, 0, 5.35]}>
-        <CharacterModel
+      <group ref={ref} position={authoredPosition}>
+        {bed === 0 ? <CharacterModel
           bodyColor="#4f8d55"
           accentColor="#ffd166"
           hairColor="#6b4932"
@@ -829,9 +834,9 @@ function GardenActivityHost() {
           accessory="badge"
           activityMode="gathering"
           motionSeed={4.2}
-        />
+        /> : <mesh position={[0, 0.42, 0]} castShadow><boxGeometry args={[1.3, 0.72, 0.72]} /><meshStandardMaterial color="#7a9b67" roughness={0.86} /></mesh>}
       </group>
-      <group position={[-10.8, 0, 4.55]}>
+      <group position={[authoredPosition[0], authoredPosition[1], authoredPosition[2] - 0.8]}>
         {[0, 1, 2].map((index) => (
           <group key={index} position={[-0.55 + index * 0.55, 0, 0]}>
             <mesh position={[0, 0.12, 0]}>
@@ -895,16 +900,17 @@ function GardenReturnGate() {
   );
 }
 
-function GummyDropBed() {
-  const crop = useGameStore((state) => state.gummyCrop);
+function GummyDropBed({ bed, position: authoredPosition }: { bed: 0 | 1; position: [number, number, number] }) {
+  const crop = useGameStore((state) => bed === 0 ? state.gummyCrop : state.gummyCrop2);
   const day = useGameStore((state) => state.dayNumber);
   const minute = useGameStore((state) => state.clock.minute);
-  const active = useGameStore((state) => state.activeInteractable === 'gummy-drop-bed');
-  const position = useMemo(() => new THREE.Vector3(10.8, 0, 9.8), []);
-  const candidate = useMemo(() => ({ id: 'gummy-drop-bed', position, range: 2.8, priority: 76, valid: true }), [position]);
+  const interactionId = `gummy-drop-bed-${bed}`;
+  const active = useGameStore((state) => state.activeInteractable === interactionId);
+  const position = useMemo(() => new THREE.Vector3(...authoredPosition), [authoredPosition]);
+  const candidate = useMemo(() => ({ id: interactionId, position, range: 2.8, priority: 76, valid: true }), [interactionId, position]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   const progress = cropProgress(crop, absoluteGameMinute(day, minute));
-  return <group position={[10.8, 0, 9.8]}>
+  return <group position={authoredPosition}>
     <mesh position={[0, 0.28, 0]}><boxGeometry args={[2.8, 0.5, 2.1]} /><meshStandardMaterial color="#74492f" roughness={0.96} /></mesh>
     {crop.plantedAt !== null && [-0.75, 0, 0.75].map((x, index) => <group key={x} position={[x, 0.55, 0]} scale={0.25 + progress * 0.9}>
       <mesh position={[0, 0.35, 0]}><cylinderGeometry args={[0.035, 0.05, 0.7, 7]} /><meshStandardMaterial color="#4f8d55" /></mesh>
@@ -912,4 +918,37 @@ function GummyDropBed() {
     </group>)}
     <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]}><torusGeometry args={[1.7, 0.05, 8, 28]} /><meshBasicMaterial color="#ffd166" transparent opacity={active ? 0.9 : 0.25} /></mesh>
   </group>;
+}
+
+function FishingSpot() {
+  const active = useGameStore((state) => state.activeInteractable === 'garden-fishing-spot');
+  const rod = useGameStore((state) => state.expansion.equippedRod);
+  const position = useMemo(() => new THREE.Vector3(6.35, 0, -0.2), []);
+  const candidate = useMemo(() => ({ id: 'garden-fishing-spot', position, range: 2.4, priority: 82, valid: true }), [position]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  return (
+    <group position={[6.35, 0, -0.2]}>
+      <mesh position={[0, 0.62, 0]} rotation={[0, 0, -0.34]} castShadow>
+        <cylinderGeometry args={[0.035, 0.05, 1.35, 8]} />
+        <meshStandardMaterial color={rod} roughness={0.66} />
+      </mesh>
+      <mesh position={[0.22, 0.7, 0]}><torusGeometry args={[0.13, 0.025, 8, 18]} /><meshStandardMaterial color="#d7dce2" metalness={0.45} /></mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]}><torusGeometry args={[0.78, 0.045, 8, 28]} /><meshBasicMaterial color="#61d9ef" transparent opacity={active ? 0.92 : 0.28} /></mesh>
+    </group>
+  );
+}
+
+function SeedInspectionStation() {
+  const active = useGameStore((state) => state.activeInteractable === 'seed-inspection');
+  const position = useMemo(() => new THREE.Vector3(-8.2, 0, -8.2), []);
+  const candidate = useMemo(() => ({ id: 'seed-inspection', position, range: 2.2, priority: 68, valid: true }), [position]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  return (
+    <group position={[-8.2, 0, -8.2]}>
+      <mesh position={[0, 0.48, 0]} castShadow><boxGeometry args={[1.7, 0.85, 0.85]} /><meshStandardMaterial color="#e7bd71" roughness={0.85} /></mesh>
+      <mesh position={[0, 1.02, 0]} rotation={[-0.18, 0, 0]}><boxGeometry args={[1.55, 0.52, 0.08]} /><meshStandardMaterial color="#fff0c7" /></mesh>
+      <mesh position={[0, 1.03, -0.05]}><circleGeometry args={[0.13, 12]} /><meshBasicMaterial color="#4f8d55" /></mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]}><torusGeometry args={[1.05, 0.04, 8, 28]} /><meshBasicMaterial color="#ffd166" transparent opacity={active ? 0.9 : 0.25} /></mesh>
+    </group>
+  );
 }

@@ -23,9 +23,10 @@ function StickerParadeBoard() {
   const ref = useRef<THREE.Group>(null);
   const progression = useGameStore((state) => state.progression);
   const caper = useGameStore((state) => state.caper);
+  const dailyHeist = useGameStore((state) => state.expansion.dailyHeist);
   const active = useGameStore((state) => state.activeInteractable === 'caper-board');
   const position = useMemo(() => new THREE.Vector3(11.2, 0, 11.4), []);
-  const available = progression.trustedHelperPass;
+  const available = progression.trustedHelperPass && dailyHeist === 'sticker-parade';
   const candidate = useMemo(() => ({
     id: 'caper-board',
     position,

@@ -14,6 +14,7 @@ import {
   type DripView,
 } from './drip';
 import { evaluateAllAreaAccess } from './areaAccess';
+import { FISHING_RODS } from './gameplayExpansion';
 
 /**
  * The wardrobe and shop.
@@ -128,6 +129,9 @@ export function DripPanel() {
   const purchaseDripItem = useGameStore((state) => state.purchaseDripItem);
   const equipDripItem = useGameStore((state) => state.equipDripItem);
   const unequipDripCategory = useGameStore((state) => state.unequipDripCategory);
+  const expansion = useGameStore((state) => state.expansion);
+  const purchaseFishingRod = useGameStore((state) => state.purchaseFishingRod);
+  const equipFishingRod = useGameStore((state) => state.equipFishingRod);
 
   const [category, setCategory] = useState<DripCategory | 'all'>('all');
 
@@ -215,6 +219,31 @@ export function DripPanel() {
             onUnequip={unequipDripCategory}
           />
         ))}
+      </div>
+
+      <div>
+        <h3 className="daykare-section-head"><Sparkles className="w-5 h-5 text-sky-600" /> Fishing Rods</h3>
+        <p className="daykare-empty-note mb-2">Cosmetic colors only—every starter rod catches fish at the same rate.</p>
+        <div className="space-y-2">
+          {FISHING_RODS.map((color) => {
+            const owned = expansion.ownedRods.includes(color);
+            const equipped = expansion.equippedRod === color;
+            return (
+              <article key={color} className={`daykare-drip-card ${equipped ? 'daykare-drip-card-equipped' : ''}`}>
+                <div className="daykare-drip-swatch border border-stone-300" style={{ background: color }} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-black capitalize text-[#5c3a21]">{color} Fishing Rod</div>
+                  <div className="text-[11px] text-[#7a6353]">Common · cosmetic rod framework</div>
+                  <div className="mt-2">
+                    {!owned && <button type="button" disabled={juiceClubCash < 8} onClick={() => purchaseFishingRod(color)} className="daykare-journal-action bg-emerald-600">Buy $8</button>}
+                    {owned && !equipped && <button type="button" onClick={() => equipFishingRod(color)} className="daykare-journal-action bg-[#5c3a21]">Equip</button>}
+                    {equipped && <span className="daykare-status-badge bg-green-100 text-green-800 border border-green-300">Equipped</span>}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
       </div>
 
       <div>

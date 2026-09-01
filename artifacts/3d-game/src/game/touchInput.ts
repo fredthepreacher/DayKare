@@ -3,6 +3,7 @@ export interface TouchInputState {
   y: number;
   run: boolean;
   crouch: boolean;
+  jump: boolean;
 }
 
 const touchInput: TouchInputState = {
@@ -10,6 +11,7 @@ const touchInput: TouchInputState = {
   y: 0,
   run: false,
   crouch: false,
+  jump: false,
 };
 
 export class TouchPointerOwnership {
@@ -64,6 +66,7 @@ export function resetTouchInput() {
   clearTouchMove();
   touchInput.run = false;
   touchInput.crouch = false;
+  touchInput.jump = false;
 }
 
 export function toggleTouchRun() {
@@ -73,4 +76,12 @@ export function toggleTouchRun() {
 
 export function setTouchCrouch(active: boolean) {
   touchInput.crouch = active;
+}
+
+export function setTouchRun(active: boolean) {
+  touchInput.run = active;
+}
+
+export function setTouchJump(active: boolean) {
+  touchInput.jump = active;
 }

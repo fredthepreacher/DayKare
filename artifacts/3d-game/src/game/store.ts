@@ -7,6 +7,7 @@ import {
   createInitialProgression,
   getUnlockedRoutes,
   MAX_ACTIVITY_RUNS,
+  MAX_EXPERIENCE,
   MAX_TOKENS,
   MAX_REPUTATION,
   normalizeProgression,
@@ -104,6 +105,29 @@ import { monetizedReputation } from './monetizationStore';
 import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GummyCropState } from './gardenEconomy';
 import { STORYBOOK_CLOSE_MINUTE, storybookIsOpen } from './storybookLaneConfig';
 import { useStorybookLaneStore } from './storybookLaneStore';
+import { getEscapeRetrievalSnapshot } from './escapeRetrieval';
+import {
+  ART_CASH,
+  ART_XP,
+  FISH_CATCH_XP,
+  FISH_SALE_CASH,
+  FISH_SALE_XP,
+  FISHING_RODS,
+  LOST_FOUND_INTERVAL_MINUTES,
+  MISSED_ACTIVITY_REP,
+  PLANTING_XP,
+  attendanceSatisfied,
+  collectibleRotation,
+  createGameplayExpansion,
+  createLostFoundJob,
+  heistForDay,
+  lostFoundReward,
+  normalizeGameplayExpansion,
+  type CollectibleId,
+  type FishingRodColor,
+  type GameplayExpansionState,
+  type RequiredActivityId,
+} from './gameplayExpansion';
 
 export type ScheduleState = import('./gameClock').ScheduleBlockId;
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -204,6 +228,8 @@ export interface GameState {
   pendingZone: GameZone | null;
   gardenActivityStep: number;
   gummyCrop: GummyCropState;
+  gummyCrop2: GummyCropState;
+  expansion: GameplayExpansionState;
   ambientMessage: string | null;
   activeInstruction: GameplayInstruction | null;
   recentInstructions: GameplayInstruction[];
@@ -263,15 +289,31 @@ export interface GameState {
   toggleJournal: () => void;
   cycleTricycleColor: () => void;
   triggerTeleport: () => void;
-  completeActivity: (activityId: string, tokenReward: number, reputationReward: number) => void;
-  startGardenActivity: () => boolean;
-  advanceGardenActivity: () => number;
-  resetGardenActivity: () => void;
-  plantGummyDrops: () => boolean;
-  harvestGummyDrops: () => boolean;
-  eatGummyDrop: () => boolean;
-  feedGummyDrop: () => boolean;
-  sellGummyCrop: () => boolean;
+  completeActivity: (activityId: string, tokenReward: number, reputationReward: number, bed?: 0 | 1) => void;
+  startGardenActivity: (bed?: 0 | 1) => boolean;
+  advanceGardenActivity: (bed?: 0 | 1) => number;
+  resetGardenActivity: (bed?: 0 | 1) => void;
+  plantGummyDrops: (bed?: 0 | 1) => boolean;
+  harvestGummyDrops: (bed?: 0 | 1) => boolean;
+  eatGummyDrop: (bed?: 0 | 1) => boolean;
+  feedGummyDrop: (bed?: 0 | 1) => boolean;
+  sellGummyCrop: (bed?: 0 | 1) => boolean;
+  castFishingLine: () => boolean;
+  catchSwedishFish: () => boolean;
+  sellSwedishFish: () => boolean;
+  purchaseFishingRod: (color: FishingRodColor) => boolean;
+  equipFishingRod: (color: FishingRodColor) => boolean;
+  completeArtActivity: () => boolean;
+  completeShowAndTell: () => boolean;
+  takeAfternoonSnack: () => boolean;
+  recordAttendance: (activity: RequiredActivityId, seconds: number) => void;
+  dismissDayReport: () => void;
+  rotateExpansionContent: () => void;
+  collectExpansionCollectible: (id: CollectibleId) => boolean;
+  acceptLostFoundJob: () => boolean;
+  collectLostFoundItem: () => boolean;
+  turnInLostFoundJob: () => boolean;
+  advanceTechHeist: () => boolean;
   setAmbientMessage: (message: string | null) => void;
   showInstruction: (instruction: Omit<GameplayInstruction, 'shownAt'> & { shownAt?: number }) => boolean;
   dismissInstruction: () => void;
@@ -324,6 +366,56 @@ const withQualifiedRoutes = (progression: ProgressionState): ProgressionState =>
     ...getUnlockedRoutes(progression),
   ])),
 });
+
+const withExperience = (progression: ProgressionState, amount: number): ProgressionState => ({
+  ...progression,
+  experience: Math.min(MAX_EXPERIENCE, Math.max(0, (progression.experience ?? 0) + Math.trunc(amount))),
+});
+
+function closeExpansionDay(state: GameState) {
+  const required = ['show-and-tell', 'art-time'] as const;
+  const attended = required.filter((id) => attendanceSatisfied(state.expansion.attendance[id]));
+  const missed = required.filter((id) => !attended.includes(id));
+  const reputationLost = missed.length * MISSED_ACTIVITY_REP;
+  const nextReputation = Math.max(0, state.progression.reputation - reputationLost);
+  const nextDay = state.dayNumber + 1;
+  const previousHeist = state.expansion.dailyHeist;
+  const report = {
+    day: state.dayNumber,
+    attended: [...attended],
+    missed: [...missed],
+    goodBehavior: missed.length === 0,
+    escapeAttempts: Math.max(0, getEscapeRetrievalSnapshot().strikes - state.expansion.dayStartEscapeStrikes),
+    jobsCompleted: state.expansion.lostFoundCompleted - state.expansion.dayStartJobsCompleted,
+    reputationEarned: Math.max(0, state.progression.reputation - state.expansion.dayStartReputation),
+    reputationLost,
+    xpEarned: Math.max(0, (state.progression.experience ?? 0) - state.expansion.dayStartExperience),
+    moneyEarned: Math.max(0, state.juiceClubCash - state.expansion.dayStartCash),
+  };
+  return {
+    progression: withQualifiedRoutes({ ...state.progression, reputation: nextReputation }),
+    expansion: {
+      ...state.expansion,
+      attendanceDay: nextDay,
+      attendance: {
+        'show-and-tell': { seconds: 0, completed: false },
+        'art-time': { seconds: 0, completed: false },
+      },
+      dayStartExperience: state.progression.experience ?? 0,
+      dayStartCash: state.juiceClubCash,
+      dayStartReputation: nextReputation,
+      dayStartJobsCompleted: state.expansion.lostFoundCompleted,
+      dayStartEscapeStrikes: getEscapeRetrievalSnapshot().strikes,
+      lastDayReport: report,
+      dailyHeistDay: nextDay,
+      previousHeist,
+      dailyHeist: heistForDay(nextDay, previousHeist),
+      techHeistStep: 'idle' as const,
+      rotationDay: nextDay,
+      activeCollectibles: collectibleRotation(nextDay),
+    },
+  };
+}
 
 const initialFriends: Record<string, FriendState> = {
   Leo: { mood: 'sad', friendship: 10, recentMemory: 'Lost his favorite toy.' },
@@ -390,6 +482,8 @@ const initialState = {
   pendingZone: null,
   gardenActivityStep: 0,
   gummyCrop: createGummyCrop(),
+  gummyCrop2: createGummyCrop(),
+  expansion: createGameplayExpansion(1),
   ambientMessage: null,
   activeInstruction: null,
   recentInstructions: [] as GameplayInstruction[],
@@ -886,6 +980,8 @@ export function normalizePersistedGameState(value: unknown) {
     pendingZone: null,
     gardenActivityStep: 0,
     gummyCrop: normalizeGummyCrop(persisted.gummyCrop),
+    gummyCrop2: normalizeGummyCrop(persisted.gummyCrop2),
+    expansion: normalizeGameplayExpansion(persisted.expansion, safeInteger(persisted.dayNumber, initialState.dayNumber, 1, 9999)),
     ambientMessage: null,
     activeInstruction: null,
     recentInstructions,
@@ -937,6 +1033,8 @@ export function serializeGameState(state: GameState) {
     gardenPosition: state.gardenPosition,
     storybookPosition: state.storybookPosition,
     gummyCrop: state.gummyCrop,
+    gummyCrop2: state.gummyCrop2,
+    expansion: state.expansion,
     rivalStory: state.rivalStory,
     caper: state.caper,
     districtProgress: state.districtProgress,
@@ -974,6 +1072,7 @@ export const useGameStore = create<GameState>()(
         const schedule = getScheduleForTime(nextTime);
          if (isNewDay) {
            return {
+             ...closeExpansionDay(state),
              timeOfDay: nextTime,
              dayNumber: state.dayNumber + 1,
              schedule,
@@ -1622,14 +1721,16 @@ export const useGameStore = create<GameState>()(
         hubPosition: state.zone === 'hub' ? [0, 0, 0] : state.hubPosition,
         gardenPosition: state.zone === 'garden' ? GARDEN_SPAWN : state.gardenPosition,
       })),
-      completeActivity: (activityId) => set((state) => {
+      completeActivity: (activityId, _requestedTokens, _requestedReputation, bed = 0) => set((state) => {
         const definition = ACTIVITY_DEFINITIONS[activityId as keyof typeof ACTIVITY_DEFINITIONS];
+        const plantingStep = bed === 0 ? state.gardenActivityStep : state.expansion.secondPlantingStep;
         if (
           !definition
           || activityId !== 'garden-planting'
           || state.zone !== 'garden'
           || state.zoneTransitioning
-          || state.gardenActivityStep !== 3
+          || plantingStep !== 3
+          || state.expansion.seedPackets < 3
         ) return state;
         const nextRuns = {
           ...state.progression.activityRuns,
@@ -1646,93 +1747,302 @@ export const useGameStore = create<GameState>()(
             (state.progression.activityRewards[activityId] ?? 0) + tokenReward,
           ),
         };
-        const nextProgression: ProgressionState = {
+        const nextProgression: ProgressionState = withExperience({
           ...state.progression,
           version: PROGRESSION_VERSION,
           tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
           reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(definition.reputationReward)),
           activityRuns: nextRuns,
           activityRewards: nextRewards,
+        }, PLANTING_XP);
+        const expansion = {
+          ...state.expansion,
+          seedPackets: state.expansion.seedPackets - 3,
+          secondPlantingStep: bed === 1 ? 4 : state.expansion.secondPlantingStep,
         };
         return {
           progression: withQualifiedRoutes(nextProgression),
-          gardenActivityStep: 4,
+          gardenActivityStep: bed === 0 ? 4 : state.gardenActivityStep,
+          expansion,
           rivalStory: recordGardenStoryMilestone(state.rivalStory),
           rewardEvents: appendRewardEvent(state.rewardEvents, {
             id: `garden-planting-${nextRuns[activityId]}`,
-            title: 'Seedlings standing tall!',
-            detail: 'The garden plan is complete',
+            title: 'Planting Complete! +12 XP',
+            detail: `Garden bed ${bed + 1} has three fresh seedlings`,
             tokens: tokenReward,
             reputation: monetizedReputation(definition.reputationReward),
             sticker: 'Garden Helper',
           }),
         };
       }),
-      startGardenActivity: () => {
+      startGardenActivity: (bed = 0) => {
         let changed = false;
         set((state) => {
-          if (state.zone !== 'garden' || state.zoneTransitioning || state.gardenActivityStep !== 0) return state;
+          const step = bed === 0 ? state.gardenActivityStep : state.expansion.secondPlantingStep;
+          if (state.zone !== 'garden' || state.zoneTransitioning || step !== 0 || state.expansion.seedPackets < 3) return state;
           changed = true;
-          return { gardenActivityStep: 1 };
+          return bed === 0
+            ? { gardenActivityStep: 1 }
+            : { expansion: { ...state.expansion, secondPlantingStep: 1 } };
         });
         return changed;
       },
-      advanceGardenActivity: () => {
+      advanceGardenActivity: (bed = 0) => {
         let nextStep = 0;
         set((state) => {
-          if (state.zone !== 'garden' || state.zoneTransitioning || state.gardenActivityStep < 1 || state.gardenActivityStep >= 3) {
-            nextStep = state.gardenActivityStep;
+          const step = bed === 0 ? state.gardenActivityStep : state.expansion.secondPlantingStep;
+          if (state.zone !== 'garden' || state.zoneTransitioning || step < 1 || step >= 3) {
+            nextStep = step;
             return state;
           }
-          nextStep = state.gardenActivityStep + 1;
-          return { gardenActivityStep: nextStep };
+          nextStep = step + 1;
+          return bed === 0
+            ? { gardenActivityStep: nextStep }
+            : { expansion: { ...state.expansion, secondPlantingStep: nextStep } };
         });
         return nextStep;
       },
-      resetGardenActivity: () => set({ gardenActivityStep: 0 }),
-      plantGummyDrops: () => {
+      resetGardenActivity: (bed = 0) => set((state) => bed === 0
+        ? { gardenActivityStep: 0 }
+        : { expansion: { ...state.expansion, secondPlantingStep: 0 } }),
+      plantGummyDrops: (bed = 0) => {
         let changed = false;
         set((state) => {
-          if (state.zone !== 'garden' || state.gummyCrop.plantedAt !== null) return state;
+          const crop = bed === 0 ? state.gummyCrop : state.gummyCrop2;
+          if (state.zone !== 'garden' || crop.plantedAt !== null) return state;
           changed = true;
-          return { gummyCrop: { ...state.gummyCrop, plantedAt: absoluteGameMinute(state.dayNumber, state.clock.minute) } };
+          const next = { ...crop, plantedAt: absoluteGameMinute(state.dayNumber, state.clock.minute) };
+          return bed === 0 ? { gummyCrop: next } : { gummyCrop2: next };
         });
         return changed;
       },
-      harvestGummyDrops: () => {
+      harvestGummyDrops: (bed = 0) => {
         let changed = false;
         set((state) => {
           const now = absoluteGameMinute(state.dayNumber, state.clock.minute);
-          if (state.zone !== 'garden' || !cropIsReady(state.gummyCrop, now)) return state;
+          const crop = bed === 0 ? state.gummyCrop : state.gummyCrop2;
+          if (state.zone !== 'garden' || !cropIsReady(crop, now)) return state;
           changed = true;
-          return { gummyCrop: { plantedAt: null, gummyDrops: Math.min(999, state.gummyCrop.gummyDrops + GUMMY_HARVEST_SIZE), harvests: state.gummyCrop.harvests + 1 } };
+          const next = { plantedAt: null, gummyDrops: Math.min(999, crop.gummyDrops + GUMMY_HARVEST_SIZE), harvests: crop.harvests + 1 };
+          return bed === 0 ? { gummyCrop: next } : { gummyCrop2: next };
         });
         return changed;
       },
-      eatGummyDrop: () => {
+      eatGummyDrop: (bed = 0) => {
         let changed = false;
         set((state) => {
-          if (state.gummyCrop.gummyDrops < 1) return state;
+          const crop = bed === 0 ? state.gummyCrop : state.gummyCrop2;
+          if (crop.gummyDrops < 1) return state;
           changed = true;
-          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - 1 }, progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(1)) }) };
+          const next = { ...crop, gummyDrops: crop.gummyDrops - 1 };
+          return { ...(bed === 0 ? { gummyCrop: next } : { gummyCrop2: next }), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(1)) }) };
         });
         return changed;
       },
-      feedGummyDrop: () => {
+      feedGummyDrop: (bed = 0) => {
         let changed = false;
         set((state) => {
-          if (state.gummyCrop.gummyDrops < 1) return state;
+          const crop = bed === 0 ? state.gummyCrop : state.gummyCrop2;
+          if (crop.gummyDrops < 1) return state;
           changed = true;
-          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - 1 }, juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_UNIT_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)) }) };
+          const next = { ...crop, gummyDrops: crop.gummyDrops - 1 };
+          return { ...(bed === 0 ? { gummyCrop: next } : { gummyCrop2: next }), juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_UNIT_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)) }) };
         });
         return changed;
       },
-      sellGummyCrop: () => {
+      sellGummyCrop: (bed = 0) => {
         let changed = false;
         set((state) => {
-          if (state.gummyCrop.gummyDrops < GUMMY_HARVEST_SIZE) return state;
+          const crop = bed === 0 ? state.gummyCrop : state.gummyCrop2;
+          if (crop.gummyDrops < GUMMY_HARVEST_SIZE) return state;
           changed = true;
-          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - GUMMY_HARVEST_SIZE }, juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_FULL_CROP_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(5)) }) };
+          const next = { ...crop, gummyDrops: crop.gummyDrops - GUMMY_HARVEST_SIZE };
+          return { ...(bed === 0 ? { gummyCrop: next } : { gummyCrop2: next }), juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_FULL_CROP_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(5)) }) };
+        });
+        return changed;
+      },
+      castFishingLine: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'garden' || state.expansion.fishingCastReady) return state;
+          changed = true;
+          return { expansion: { ...state.expansion, fishingCastReady: true } };
+        });
+        return changed;
+      },
+      catchSwedishFish: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'garden' || !state.expansion.fishingCastReady) return state;
+          changed = true;
+          return {
+            progression: withExperience(state.progression, FISH_CATCH_XP),
+            expansion: { ...state.expansion, fishingCastReady: false, swedishFish: Math.min(999, state.expansion.swedishFish + 1) },
+            rewardEvents: appendRewardEvent(state.rewardEvents, { id: `fish-catch-${state.dayNumber}-${state.clock.minute}-${state.expansion.swedishFish}`, title: 'Swedish Fish caught! +1 XP', detail: 'Added to Backpack Items', tokens: 0, reputation: 0 }),
+          };
+        });
+        return changed;
+      },
+      sellSwedishFish: () => {
+        let changed = false;
+        set((state) => {
+          if (state.expansion.swedishFish < 1) return state;
+          changed = true;
+          return {
+            juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + FISH_SALE_CASH),
+            progression: withExperience(state.progression, FISH_SALE_XP),
+            expansion: { ...state.expansion, swedishFish: state.expansion.swedishFish - 1 },
+            rewardEvents: appendRewardEvent(state.rewardEvents, { id: `fish-sale-${state.dayNumber}-${state.clock.minute}-${state.expansion.swedishFish}`, title: 'Swedish Fish sold! +$5 · +2 XP', detail: 'One fish left the backpack', tokens: 0, reputation: 0 }),
+          };
+        });
+        return changed;
+      },
+      purchaseFishingRod: (color) => {
+        let changed = false;
+        set((state) => {
+          if (!FISHING_RODS.includes(color) || state.expansion.ownedRods.includes(color) || state.juiceClubCash < 8) return state;
+          changed = true;
+          return { juiceClubCash: state.juiceClubCash - 8, expansion: { ...state.expansion, ownedRods: [...state.expansion.ownedRods, color] } };
+        });
+        return changed;
+      },
+      equipFishingRod: (color) => {
+        let changed = false;
+        set((state) => {
+          if (!FISHING_RODS.includes(color) || !state.expansion.ownedRods.includes(color) || state.expansion.equippedRod === color) return state;
+          changed = true;
+          return { expansion: { ...state.expansion, equippedRod: color } };
+        });
+        return changed;
+      },
+      completeArtActivity: () => {
+        let changed = false;
+        set((state) => {
+          if (state.schedule !== 'art-time' || state.expansion.artCompletedDays.includes(state.dayNumber)) return state;
+          changed = true;
+          const attendance = { ...state.expansion.attendance, 'art-time': { ...state.expansion.attendance['art-time'], completed: true } };
+          return {
+            juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + ART_CASH),
+            progression: withExperience(state.progression, ART_XP),
+            expansion: { ...state.expansion, attendance, artCompletedDays: [...state.expansion.artCompletedDays, state.dayNumber].slice(-60) },
+            rewardEvents: appendRewardEvent(state.rewardEvents, { id: `art-${state.dayNumber}`, title: 'Art complete! +20 XP · +$20', detail: 'The color pattern matches', tokens: 0, reputation: 0, sticker: 'Art Star' }),
+          };
+        });
+        return changed;
+      },
+      completeShowAndTell: () => {
+        let changed = false;
+        set((state) => {
+          const hasItem = state.inventory.length > 0 || state.collectibles.length > 0 || state.expansion.swedishFish > 0 || state.expansion.seedPackets > 0;
+          if (state.schedule !== 'show-and-tell' || !hasItem || state.expansion.showTellCompletedDays.includes(state.dayNumber)) return state;
+          changed = true;
+          const attendance = { ...state.expansion.attendance, 'show-and-tell': { ...state.expansion.attendance['show-and-tell'], completed: true } };
+          return {
+            progression: withExperience({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)) }, 8),
+            expansion: { ...state.expansion, attendance, showTellCompletedDays: [...state.expansion.showTellCompletedDays, state.dayNumber].slice(-60) },
+            rewardEvents: appendRewardEvent(state.rewardEvents, { id: `show-tell-${state.dayNumber}`, title: 'Show & Tell complete! +8 XP · +2 REP', detail: 'The whole circle reacted', tokens: 0, reputation: monetizedReputation(2), sticker: 'Great Presenter' }),
+          };
+        });
+        return changed;
+      },
+      takeAfternoonSnack: () => {
+        let changed = false;
+        set((state) => {
+          const open = state.clock.minute >= 16 * 60 + 30 && state.clock.minute < 17 * 60;
+          if (!open || state.juiceStock < 1 || state.crackerStock < 1 || state.expansion.afternoonSnackDays.includes(state.dayNumber)) return state;
+          changed = true;
+          return {
+            juiceStock: state.juiceStock - 1,
+            crackerStock: state.crackerStock - 1,
+            progression: withExperience(state.progression, 2),
+            expansion: { ...state.expansion, afternoonSnackDays: [...state.expansion.afternoonSnackDays, state.dayNumber].slice(-60) },
+            rewardEvents: appendRewardEvent(state.rewardEvents, { id: `afternoon-snack-${state.dayNumber}`, title: 'Juice + Crackers! +2 XP', detail: 'Afternoon snack served', tokens: 0, reputation: 0 }),
+          };
+        });
+        return changed;
+      },
+      recordAttendance: (activity, seconds) => set((state) => {
+        if (state.schedule !== activity || state.expansion.attendanceDay !== state.dayNumber) return state;
+        const current = state.expansion.attendance[activity];
+        return { expansion: { ...state.expansion, attendance: { ...state.expansion.attendance, [activity]: { ...current, seconds: Math.min(600, current.seconds + Math.max(0, seconds)) } } } };
+      }),
+      dismissDayReport: () => set((state) => ({ expansion: { ...state.expansion, lastDayReport: null } })),
+      rotateExpansionContent: () => set((state) => {
+        const absoluteMinute = absoluteGameMinute(state.dayNumber, state.clock.minute);
+        let expansion = state.expansion;
+        if (expansion.rotationDay !== state.dayNumber) expansion = { ...expansion, rotationDay: state.dayNumber, activeCollectibles: collectibleRotation(state.dayNumber) };
+        if (expansion.dailyHeistDay !== state.dayNumber) {
+          const nextHeist = heistForDay(state.dayNumber, expansion.dailyHeist);
+          expansion = { ...expansion, dailyHeistDay: state.dayNumber, previousHeist: expansion.dailyHeist, dailyHeist: nextHeist, techHeistStep: 'idle' };
+        }
+        if (!expansion.lostFoundJob && absoluteMinute >= expansion.lostFoundNextMinute) {
+          expansion = { ...expansion, lostFoundJob: createLostFoundJob(state.dayNumber, absoluteMinute, expansion.lostFoundCompleted), lostFoundNextMinute: absoluteMinute + LOST_FOUND_INTERVAL_MINUTES };
+        }
+        return expansion === state.expansion ? state : { expansion };
+      }),
+      collectExpansionCollectible: (id) => {
+        let changed = false;
+        set((state) => {
+          if (!state.expansion.activeCollectibles.includes(id) || state.expansion.foundCollectibles.includes(id)) return state;
+          changed = true;
+          const foundCollectibles = [...state.expansion.foundCollectibles, id];
+          const rotationComplete = state.expansion.activeCollectibles.every((active) => foundCollectibles.includes(active));
+          return {
+            progression: withExperience(state.progression, rotationComplete ? 50 : 5),
+            expansion: { ...state.expansion, foundCollectibles },
+            rewardEvents: appendRewardEvent(state.rewardEvents, { id: `collectible-${id}`, title: rotationComplete ? 'Collectible Hunt complete! +50 XP' : 'Collectible found! +5 XP', detail: id.replaceAll('-', ' '), tokens: 0, reputation: 0, sticker: rotationComplete ? 'Treasure Tracker' : undefined }),
+          };
+        });
+        return changed;
+      },
+      acceptLostFoundJob: () => {
+        let changed = false;
+        set((state) => {
+          const job = state.expansion.lostFoundJob;
+          if (!job || job.status !== 'available') return state;
+          changed = true;
+          return { expansion: { ...state.expansion, lostFoundJob: { ...job, status: 'accepted' } } };
+        });
+        return changed;
+      },
+      collectLostFoundItem: () => {
+        let changed = false;
+        set((state) => {
+          const job = state.expansion.lostFoundJob;
+          if (!job || job.status !== 'accepted' || job.zone !== state.zone) return state;
+          changed = true;
+          return { expansion: { ...state.expansion, lostFoundJob: { ...job, status: 'found' } }, rewardEvents: appendRewardEvent(state.rewardEvents, { id: `lost-found-pickup-${job.id}`, title: `${job.label} found!`, detail: 'Return it to the Lost & Found Desk', tokens: 0, reputation: 0 }) };
+        });
+        return changed;
+      },
+      turnInLostFoundJob: () => {
+        let changed = false;
+        set((state) => {
+          const job = state.expansion.lostFoundJob;
+          if (!job || job.status !== 'found' || state.zone !== 'hub') return state;
+          const juiceBoost = state.schedule === 'juice-club' || (state.clock.minute >= 16 * 60 + 30 && state.clock.minute < 17 * 60);
+          const reward = lostFoundReward(job.rewardSeed, juiceBoost);
+          changed = true;
+          return {
+            juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + reward.cash),
+            progression: withExperience(state.progression, reward.xp),
+            expansion: { ...state.expansion, lostFoundJob: null, lostFoundCompleted: state.expansion.lostFoundCompleted + 1, lostFoundNextMinute: absoluteGameMinute(state.dayNumber, state.clock.minute) + LOST_FOUND_INTERVAL_MINUTES },
+            rewardEvents: appendRewardEvent(state.rewardEvents, { id: `lost-found-return-${job.id}`, title: `Lost & Found ${reward.tier}! +${reward.xp} XP${reward.cash ? ` · +$${reward.cash}` : ''}`, detail: `${job.label} returned safely`, tokens: 0, reputation: 0 }),
+          };
+        });
+        return changed;
+      },
+      advanceTechHeist: () => {
+        let changed = false;
+        set((state) => {
+          if (state.expansion.dailyHeist !== 'tech-stash' || state.expansion.techHeistStep === 'complete') return state;
+          const next = state.expansion.techHeistStep === 'idle' ? 'diversion' : state.expansion.techHeistStep === 'diversion' ? 'retrieve' : 'complete';
+          changed = true;
+          return {
+            progression: next === 'complete' ? withExperience(state.progression, 35) : state.progression,
+            expansion: { ...state.expansion, techHeistStep: next, techTokens: next === 'complete' ? state.expansion.techTokens + 1 : state.expansion.techTokens },
+            rewardEvents: next === 'complete' ? appendRewardEvent(state.rewardEvents, { id: `tech-heist-${state.dayNumber}`, title: 'Pocket Robot recovered! +35 XP', detail: 'Tech Market diversion complete', tokens: 0, reputation: 0, sticker: 'Tiny Hacker' }) : state.rewardEvents,
+          };
         });
         return changed;
       },
@@ -2050,6 +2360,7 @@ export const useGameStore = create<GameState>()(
           useStorybookLaneStore.getState().resetSession();
           const clock = startNextDay(state.clock);
           return {
+            ...closeExpansionDay(state),
             clock,
             timeOfDay: minuteToTimeOfDay(clock.minute),
             dayNumber: state.dayNumber + 1,

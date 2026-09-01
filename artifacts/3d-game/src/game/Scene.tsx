@@ -19,6 +19,7 @@ import { useQualitySettings } from './useQualitySettings';
 import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetryPanel';
 import { GameFrontEnd } from './GameFrontEnd';
 import { AudioWorldDirector } from './AudioWorldDirector';
+import { GameplayExpansionDirector, GameplayExpansionWorld } from './GameplayExpansionWorld';
 import { useModeStore } from './modeStore';
 import { GraphicsUnavailable } from './GraphicsUnavailable';
 import { probeWebGL, watchContextLoss, type WebGLStatus } from './webglSupport';
@@ -104,6 +105,7 @@ function GameScene() {
         </Suspense>
       )}
       <Player ref={playerRef} />
+      <GameplayExpansionWorld />
       <MultiplayerWorld playerRef={playerRef} />
       <InteractionFocusSystem playerRef={playerRef} />
     </>
@@ -182,6 +184,7 @@ export function DayKareApp() {
         <PerformanceTelemetryPanel />
         <GameFrontEnd />
         <AudioWorldDirector />
+        <GameplayExpansionDirector />
         {/* The canvas stays mounted so the browser can restore the context. */}
         {contextLost && <GraphicsUnavailable variant="lost" />}
       </div>

@@ -17,6 +17,7 @@ import { ESCAPE_GRACE_SECONDS, advanceCarriedPlayer, beginEscapeRetrieval, getEs
 import { objectiveIsActive } from './quests';
 import { playGameSound } from './audio';
 import { playVoice } from './audioDirector';
+import { softActivityGuidance } from './schedulePolicy';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -33,6 +34,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const zone = useGameStore((s) => s.zone);
   const playerPosition = useGameStore((s) => s.playerPosition);
   const zoneTransitioning = useGameStore((s) => s.zoneTransitioning);
+  const dayReportOpen = useGameStore((s) => Boolean(s.expansion.lastDayReport));
   const recoveringUntil = useStorybookLaneStore((s) => s.recoveringUntil);
   const setPlayerPosition = useGameStore((s) => s.setPlayerPosition);
   const frontEndBlocked = useModeStore((s) => s.menuOpen || s.activeMode === 'multiplayer-lobby');
@@ -64,7 +66,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const lastTeleport = useRef(teleportTrigger);
   const positionSaveAccumulator = useRef(0);
   const retrievalNoticeSequence = useRef(0);
-  gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning, frontEndBlocked });
+  gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning, frontEndBlocked: frontEndBlocked || dayReportOpen });
   const cameraProfile = getCameraProfile(size.width, size.height);
   const zoneCameraBlockers = useMemo(
     () => CAMERA_BLOCKERS.filter((solid) => solid.zone === zone),
@@ -168,6 +170,10 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
         desiredVelocity.current.addScaledVector(right.current, touch.x * speed);
         desiredVelocity.current.addScaledVector(forward.current, -touch.y * speed);
       }
+      const live = useGameStore.getState();
+      const [guideX, guideZ] = softActivityGuidance(live.schedule, live.zone, localRef.current.position.toArray());
+      desiredVelocity.current.x += guideX;
+      desiredVelocity.current.z += guideZ;
     }
 
     if (desiredVelocity.current.length() > speed) {
@@ -263,7 +269,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       if (isGrounded) {
         localRef.current.position.y = 0;
         yVelocity.current = 0;
-        if (keys.jump && !crouching && !isRiding) {
+        if ((keys.jump || touch.jump) && !crouching && !isRiding) {
           yVelocity.current = 6;
         }
       } else {

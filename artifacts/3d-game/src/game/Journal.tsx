@@ -27,6 +27,7 @@ import {
 } from './questBoard';
 import { WorldMap } from './WorldMapView';
 import { DripPanel } from './DripPanel';
+import { COLLECTIBLE_DEFINITIONS } from './gameplayExpansion';
 
 /**
  * The Journal.
@@ -183,6 +184,9 @@ export function Journal() {
     schedule,
     optionalRewardBoostUntil,
     recentInstructions,
+    expansion,
+    gummyCrop,
+    gummyCrop2,
     activateOptionalRewardBoost,
   } = useGameStore();
 
@@ -466,17 +470,30 @@ export function Journal() {
                 <h3 className="daykare-section-head"><Backpack className="w-5 h-5 text-orange-600" /> Backpack</h3>
                 <div className="text-xs text-[#7a6353] mb-1">Items</div>
                 <div className="flex flex-wrap gap-2">
-                  {inventory.length === 0 && <span className="text-sm italic text-[#8b5a2b]/70">Empty…</span>}
+                  {inventory.length === 0 && expansion.seedPackets === 0 && expansion.swedishFish === 0 && gummyCrop.gummyDrops + gummyCrop2.gummyDrops === 0 && <span className="text-sm italic text-[#8b5a2b]/70">Empty…</span>}
                   {inventory.map((item) => (
                     <span key={item} className="bg-orange-100 text-orange-900 px-3 py-1 rounded-full text-sm font-bold border border-orange-300">{item}</span>
                   ))}
+                  {expansion.seedPackets > 0 && <span className="bg-green-100 text-green-900 px-3 py-1 rounded-full text-sm font-bold border border-green-300">Seed Packets ×{expansion.seedPackets}</span>}
+                  {expansion.swedishFish > 0 && <span className="bg-red-100 text-red-900 px-3 py-1 rounded-full text-sm font-bold border border-red-300">Swedish Fish ×{expansion.swedishFish}</span>}
+                  {gummyCrop.gummyDrops + gummyCrop2.gummyDrops > 0 && <span className="bg-pink-100 text-pink-900 px-3 py-1 rounded-full text-sm font-bold border border-pink-300">Gumdrop Bucket ×{gummyCrop.gummyDrops + gummyCrop2.gummyDrops}</span>}
+                  <span className="bg-sky-100 text-sky-900 px-3 py-1 rounded-full text-sm font-bold border border-sky-300">{expansion.equippedRod} Fishing Rod · Equipped</span>
                 </div>
                 <div className="text-xs text-[#7a6353] mt-3 mb-1">Collectibles</div>
                 <div className="flex flex-wrap gap-2">
-                  {collectibles.length === 0 && <span className="text-sm italic text-[#8b5a2b]/70">Empty…</span>}
+                  {collectibles.length === 0 && expansion.foundCollectibles.length === 0 && <span className="text-sm italic text-[#8b5a2b]/70">Empty…</span>}
                   {collectibles.map((item) => (
                     <span key={item} className="bg-purple-100 text-purple-900 px-3 py-1 rounded-full text-sm font-bold border border-purple-300">{item}</span>
                   ))}
+                  {expansion.foundCollectibles.map((id) => {
+                    const definition = COLLECTIBLE_DEFINITIONS.find((entry) => entry.id === id);
+                    return <span key={id} className="bg-purple-100 text-purple-900 px-3 py-1 rounded-full text-sm font-bold border border-purple-300">{definition?.label ?? id}</span>;
+                  })}
+                </div>
+                <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
+                  <strong>XP: {progression.experience ?? 0}</strong>
+                  <p>Rotating hunt: {expansion.activeCollectibles.filter((id) => expansion.foundCollectibles.includes(id)).length}/{expansion.activeCollectibles.length} found today.</p>
+                  <p>Lost &amp; Found: {expansion.lostFoundJob ? `${expansion.lostFoundJob.label} · ${expansion.lostFoundJob.status}` : 'next job rotating soon'}.</p>
                 </div>
               </div>
 

@@ -16,6 +16,8 @@ export interface RouteDefinition {
 export interface ProgressionState {
   version: number;
   reputation: number;
+  /** Lifetime gameplay XP. Kept separate from spendable Star Tokens. */
+  experience?: number;
   tokens: number;
   routeUnlocks: string[];
   activityRuns: Record<string, number>;
@@ -47,12 +49,15 @@ export const PROGRESSION_VERSION = 4;
 export const MAX_REPUTATION = 1000;
 
 export const MAX_TOKENS = 999_999;
+export const MAX_EXPERIENCE = 9_999_999;
 export const MAX_ACTIVITY_RUNS = 99_999;
 
 export const ACTIVITY_DEFINITIONS = {
   'rainbow-tidy-up': { tokenReward: 2, reputationReward: 2 },
   'juice-club-service': { tokenReward: 1, reputationReward: 1 },
   'garden-planting': { tokenReward: 2, reputationReward: 1 },
+  'art-activity': { tokenReward: 0, reputationReward: 0 },
+  'show-and-tell': { tokenReward: 0, reputationReward: 2 },
 } as const;
 
 export type ActivityId = keyof typeof ACTIVITY_DEFINITIONS;
@@ -92,6 +97,7 @@ export const HUB_ROUTES: RouteDefinition[] = [
 export const createInitialProgression = (): ProgressionState => ({
   version: PROGRESSION_VERSION,
   reputation: 0,
+  experience: 0,
   tokens: 0,
   routeUnlocks: [],
   activityRuns: {},
@@ -144,6 +150,7 @@ export function normalizeProgression(value: unknown): ProgressionState {
   const normalized: ProgressionState = {
     version: PROGRESSION_VERSION,
     reputation: safeCount(candidate.reputation, 0, MAX_REPUTATION),
+    experience: safeCount(candidate.experience, 0, MAX_EXPERIENCE),
     tokens: safeCount(candidate.tokens, 0, MAX_TOKENS),
     routeUnlocks,
     activityRuns: safeCountRecord(candidate.activityRuns, knownActivityIds, MAX_ACTIVITY_RUNS),

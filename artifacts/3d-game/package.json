@@ -8,7 +8,7 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx src/game/foundations.test.ts && tsx src/game/audio.test.ts && tsx src/game/audioAssets.test.ts && tsx src/game/cloudSync.test.ts && tsx src/game/clock.test.ts && tsx src/game/overhaul.test.ts && tsx src/game/monetization.test.ts && tsx src/game/dailyLoop.test.ts && tsx src/game/storybookMultiplayer.test.ts && tsx src/game/escapeRetrieval.test.ts",
+    "test": "tsx src/game/foundations.test.ts && tsx src/game/audio.test.ts && tsx src/game/audioAssets.test.ts && tsx src/game/cloudSync.test.ts && tsx src/game/clock.test.ts && tsx src/game/overhaul.test.ts && tsx src/game/monetization.test.ts && tsx src/game/dailyLoop.test.ts && tsx src/game/gameplayExpansion.test.ts && tsx src/game/storybookMultiplayer.test.ts && tsx src/game/escapeRetrieval.test.ts",
     "test:browser": "node scripts/browser-smoke.mjs"
   },
   "devDependencies": {

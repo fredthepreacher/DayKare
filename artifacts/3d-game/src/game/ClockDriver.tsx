@@ -31,6 +31,7 @@ function currentPauseReason(): PauseReason | null {
   const game = useGameStore.getState();
   const mode = useModeStore.getState();
   const frontEndBlocked = mode.menuOpen || mode.activeMode === 'multiplayer-lobby';
+  if (game.expansion.lastDayReport) return 'front-end';
 
   if (!isGameplayBlocked({
     journalOpen: game.journalOpen,

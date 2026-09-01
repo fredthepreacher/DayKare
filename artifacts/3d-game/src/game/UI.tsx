@@ -36,6 +36,9 @@ import { useStorybookLaneStore } from './storybookLaneStore';
 import { STORYBOOK_OPEN_MINUTE, STORYBOOK_PRICES, storybookIsOpen, type StorybookItemId } from './storybookLaneConfig';
 import { playStorybookSound } from './storybookLaneAudio';
 import { purchaseMultiplayerStorybookItem, useMultiplayerStore } from './multiplayer';
+import type { CollectibleId } from './gameplayExpansion';
+import { setTouchCrouch, setTouchJump, setTouchMove, setTouchRun } from './touchInput';
+import { mapStandardGamepad } from './gamepadInput';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -100,12 +103,26 @@ export function UI() {
     advanceGardenActivity,
     resetGardenActivity,
     gummyCrop,
+    gummyCrop2,
+    expansion,
     plantGummyDrops,
     harvestGummyDrops,
     eatGummyDrop,
     feedGummyDrop,
     sellGummyCrop,
     completeActivity,
+    castFishingLine,
+    catchSwedishFish,
+    sellSwedishFish,
+    completeArtActivity,
+    completeShowAndTell,
+    takeAfternoonSnack,
+    dismissDayReport,
+    collectExpansionCollectible,
+    acceptLostFoundJob,
+    collectLostFoundItem,
+    turnInLostFoundJob,
+    advanceTechHeist,
     ambientMessage,
     activeInstruction,
     showInstruction,
@@ -134,7 +151,7 @@ export function UI() {
   useEffect(() => {
     if (!activeInstruction) return;
     const elapsed = Date.now() - activeInstruction.shownAt;
-    const timer = window.setTimeout(dismissInstruction, Math.max(0, 5_000 - elapsed));
+    const timer = window.setTimeout(dismissInstruction, Math.max(0, 2_500 - elapsed));
     return () => window.clearTimeout(timer);
   }, [activeInstruction, dismissInstruction]);
   const weatherLabel = useWeatherLabel();
@@ -178,6 +195,40 @@ export function UI() {
   const queueCursor = useRef(0);
   const dialogueRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    let frame = 0;
+    let connected = false;
+    let previousInteract = false;
+    let previousJournal = false;
+    const poll = () => {
+      const pad = Array.from(navigator.getGamepads()).find(Boolean);
+      if (pad) {
+        connected = true;
+        const actions = mapStandardGamepad(pad);
+        setTouchMove(actions.x, actions.y);
+        setTouchRun(actions.run);
+        setTouchCrouch(actions.crouch);
+        setTouchJump(actions.jump);
+        const interact = actions.interact;
+        const journal = actions.journal;
+        if (interact && !previousInteract) interactRef.current();
+        if (journal && !previousJournal) toggleJournal();
+        previousInteract = interact;
+        previousJournal = journal;
+      } else if (connected) {
+        connected = false;
+        setTouchMove(0, 0);
+        setTouchRun(false);
+        setTouchCrouch(false);
+        setTouchJump(false);
+      }
+      frame = window.requestAnimationFrame(poll);
+    };
+    frame = window.requestAnimationFrame(poll);
+    return () => window.cancelAnimationFrame(frame);
+  }, [toggleJournal]);
   const dialogueWasOpen = useRef(false);
 
   useEffect(() => {
@@ -254,7 +305,7 @@ export function UI() {
   useEffect(() => {
     if (!activeReward) return;
     playGameSound('reward', 'interaction');
-    const timer = window.setTimeout(() => dismissRewardEvent(activeReward.id), 2600);
+    const timer = window.setTimeout(() => dismissRewardEvent(activeReward.id), 2500);
     return () => window.clearTimeout(timer);
   }, [activeReward?.id, dismissRewardEvent]);
 
@@ -361,6 +412,10 @@ export function UI() {
               name: 'Juice Stand',
               text: waitingCustomers.length > 0 ? `${waitingCustomers[0]} is waiting for juice!` : 'Waiting for customers...',
               options: [
+                ...(expansion.swedishFish > 0 ? [{
+                  label: `Sell 1 Swedish Fish · $5 + 2 XP (${expansion.swedishFish})`,
+                  action: () => { sellSwedishFish(); playGameSound('reward', 'interaction'); setActiveDialogue(null); },
+                }] : []),
                 {
                   label: 'Serve Customer',
                   action: () => {
@@ -499,19 +554,24 @@ export function UI() {
           leaveStorybookLane();
         } else if (activeInteractable === 'garden-return') {
           returnToHub();
-        } else if (activeInteractable === 'garden-activity-host') {
-          if (gardenActivityStep === 0) {
-            startGardenActivity();
+        } else if (activeInteractable.startsWith('garden-activity-host-')) {
+          const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
+          const plantingStep = bed === 0 ? gardenActivityStep : expansion.secondPlantingStep;
+          if (plantingStep === 0) {
+            if (!startGardenActivity(bed)) {
+              setActiveDialogue({ name: 'Gardener Nia', text: 'Each bed needs three seed packets. Check the Seed Inspection station or your Backpack.' });
+              return;
+            }
             playGameSound('garden-plant', 'interaction');
             setActiveDialogue({
               name: 'Gardener Nia',
-              text: 'Let’s wake up this planting bed. First, loosen the soil around the three seedlings.',
+              text: `Let’s wake up planting bed ${bed + 1}. First, loosen the soil for three seeds.`,
             });
-          } else if (gardenActivityStep < 3) {
-            const nextStep = advanceGardenActivity();
+          } else if (plantingStep < 3) {
+            const nextStep = advanceGardenActivity(bed);
             playGameSound(nextStep >= 3 ? 'garden-harvest' : 'garden-plant', 'interaction');
             if (nextStep >= 3) {
-              completeActivity('garden-planting', 2, 1);
+              completeActivity('garden-planting', 2, 1, bed);
               setActiveDialogue(rivalStory.beat === 'garden-reversal'
                 ? {
                     name: 'Mae',
@@ -525,33 +585,127 @@ export function UI() {
               });
             }
           } else {
-            resetGardenActivity();
+            resetGardenActivity(bed);
             setActiveDialogue({
               name: 'Gardener Nia',
               text: 'The bed is ready for another planting round whenever you are.',
             });
           }
-        } else if (activeInteractable === 'gummy-drop-bed') {
+        } else if (activeInteractable.startsWith('gummy-drop-bed-')) {
+          const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
+          const selectedCrop = bed === 0 ? gummyCrop : gummyCrop2;
           const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
-          if (gummyCrop.plantedAt === null) {
-            plantGummyDrops();
+          if (selectedCrop.plantedAt === null) {
+            plantGummyDrops(bed);
             playGameSound('garden-plant', 'interaction');
-            setActiveDialogue({ name: 'Gummy Drop Garden', text: 'Seeds planted! They need five in-game hours to grow a full crop of ten Gummy Drops.' });
-          } else if (cropIsReady(gummyCrop, now)) {
-            harvestGummyDrops();
+            setActiveDialogue({ name: `Gummy Drop Garden ${bed + 1}`, text: 'Seeds planted! They need five in-game hours to grow a full crop of ten Gummy Drops.' });
+          } else if (cropIsReady(selectedCrop, now)) {
+            harvestGummyDrops(bed);
             playGameSound('garden-harvest', 'interaction');
             setActiveDialogue({ name: 'Gummy Drop Garden', text: 'Ten Gummy Drops harvested! Sell the basket for $30, share them for cash and REP, or eat one.' });
           } else {
-            setActiveDialogue({ name: 'Gummy Drop Garden', text: `The candy plants are ${Math.floor(cropProgress(gummyCrop, now) * 100)}% grown. A full crop takes five in-game hours.` });
+            setActiveDialogue({ name: 'Gummy Drop Garden', text: `The candy plants are ${Math.floor(cropProgress(selectedCrop, now) * 100)}% grown. A full crop takes five in-game hours.` });
           }
-          if (gummyCrop.gummyDrops > 0) setActiveDialogue({
-            name: 'Gummy Drop Basket', text: `${gummyCrop.gummyDrops} Gummy Drops ready. Sharing earns respect; a full basket sells for $30.`,
+          if (selectedCrop.gummyDrops > 0) setActiveDialogue({
+            name: 'Gummy Drop Basket', text: `${selectedCrop.gummyDrops} Gummy Drops ready. Sharing earns respect; a full basket sells for $30.`,
             options: [
-              ...(gummyCrop.gummyDrops >= GUMMY_HARVEST_SIZE ? [{ label: 'Sell 10 for $30 + 5 REP', action: () => { sellGummyCrop(); setActiveDialogue(null); } }] : []),
-              { label: 'Share 1 · $3 + 2 REP', action: () => { feedGummyDrop(); setActiveDialogue(null); } },
-              { label: 'Eat 1 · +1 REP', action: () => { eatGummyDrop(); setActiveDialogue(null); } },
+              ...(selectedCrop.gummyDrops >= GUMMY_HARVEST_SIZE ? [{ label: 'Sell 10 for $30 + 5 REP', action: () => { sellGummyCrop(bed); setActiveDialogue(null); } }] : []),
+              { label: 'Share 1 · $3 + 2 REP', action: () => { feedGummyDrop(bed); setActiveDialogue(null); } },
+              { label: 'Eat 1 · +1 REP', action: () => { eatGummyDrop(bed); setActiveDialogue(null); } },
               { label: 'Leave', action: () => setActiveDialogue(null) },
             ],
+          });
+        } else if (activeInteractable === 'garden-fishing-spot') {
+          if (!expansion.fishingCastReady) {
+            castFishingLine();
+            setActiveDialogue({
+              name: 'Ripple Pond Fishing',
+              text: `You cast the ${expansion.equippedRod} rod. Watch the bobber… now reel when it splashes!`,
+              options: [
+                { label: 'Reel now!', action: () => { catchSwedishFish(); playGameSound('pickup', 'interaction'); setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. It is safely stored in Backpack Items.' }); } },
+                { label: 'Cancel cast', action: () => setActiveDialogue(null) },
+              ],
+            });
+          } else {
+            catchSwedishFish();
+            playGameSound('pickup', 'interaction');
+            setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. It is safely stored in Backpack Items.' });
+          }
+        } else if (activeInteractable === 'seed-inspection') {
+          const canPlant = expansion.seedPackets >= 3;
+          const lucky = (dayNumber + expansion.seedPackets) % 4 === 0;
+          setActiveDialogue({
+            name: 'Seed Discovery Station',
+            text: `${expansion.seedPackets} seed packets held. Crop: cheerful mixed seedlings. Growth: immediate three-step planting activity. Expected yield: 3 seedlings and +12 XP. ${canPlant ? 'Plantable now.' : 'You need 3 packets for a set.'} Quality: ${lucky ? 'Lucky Seed!' : 'Good Seed.'}`,
+          });
+        } else if (activeInteractable.startsWith('expansion-collectible-')) {
+          const id = activeInteractable.replace('expansion-collectible-', '') as CollectibleId;
+          if (collectExpansionCollectible(id)) playGameSound('pickup', 'interaction');
+        } else if (activeInteractable === 'lost-found-desk') {
+          const job = expansion.lostFoundJob;
+          if (!job) {
+            setActiveDialogue({ name: 'Lost & Found Job Board', text: 'The board is clear. A new lost-item notice rotates in about every ten in-game minutes.' });
+          } else if (job.status === 'available') {
+            setActiveDialogue({ name: 'Lost & Found Job Board', text: `LOST ITEM: ${job.label}. Search the ${job.zone === 'garden' ? 'Garden District' : 'main daycare'}.`, options: [
+              { label: 'Accept job', action: () => { acceptLostFoundJob(); setActiveDialogue({ name: 'Job Accepted', text: `Find ${job.label}, then bring it back to this desk.` }); } },
+              { label: 'Later', action: () => setActiveDialogue(null) },
+            ] });
+          } else if (job.status === 'found') {
+            turnInLostFoundJob();
+            playGameSound('reward', 'interaction');
+            setActiveDialogue({ name: 'Lost & Found', text: `${job.label} returned! Your RNG reward is shown in the notification.` });
+          } else {
+            setActiveDialogue({ name: 'Lost & Found Job Board', text: `Active job: find ${job.label} in the ${job.zone === 'garden' ? 'Garden District' : 'main daycare'}.` });
+          }
+        } else if (activeInteractable === 'lost-found-item') {
+          if (collectLostFoundItem()) {
+            playGameSound('pickup', 'interaction');
+            setActiveDialogue({ name: 'Found it!', text: `The ${expansion.lostFoundJob?.label ?? 'lost item'} is in your quest backpack. Return it to the Lost & Found Desk.` });
+          }
+        } else if (activeInteractable === 'art-mini-activity') {
+          if (schedule !== 'art-time') {
+            setActiveDialogue({ name: 'Art Center', text: 'The pattern table opens during Art Time at 10:30 AM.' });
+          } else if (expansion.artCompletedDays.includes(dayNumber)) {
+            setActiveDialogue({ name: 'Art Center', text: 'Today’s art pattern is complete. You can still explore the art room.' });
+          } else {
+            setActiveDialogue({ name: 'Color Pattern', text: 'Finish the pattern: red, blue, red, blue…', options: [
+              { label: 'Choose red', action: () => { completeArtActivity(); playGameSound('reward', 'interaction'); setActiveDialogue({ name: 'Art Center', text: 'Perfect pattern! +20 XP and +$20.' }); } },
+              { label: 'Choose green', action: () => setActiveDialogue({ name: 'Art Center', text: 'Almost! Look at the alternating colors and try again.' }) },
+              { label: 'Leave', action: () => setActiveDialogue(null) },
+            ] });
+          }
+        } else if (activeInteractable === 'show-and-tell-spot') {
+          if (schedule !== 'show-and-tell') {
+            setActiveDialogue({ name: 'Show & Tell Classroom', text: 'The large back-room circle opens for presentations at 10:15 AM.' });
+          } else {
+            const item = inventory[0] ?? collectibles[0] ?? (expansion.swedishFish > 0 ? 'Swedish Fish' : expansion.seedPackets > 0 ? 'Seed Packet' : null);
+            if (!item) setActiveDialogue({ name: 'Show & Tell', text: 'Bring an eligible Backpack item or collectible to present.' });
+            else if (completeShowAndTell()) {
+              playGameSound('reward', 'interaction');
+              setActiveDialogue({ name: 'Show & Tell', text: `You presented ${item}. Ruby says, “That is delightfully weird!” +8 XP and +2 REP.` });
+            } else setActiveDialogue({ name: 'Show & Tell', text: 'You already presented today. The circle still remembers it.' });
+          }
+        } else if (activeInteractable === 'tech-market') {
+          if (expansion.dailyHeist === 'tech-stash' && expansion.techHeistStep !== 'complete') {
+            const copy = expansion.techHeistStep === 'idle' ? 'A Pocket Robot is stuck behind the display. Start a toy-cart diversion?' : expansion.techHeistStep === 'diversion' ? 'The cart is rolling. Use the side switch to open the display.' : 'The display is open. Recover the Pocket Robot.';
+            setActiveDialogue({ name: 'Tech Market', text: copy, options: [
+              { label: expansion.techHeistStep === 'retrieve' ? 'Recover robot' : 'Advance heist', action: () => { advanceTechHeist(); playGameSound('interaction', 'interaction'); setActiveDialogue(null); } },
+              { label: 'Leave', action: () => setActiveDialogue(null) },
+            ] });
+          } else {
+            setActiveDialogue({ name: 'Tech Market', text: `Kid-tech trading kiosk. You own ${expansion.techTokens} Pocket Robot token${expansion.techTokens === 1 ? '' : 's'}. Today’s rotating heist is ${expansion.dailyHeist === 'sticker-parade' ? 'Sticker Parade' : 'Tech Stash'}.` });
+          }
+        } else if (activeInteractable === 'snack-window') {
+          const minute = useGameStore.getState().clock.minute;
+          const open = minute >= 16 * 60 + 30 && minute < 17 * 60;
+          const alreadyHadSnack = expansion.afternoonSnackDays.includes(dayNumber);
+          setActiveDialogue({
+            name: 'Afternoon Snack Window',
+            text: open ? `Juice + Crackers are available now (4:30–5:00 PM). Stock: ${juiceStock} juice and ${crackerStock} crackers.` : 'Juice + Crackers are served here from 4:30–5:00 PM.',
+            options: open && !alreadyHadSnack ? [
+              { label: 'Take Juice + Crackers', action: () => { takeAfternoonSnack(); playGameSound('juice-service', 'interaction'); setActiveDialogue(null); } },
+              { label: 'Leave', action: () => setActiveDialogue(null) },
+            ] : undefined,
           });
         } else if (activeInteractable.startsWith('garden-landmark-')) {
           const landmark = activeInteractable.replace('garden-landmark-', '');
@@ -721,7 +875,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, collectibles, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, gummyCrop2, expansion, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, startGardenActivity, advanceGardenActivity, resetGardenActivity, completeActivity, castFishingLine, catchSwedishFish, sellSwedishFish, completeArtActivity, completeShowAndTell, takeAfternoonSnack, collectExpansionCollectible, acceptLostFoundJob, collectLostFoundItem, turnInLostFoundJob, advanceTechHeist, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
@@ -920,17 +1074,30 @@ export function UI() {
     if (activeInteractable === 'storybook-ice-cream') return 'Get Ice Cream · 25 RB';
     if (activeInteractable === 'storybook-exit') return 'Return to DayKare';
     if (activeInteractable.startsWith('storybook-home-')) return activeInteractable === 'storybook-home-my-home' ? 'Visit My Home & Garage' : 'Visit Home';
-    if (activeInteractable === 'garden-activity-host') {
-      if (gardenActivityStep === 0) return 'Start Planting';
-      if (gardenActivityStep < 3) return `Tend Seedlings · ${gardenActivityStep}/3`;
+    if (activeInteractable.startsWith('garden-activity-host-')) {
+      const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
+      const step = bed === 0 ? gardenActivityStep : expansion.secondPlantingStep;
+      if (step === 0) return `Start Planting Bed ${bed + 1}`;
+      if (step < 3) return `Tend Seedlings · ${step}/3`;
       return 'Plant Another Bed';
     }
-    if (activeInteractable === 'gummy-drop-bed') {
+    if (activeInteractable.startsWith('gummy-drop-bed-')) {
+      const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
+      const crop = bed === 0 ? gummyCrop : gummyCrop2;
       const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
-      if (gummyCrop.gummyDrops > 0) return `Gummy Basket · ${gummyCrop.gummyDrops}`;
-      if (cropIsReady(gummyCrop, now)) return 'Harvest 10 Gummy Drops';
-      return gummyCrop.plantedAt === null ? 'Plant Gummy Drop Seeds' : `Check Candy Plants · ${Math.floor(cropProgress(gummyCrop, now) * 100)}%`;
+      if (crop.gummyDrops > 0) return `Gummy Basket ${bed + 1} · ${crop.gummyDrops}`;
+      if (cropIsReady(crop, now)) return 'Harvest 10 Gummy Drops';
+      return crop.plantedAt === null ? `Plant Gummy Bed ${bed + 1}` : `Check Candy Plants · ${Math.floor(cropProgress(crop, now) * 100)}%`;
     }
+    if (activeInteractable === 'garden-fishing-spot') return expansion.fishingCastReady ? 'Reel Swedish Fish' : `Fish with ${expansion.equippedRod} rod`;
+    if (activeInteractable === 'seed-inspection') return 'Inspect Held Seeds';
+    if (activeInteractable.startsWith('expansion-collectible-')) return 'Collect Item';
+    if (activeInteractable === 'lost-found-desk') return expansion.lostFoundJob?.status === 'found' ? 'Return Lost Item' : 'Check Job Board';
+    if (activeInteractable === 'lost-found-item') return 'Pick Up Lost Item';
+    if (activeInteractable === 'art-mini-activity') return 'Play Art Pattern';
+    if (activeInteractable === 'show-and-tell-spot') return 'Present Backpack Item';
+    if (activeInteractable === 'tech-market') return 'Use Tech Market';
+    if (activeInteractable === 'snack-window') return 'Check Juice + Crackers';
     if (activeInteractable === 'caper-board') {
       if (caper.step === 'idle' || caper.step === 'complete') return 'Start Sticker Parade';
       if (caper.step === 'celebrate') return 'Launch Sticker Parade';
@@ -969,8 +1136,16 @@ export function UI() {
     if (activeInteractable === 'storybook-ice-cream') return `${storybook.ribbonBucks} RB balance · scoop ${storybook.sessionScoops + 1}`;
     if (activeInteractable === 'storybook-exit') return 'Leave the neighborhood';
     if (activeInteractable.startsWith('storybook-home-')) return activeInteractable === 'storybook-home-my-home' ? 'Starter home · pets, crib and vehicle shop' : 'Visitable social home';
-    if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
-    if (activeInteractable === 'gummy-drop-bed') return 'Five-hour crop · $30 per full basket · REP from sharing';
+    if (activeInteractable.startsWith('garden-activity-host-')) return '3 seeds · +12 XP once per planting set';
+    if (activeInteractable.startsWith('gummy-drop-bed-')) return 'Five-hour crop · $30 per full basket · REP from sharing';
+    if (activeInteractable === 'garden-fishing-spot') return 'Catch +1 XP · sell for $5 +2 XP';
+    if (activeInteractable === 'seed-inspection') return `${expansion.seedPackets} seed packets · crop and yield report`;
+    if (activeInteractable.startsWith('expansion-collectible-')) return 'Rotating daycare and Garden hunt';
+    if (activeInteractable === 'lost-found-desk' || activeInteractable === 'lost-found-item') return '10-minute rotating job · RNG reward';
+    if (activeInteractable === 'art-mini-activity') return 'Art Time · +20 XP and +$20 once per day';
+    if (activeInteractable === 'show-and-tell-spot') return 'Show & Tell · present a Backpack item';
+    if (activeInteractable === 'tech-market') return 'Kid-tech kiosk · rotating heist hook';
+    if (activeInteractable === 'snack-window') return 'Open 4:30–5:00 PM';
     if (activeInteractable === 'caper-board') return 'Safe caper · planned with teacher supervision';
     if (activeInteractable === 'parade-banner') return 'Authorized story objective · teacher supervised';
     if (activeInteractable === 'caper-bubble-table') return 'Public hall setup · supervised activity';
@@ -996,7 +1171,7 @@ export function UI() {
   const interactionDetail = getInteractionDetail();
   const activeQuest = getActiveQuest(quests);
   const activeObjective = getCurrentObjective(quests);
-  const gameplayBlocked = journalOpen || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked;
+  const gameplayBlocked = journalOpen || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked || Boolean(expansion.lastDayReport);
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">
@@ -1238,6 +1413,26 @@ export function UI() {
             )}
           </div>
           {activeReward.sticker && <div className="daykare-reward-sticker">{activeReward.sticker}</div>}
+        </div>
+      )}
+
+      {expansion.lastDayReport && (
+        <div className="absolute inset-0 z-[75] grid place-items-center bg-[#183f35]/70 p-4 pointer-events-auto" role="dialog" aria-modal="true" aria-label="Day report">
+          <section className="w-full max-w-lg rounded-3xl border-4 border-[#ffd166] bg-[#fff8e8] p-6 text-[#5c3a21] shadow-2xl">
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9b642e]">Day {expansion.lastDayReport.day}</p>
+            <h2 className="font-serif text-3xl font-black">Day Report</h2>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+              <strong>Activities attended</strong><span>{expansion.lastDayReport.attended.length ? expansion.lastDayReport.attended.map(getScheduleLabel).join(', ') : 'None'}</span>
+              <strong>Activities missed</strong><span>{expansion.lastDayReport.missed.length ? expansion.lastDayReport.missed.map(getScheduleLabel).join(', ') : 'None'}</span>
+              <strong>Good behavior</strong><span>{expansion.lastDayReport.goodBehavior ? 'Yes' : 'Needs practice'}</span>
+              <strong>Escape attempts</strong><span>{expansion.lastDayReport.escapeAttempts}</span>
+              <strong>Jobs completed</strong><span>{expansion.lastDayReport.jobsCompleted}</span>
+              <strong>REP earned / lost</strong><span>+{expansion.lastDayReport.reputationEarned} / -{expansion.lastDayReport.reputationLost}</span>
+              <strong>XP earned</strong><span>+{expansion.lastDayReport.xpEarned}</span>
+              <strong>Money earned</strong><span>+${expansion.lastDayReport.moneyEarned}</span>
+            </div>
+            <button type="button" className="mt-5 w-full rounded-xl bg-[#5c3a21] px-4 py-3 font-black text-white" onClick={dismissDayReport}>Start the next day</button>
+          </section>
         </div>
       )}
 

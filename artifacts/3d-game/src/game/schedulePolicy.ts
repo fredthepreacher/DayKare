@@ -86,3 +86,16 @@ export function playerFollowsSchedule(id: ScheduleBlockId, zone: GameZone, posit
   const dz = (position[2] ?? 0) - policy.anchor[2];
   return dx * dx + dz * dz <= policy.radius * policy.radius;
 }
+
+const GUIDED_ACTIVITIES = new Set<ScheduleBlockId>(['breakfast', 'show-and-tell', 'art-time', 'lunch', 'nap']);
+
+/** A small, breakable nudge: 0.45 units/s against a 4–8 units/s player. */
+export function softActivityGuidance(id: ScheduleBlockId, zone: GameZone, position: readonly number[]): [number, number] {
+  const policy = schedulePolicy(id);
+  if (!policy || !GUIDED_ACTIVITIES.has(id) || zone !== policy.zone) return [0, 0];
+  const dx = policy.anchor[0] - (position[0] ?? 0);
+  const dz = policy.anchor[2] - (position[2] ?? 0);
+  const distance = Math.hypot(dx, dz);
+  if (distance <= policy.radius + 1.5 || distance < 0.001) return [0, 0];
+  return [dx / distance * 0.45, dz / distance * 0.45];
+}

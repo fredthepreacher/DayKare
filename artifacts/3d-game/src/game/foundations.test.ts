@@ -54,6 +54,7 @@ import {
 } from './world';
 import { shouldSpawnShinyRock } from './Interactables';
 import { CameraRig, advanceCameraPosition, isSweptSphereClear } from './cameraRig';
+import { MISSED_ACTIVITY_REP } from './gameplayExpansion';
 import {
   normalizePersistedGameState,
   normalizeSavedItems,
@@ -254,7 +255,7 @@ assert.equal(rolledDay.dayNumber, dayBeforeRollover + 1);
 assert.equal(rolledDay.timeOfDay, 9);
 assert.equal(rolledDay.schedule, 'breakfast');
 assert.equal(rolledDay.progression.tokens, 26, 'day rollover preserves permanent progression');
-assert.equal(rolledDay.progression.reputation, 17);
+assert.equal(rolledDay.progression.reputation, 17 - 2 * MISSED_ACTIVITY_REP, 'day rollover applies the two explained missed-activity penalties');
 
 assert.equal(rolledDay.startCaper(), true);
 assert.equal(rolledDay.startCaper(), false, 'an active caper cannot restart over itself');
@@ -1814,7 +1815,7 @@ assert.equal(getTouchInput().crouch, true);
 clearTouchMove();
 assert.deepEqual({ x: getTouchInput().x, y: getTouchInput().y }, { x: 0, y: 0 });
 resetTouchInput();
-assert.deepEqual(getTouchInput(), { x: 0, y: 0, run: false, crouch: false }, 'blocking overlays clear all touch toggles');
+assert.deepEqual(getTouchInput(), { x: 0, y: 0, run: false, crouch: false, jump: false }, 'blocking overlays clear all touch and gamepad toggles');
 assert.equal(isTouchTap(true, 0), false, 'a completed hold cannot become a tap on pointer release');
 assert.equal(isTouchTap(false, 12), true, 'a short untouched release remains a tap');
 assert.equal(isTouchTap(false, 24), false, 'a movement gesture cannot become a tap');

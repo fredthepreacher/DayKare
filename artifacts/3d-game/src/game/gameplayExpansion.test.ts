@@ -1,0 +1,126 @@
+import assert from "node:assert/strict";
+import {
+  ART_CASH,
+  ART_XP,
+  COLLECTIBLE_DEFINITIONS,
+  FISH_CATCH_XP,
+  FISH_SALE_CASH,
+  FISH_SALE_XP,
+  FISHING_RODS,
+  MISSED_ACTIVITY_REP,
+  PLANTING_XP,
+  collectibleRotation,
+  createGameplayExpansion,
+  heistForDay,
+  lostFoundReward,
+  normalizeGameplayExpansion,
+} from "./gameplayExpansion";
+import { createInitialProgression } from "./progression";
+import { softActivityGuidance } from "./schedulePolicy";
+import { useGameStore } from "./store";
+import { absoluteGameMinute, GUMMY_GROWTH_MINUTES } from "./gardenEconomy";
+import { mapStandardGamepad } from "./gamepadInput";
+
+assert.equal(PLANTING_XP, 12);
+assert.equal(FISH_CATCH_XP + FISH_SALE_XP, 3);
+assert.equal(FISH_SALE_CASH, 5);
+assert.equal(ART_XP, 20);
+assert.equal(ART_CASH, 20);
+assert.equal(MISSED_ACTIVITY_REP, 5);
+assert.deepEqual(FISHING_RODS, ["red", "white", "blue", "green", "purple"]);
+const buttons = Array.from({ length: 12 }, () => ({ pressed: false, value: 0 }));
+buttons[0] = { pressed: true, value: 1 };
+buttons[7] = { pressed: false, value: 0.8 };
+assert.deepEqual(mapStandardGamepad({ axes: [0.7, -0.5], buttons }), { x: 0.7, y: -0.5, run: true, crouch: false, jump: false, interact: true, journal: false });
+assert.notEqual(heistForDay(2, null), heistForDay(3, heistForDay(2, null)), "controlled rotation avoids an immediate repeat");
+assert.equal(collectibleRotation(4).length, 3);
+assert.equal(new Set(collectibleRotation(4)).size, 3);
+assert.ok(collectibleRotation(4).every((id) => COLLECTIBLE_DEFINITIONS.some((entry) => entry.id === id)));
+
+const normalized = normalizeGameplayExpansion({ ownedRods: ["purple", "hacked"], swedishFish: 4_000, seedPackets: -1 }, 3);
+assert.deepEqual(normalized.ownedRods, ["purple"]);
+assert.equal(normalized.swedishFish, 999);
+assert.equal(normalized.seedPackets, 0);
+
+const tug = softActivityGuidance("art-time", "hub", [0, 0, 0]);
+assert.ok(Math.hypot(...tug) > 0 && Math.hypot(...tug) <= 0.451, "guidance is present but far weaker than player speed");
+assert.deepEqual(softActivityGuidance("recess", "garden", [14, 0, 14]), [0, 0], "recess remains free movement");
+assert.deepEqual(softActivityGuidance("juice-club", "hub", [-14, 0, 14]), [0, 0], "Juice Club remains flexible");
+
+let normalHighTiers = 0;
+let juiceHighTiers = 0;
+for (let seed = 1; seed <= 200; seed += 1) {
+  if (["rare", "very-rare", "jackpot"].includes(lostFoundReward(seed, false).tier)) normalHighTiers += 1;
+  const boosted = lostFoundReward(seed, true);
+  if (["rare", "very-rare", "jackpot"].includes(boosted.tier)) juiceHighTiers += 1;
+  assert.ok(boosted.xp <= 1000, "Lost & Found payout never exceeds the configured jackpot");
+}
+assert.ok(juiceHighTiers > normalHighTiers, "Juice Time increases high-tier reward frequency without guaranteeing it");
+
+useGameStore.getState().resetGame();
+useGameStore.setState({
+  zone: "garden",
+  progression: createInitialProgression(),
+  gardenActivityStep: 0,
+  gummyCrop: { plantedAt: null, gummyDrops: 0, harvests: 0 },
+  gummyCrop2: { plantedAt: null, gummyDrops: 0, harvests: 0 },
+  expansion: createGameplayExpansion(1),
+});
+
+assert.equal(useGameStore.getState().startGardenActivity(0), true);
+assert.equal(useGameStore.getState().advanceGardenActivity(0), 2);
+assert.equal(useGameStore.getState().advanceGardenActivity(0), 3);
+useGameStore.getState().completeActivity("garden-planting", 999, 999, 0);
+assert.equal(useGameStore.getState().progression.experience, 12);
+assert.equal(useGameStore.getState().expansion.seedPackets, 9);
+useGameStore.getState().completeActivity("garden-planting", 999, 999, 0);
+assert.equal(useGameStore.getState().progression.experience, 12, "one planting set cannot reward twice");
+
+assert.equal(useGameStore.getState().startGardenActivity(1), true);
+assert.equal(useGameStore.getState().advanceGardenActivity(1), 2);
+assert.equal(useGameStore.getState().advanceGardenActivity(1), 3);
+useGameStore.getState().completeActivity("garden-planting", 0, 0, 1);
+assert.equal(useGameStore.getState().progression.experience, 24, "the second bed reuses the same exact reward path");
+assert.equal(useGameStore.getState().expansion.secondPlantingStep, 4);
+
+const plantedAt = absoluteGameMinute(1, 9 * 60);
+useGameStore.setState((state) => ({
+  gummyCrop: { plantedAt, gummyDrops: 0, harvests: 0 },
+  gummyCrop2: { plantedAt, gummyDrops: 0, harvests: 0 },
+  clock: { ...state.clock, minute: 9 * 60 + GUMMY_GROWTH_MINUTES },
+}));
+assert.equal(useGameStore.getState().harvestGummyDrops(0), true);
+assert.equal(useGameStore.getState().harvestGummyDrops(1), true);
+assert.equal(useGameStore.getState().gummyCrop.gummyDrops, 10);
+assert.equal(useGameStore.getState().gummyCrop2.gummyDrops, 10);
+
+assert.equal(useGameStore.getState().castFishingLine(), true);
+assert.equal(useGameStore.getState().catchSwedishFish(), true);
+assert.equal(useGameStore.getState().catchSwedishFish(), false, "a cast cannot be caught twice");
+const beforeFishSaleXp = useGameStore.getState().progression.experience ?? 0;
+const beforeFishSaleCash = useGameStore.getState().juiceClubCash;
+assert.equal(useGameStore.getState().sellSwedishFish(), true);
+assert.equal(useGameStore.getState().sellSwedishFish(), false, "a fish cannot be sold twice");
+assert.equal(useGameStore.getState().progression.experience, beforeFishSaleXp + 2);
+assert.equal(useGameStore.getState().juiceClubCash, beforeFishSaleCash + 5);
+
+useGameStore.setState({ juiceClubCash: 20 });
+assert.equal(useGameStore.getState().purchaseFishingRod("purple"), true);
+assert.equal(useGameStore.getState().purchaseFishingRod("purple"), false);
+assert.equal(useGameStore.getState().equipFishingRod("purple"), true);
+assert.equal(useGameStore.getState().expansion.equippedRod, "purple");
+
+useGameStore.getState().setTimeOfDay(10.5);
+const beforeArtXp = useGameStore.getState().progression.experience ?? 0;
+const beforeArtCash = useGameStore.getState().juiceClubCash;
+assert.equal(useGameStore.getState().completeArtActivity(), true);
+assert.equal(useGameStore.getState().completeArtActivity(), false);
+assert.equal(useGameStore.getState().progression.experience, beforeArtXp + 20);
+assert.equal(useGameStore.getState().juiceClubCash, beforeArtCash + 20);
+
+useGameStore.getState().resetGame();
+useGameStore.getState().setTimeOfDay(10.25);
+assert.equal(useGameStore.getState().completeShowAndTell(), true, "starter seed packets are eligible for Show & Tell");
+assert.equal(useGameStore.getState().completeShowAndTell(), false, "Show & Tell rewards once per day");
+
+console.log("DayKare gameplay expansion tests passed.");
