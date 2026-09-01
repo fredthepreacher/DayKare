@@ -92,6 +92,9 @@ export function UI() {
     resetGardenActivity,
     completeActivity,
     ambientMessage,
+    activeInstruction,
+    showInstruction,
+    dismissInstruction,
     storageWarning,
     rivalStory,
     rewardEvents,
@@ -112,6 +115,13 @@ export function UI() {
   const tidyTutorialSeen = useGameStore((state) => state.tidyTutorialSeen);
   const markTidyTutorialSeen = useGameStore((state) => state.markTidyTutorialSeen);
   const rainyNow = useIsRainy();
+
+  useEffect(() => {
+    if (!activeInstruction) return;
+    const elapsed = Date.now() - activeInstruction.shownAt;
+    const timer = window.setTimeout(dismissInstruction, Math.max(0, 5_000 - elapsed));
+    return () => window.clearTimeout(timer);
+  }, [activeInstruction, dismissInstruction]);
   const weatherLabel = useWeatherLabel();
   const frontEndBlocked = useModeStore((state) => state.menuOpen || state.activeMode === 'online-preview');
   const openMenu = useModeStore((state) => state.openMenu);
@@ -290,7 +300,10 @@ export function UI() {
           // station is, so a player who needs the reminder still has it.
           if (!tidyTutorialSeen) {
             markTidyTutorialSeen();
-            setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Toy collected! Carry it to the activity station.' });
+            showInstruction({
+              id: 'tidy-first-placement',
+              text: 'Carry the block to the Rainbow Tidy-Up station, then place it in the matching spot.',
+            });
           }
         } else if (activeInteractable === 'juice-stand') {
           if (schedule === 'juice-club') {
@@ -347,7 +360,10 @@ export function UI() {
             } else if (finishedRound) {
               setActiveDialogue(null);
             } else if (!tidyTutorialSeen) {
-              setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Perfect fit! Now find the next misplaced toy.' });
+              showInstruction({
+                id: `tidy-next-${item}`,
+                text: 'Perfect fit! Check the Journal objective for the next highlighted block.',
+              });
             } else {
               setActiveDialogue(null);
             }
@@ -960,6 +976,18 @@ export function UI() {
       </div>
 
       <div className="daykare-center-notices" aria-live="polite">
+        {activeInstruction && !activeDialogue && !journalOpen && !zoneTransitioning && (
+          <button
+            type="button"
+            className="daykare-gameplay-instruction"
+            onClick={dismissInstruction}
+            aria-label="Dismiss instruction"
+          >
+            <strong>What to do</strong>
+            <span>{activeInstruction.text}</span>
+            <small>Tap to dismiss</small>
+          </button>
+        )}
         {teacherSuspicion > 0 && (
           <div className="daykare-suspicion bg-red-500/90 text-white px-6 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
             <AlertTriangle className="w-5 h-5" />

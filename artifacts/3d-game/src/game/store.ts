@@ -198,6 +198,8 @@ export interface GameState {
   pendingZone: GameZone | null;
   gardenActivityStep: number;
   ambientMessage: string | null;
+  activeInstruction: GameplayInstruction | null;
+  recentInstructions: GameplayInstruction[];
   rivalStory: RivalStoryState;
   rewardEvents: RewardEvent[];
   caper: CaperState;
@@ -257,6 +259,8 @@ export interface GameState {
   advanceGardenActivity: () => number;
   resetGardenActivity: () => void;
   setAmbientMessage: (message: string | null) => void;
+  showInstruction: (instruction: Omit<GameplayInstruction, 'shownAt'> & { shownAt?: number }) => boolean;
+  dismissInstruction: () => void;
   chooseRivalResponse: (choice: Exclude<RivalChoice, 'team-up'>) => boolean;
   resolveRivalStory: () => boolean;
   dismissRewardEvent: (id: string) => void;
@@ -277,6 +281,12 @@ export interface GameState {
   returnToHub: () => boolean;
   completeZoneTransition: () => void;
   resetGame: () => void;
+}
+
+export interface GameplayInstruction {
+  id: string;
+  text: string;
+  shownAt: number;
 }
 
 /**
@@ -362,6 +372,8 @@ const initialState = {
   pendingZone: null,
   gardenActivityStep: 0,
   ambientMessage: null,
+  activeInstruction: null,
+  recentInstructions: [] as GameplayInstruction[],
   rivalStory: createInitialRivalStory(),
   rewardEvents: [] as RewardEvent[],
   caper: createInitialCaper(),
@@ -712,6 +724,22 @@ export function normalizePersistedGameState(value: unknown) {
   const persisted = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Partial<GameState>
     : {};
+  const recentInstructions = Array.isArray(persisted.recentInstructions)
+    ? persisted.recentInstructions
+        .filter((entry): entry is GameplayInstruction => Boolean(
+          entry
+          && typeof entry === 'object'
+          && typeof entry.id === 'string'
+          && typeof entry.text === 'string'
+          && entry.text.trim().length > 0,
+        ))
+        .slice(0, 3)
+        .map((entry) => ({
+          id: entry.id.slice(0, 80),
+          text: entry.text.trim().slice(0, 240),
+          shownAt: safeNumber(entry.shownAt, 0, 0, Number.MAX_SAFE_INTEGER),
+        }))
+    : [];
   const savedItems = normalizeSavedItems(persisted.inventory, persisted.droppedItems);
   const inventory = savedItems.inventory;
   const quests = normalizeQuestStates(persisted.quests, persisted.binkyStatus, inventory);
@@ -832,6 +860,8 @@ export function normalizePersistedGameState(value: unknown) {
     pendingZone: null,
     gardenActivityStep: 0,
     ambientMessage: null,
+    activeInstruction: null,
+    recentInstructions,
     rivalStory: normalizeRivalStory(persisted.rivalStory),
     rewardEvents: [],
     caper: normalizedCaper,
@@ -851,6 +881,7 @@ export function serializeGameState(state: GameState) {
     weatherSeed: state.weatherSeed,
     inventory: state.inventory,
     collectibles: state.collectibles,
+    recentInstructions: state.recentInstructions,
     friends: state.friends,
     teacherSuspicion: state.teacherSuspicion,
     binkyStatus: state.binkyStatus,
@@ -1615,6 +1646,25 @@ export const useGameStore = create<GameState>()(
         state.zone !== 'hub' || state.activeDialogue || state.journalOpen || state.zoneTransitioning
           ? { ambientMessage: null }
           : { ambientMessage }
+      )),
+      showInstruction: (instruction) => {
+        let changed = false;
+        set((state) => {
+          const id = instruction.id.trim().slice(0, 80);
+          const text = instruction.text.trim().slice(0, 240);
+          if (!id || !text || state.recentInstructions.some((entry) => entry.id === id)) return state;
+          const next = { id, text, shownAt: instruction.shownAt ?? Date.now() };
+          changed = true;
+          return {
+            activeInstruction: next,
+            recentInstructions: [next, ...state.recentInstructions.filter((entry) => entry.id !== id)].slice(0, 3),
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
+      dismissInstruction: () => set((state) => (
+        state.activeInstruction ? { activeInstruction: null } : state
       )),
       chooseRivalResponse: (choice) => {
         let changed = false;

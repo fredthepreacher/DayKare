@@ -297,6 +297,44 @@ const find = (entries: BoardEntry[], id: string) => {
 }
 
 {
+  // Preview regression: exercise the same store action the station uses. The
+  // older test above only advanced a detached QuestStates value, so it could
+  // pass while the mounted Journal remained wired to stale store state.
+  let quests = activateQuest(createInitialQuests(), 'rainbow-tidy-up');
+  quests = advanceObjective(quests, 'rainbow-tidy-up', 'collect-blue-block');
+  useGameStore.setState({ quests, inventory: ['blue-block'] });
+
+  assert.equal(useGameStore.getState().completeTidyToy('blue-block'), true);
+  const live = find(boardFor({ quests: useGameStore.getState().quests }), 'rainbow-tidy-up');
+  assert.deepEqual(live.roundProgress, { done: 2, total: 6, label: '2/6 this round' });
+  assert.equal(live.lifetime, undefined, 'current progress is not confused with lifetime rounds');
+  useGameStore.getState().resetGame();
+}
+
+{
+  // Meaningful instructions are newest-first, deduplicated, capped at three,
+  // and persisted after their five-second on-screen notice is dismissed.
+  const store = useGameStore.getState();
+  store.resetGame();
+  assert.equal(store.showInstruction({ id: 'one', text: 'First direction', shownAt: 1 }), true);
+  assert.equal(useGameStore.getState().showInstruction({ id: 'one', text: 'Repeated noise', shownAt: 2 }), false);
+  useGameStore.getState().dismissInstruction();
+  useGameStore.getState().showInstruction({ id: 'two', text: 'Second direction', shownAt: 2 });
+  useGameStore.getState().showInstruction({ id: 'three', text: 'Third direction', shownAt: 3 });
+  useGameStore.getState().showInstruction({ id: 'four', text: 'Newest direction', shownAt: 4 });
+  assert.deepEqual(
+    useGameStore.getState().recentInstructions.map((entry) => entry.id),
+    ['four', 'three', 'two'],
+  );
+  const saved = serializeGameState(useGameStore.getState());
+  assert.deepEqual(
+    normalizePersistedGameState(saved).recentInstructions.map((entry) => entry.id),
+    ['four', 'three', 'two'],
+  );
+  useGameStore.getState().resetGame();
+}
+
+{
   // The Juice Club has opening hours; that is a cooldown with a stated time, not
   // a lock, and never a silent blank.
   const closed = find(boardFor({ schedule: 'morning-play' }), 'juice-club');

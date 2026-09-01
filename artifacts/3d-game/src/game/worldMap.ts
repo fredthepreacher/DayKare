@@ -1,4 +1,5 @@
 /**
+/**
  * Map geometry, derived from the same world data the game actually simulates.
  *
  * The previous map was four absolutely-positioned divs reading "Art", "Storage"

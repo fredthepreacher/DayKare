@@ -25,7 +25,7 @@ import {
   type BoardEntry,
   type BoardStatus,
 } from './questBoard';
-import { WorldMap } from './WorldMap';
+import { WorldMap } from './WorldMapView';
 import { DripPanel } from './DripPanel';
 
 /**
@@ -176,6 +176,7 @@ export function Journal() {
     districtProgress,
     schedule,
     optionalRewardBoostUntil,
+    recentInstructions,
     activateOptionalRewardBoost,
   } = useGameStore();
 
@@ -259,6 +260,19 @@ export function Journal() {
                 {primary
                   ? <EntryCard entry={primary} emphasised />
                   : <EmptyNote>Nothing is waiting on you. Try an activity or visit the Juice Club.</EmptyNote>}
+              </div>
+
+              <div>
+                <h3 className="daykare-section-head"><BookOpen className="w-5 h-5 text-sky-600" /> Recent Instructions</h3>
+                {recentInstructions.length === 0
+                  ? <EmptyNote>Meaningful gameplay directions will be kept here after they fade.</EmptyNote>
+                  : (
+                    <ol className="daykare-recent-instructions">
+                      {recentInstructions.map((instruction) => (
+                        <li key={instruction.id}>{instruction.text}</li>
+                      ))}
+                    </ol>
+                  )}
               </div>
 
               {board.filter((entry) => entry.status === 'active' && entry.id !== primary?.id).length > 0 && (

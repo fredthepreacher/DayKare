@@ -1,3 +1,5 @@
+import type { QualityPreset } from './qualityManager';
+
 export interface FrameTelemetryContext {
   renderer: string;
   vendor: string;
@@ -12,7 +14,7 @@ export interface FrameTelemetryContext {
   sceneChildren: number;
   zone: 'hub' | 'garden';
   npcCount: number;
-  quality: 'low' | 'high';
+  quality: QualityPreset;
   renderCostMs?: number;
 }
 
@@ -68,7 +70,7 @@ export function shouldUseRendererShadows(
   quality: FrameTelemetryContext['quality'],
   mode: AdaptiveRenderMode = 'full',
 ) {
-  return quality === 'high' && mode === 'full';
+  return quality !== 'low' && mode === 'full';
 }
 
 const EMPTY_CONTEXT: FrameTelemetryContext = {
