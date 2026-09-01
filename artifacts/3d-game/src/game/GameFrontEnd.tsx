@@ -17,6 +17,7 @@ import { useSettingsStore } from './settingsStore';
 import { useCloudSyncStore, resolveConflict } from './cloudSync';
 import { formatRelativeTime } from '@workspace/cloud-sync';
 import { setGameAudioEnabled } from './audio';
+import { unlockRichGameAudio } from './audioDirector';
 import { MonetizationShop } from './MonetizationShop';
 
 const panelCopy: Record<Exclude<FrontEndPanel, 'menu'>, { title: string; eyebrow: string }> = {
@@ -107,6 +108,17 @@ function SettingsPanel() {
   const setQuality = useGameStore((state) => state.setQuality);
   const audioEnabled = useSettingsStore((state) => state.device.audioEnabled);
   const toggleAudioEnabled = useSettingsStore((state) => state.toggleAudioEnabled);
+  const musicVolume = useSettingsStore((state) => state.device.musicVolume);
+  const sfxVolume = useSettingsStore((state) => state.device.sfxVolume);
+  const voiceVolume = useSettingsStore((state) => state.device.voiceVolume);
+  const setMusicVolume = useSettingsStore((state) => state.setMusicVolume);
+  const setSfxVolume = useSettingsStore((state) => state.setSfxVolume);
+  const setVoiceVolume = useSettingsStore((state) => state.setVoiceVolume);
+  const volumeRows = [
+    { id: 'music', label: 'Music', detail: 'Background soundtrack', value: musicVolume, set: setMusicVolume },
+    { id: 'sfx', label: 'Sound effects', detail: 'Steps, doors and interactions', value: sfxVolume, set: setSfxVolume },
+    { id: 'voice', label: 'Voices', detail: 'Teachers and children', value: voiceVolume, set: setVoiceVolume },
+  ];
   return (
     <div className="daykare-front-panel-content">
       <div className="daykare-setting-row">
@@ -114,9 +126,28 @@ function SettingsPanel() {
         <button type="button" className="daykare-toggle-button" onClick={() => setQuality(quality === 'high' ? 'low' : 'high')} data-testid="button-toggle-quality">{quality === 'high' ? 'High' : 'Low'}</button>
       </div>
       <button type="button" className={`daykare-setting-row daykare-setting-button ${audioEnabled ? 'is-on' : ''}`} onClick={toggleAudioEnabled} data-testid="button-toggle-audio">
-        <span><Volume2 aria-hidden="true" /><strong>Audio</strong><small>Game sounds stay enabled in this preview</small></span>
+        <span><Volume2 aria-hidden="true" /><strong>Audio</strong><small>Music, voices and world sounds</small></span>
         <span className="daykare-toggle-button">{audioEnabled ? 'On' : 'Off'}</span>
       </button>
+      {volumeRows.map((row) => (
+        <label className="daykare-setting-row daykare-volume-row" key={row.id}>
+          <span><Volume2 aria-hidden="true" /><strong>{row.label}</strong><small>{row.detail}</small></span>
+          <span className="daykare-volume-control">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={Math.round(row.value * 100)}
+              disabled={!audioEnabled}
+              onChange={(event) => row.set(Number(event.target.value) / 100)}
+              aria-label={`${row.label} volume`}
+              data-testid={`slider-${row.id}-volume`}
+            />
+            <output>{Math.round(row.value * 100)}%</output>
+          </span>
+        </label>
+      ))}
       <div className="daykare-lockup-card" data-testid="status-save-separation">
         <Check aria-hidden="true" />
         <div><strong>Save boundaries protected</strong><p>Story progression uses its existing save. Online preview data uses a separate namespace.</p></div>
@@ -386,8 +417,8 @@ export function GameFrontEnd() {
   return (
     <GameMenu
       isOpen
-      onClose={closeMenu}
-      onStoryMode={enterStory}
+      onClose={() => { unlockRichGameAudio(); closeMenu(); }}
+      onStoryMode={() => { unlockRichGameAudio('daycare'); enterStory(); }}
       onDayKareOnline={enterOnlinePreview}
       onCustomize={() => openPanel('customize')}
       onProgress={() => openPanel('progress')}

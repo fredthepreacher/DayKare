@@ -94,6 +94,9 @@ export interface SettingsStore {
   toggleLargerText: () => void;
   toggleCaptions: () => void;
   toggleAudioEnabled: () => void;
+  setMusicVolume: (volume: number) => void;
+  setSfxVolume: (volume: number) => void;
+  setVoiceVolume: (volume: number) => void;
   setQuality: (quality: DeviceSettings['quality']) => void;
   /** Applied when the account's cloud copy is newer than this device's. */
   applyAccountSettings: (settings: AccountSettings) => void;
@@ -129,6 +132,15 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => {
     })),
     toggleAudioEnabled: () => set((state) => ({
       device: persistDevice({ ...state.device, audioEnabled: !state.device.audioEnabled }),
+    })),
+    setMusicVolume: (musicVolume) => set((state) => ({
+      device: persistDevice(normalizeDeviceSettings({ ...state.device, musicVolume })),
+    })),
+    setSfxVolume: (sfxVolume) => set((state) => ({
+      device: persistDevice(normalizeDeviceSettings({ ...state.device, sfxVolume })),
+    })),
+    setVoiceVolume: (voiceVolume) => set((state) => ({
+      device: persistDevice(normalizeDeviceSettings({ ...state.device, voiceVolume })),
     })),
     setQuality: (quality) => set((state) => ({
       device: persistDevice({ ...state.device, quality }),

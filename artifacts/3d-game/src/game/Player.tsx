@@ -15,6 +15,8 @@ import { useModeStore } from './modeStore';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { ESCAPE_GRACE_SECONDS, advanceCarriedPlayer, beginEscapeRetrieval, getEscapeRetrievalSnapshot, isDaycareEscape, updateEscapeGrace } from './escapeRetrieval';
 import { objectiveIsActive } from './quests';
+import { playGameSound } from './audio';
+import { playVoice } from './audioDirector';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -37,6 +39,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   
   // State
   const velocity = useRef(new THREE.Vector3());
+  const lastFootstepAt = useRef(0);
   const desiredVelocity = useRef(new THREE.Vector3());
   const yVelocity = useRef(0);
   const forward = useRef(new THREE.Vector3());
@@ -182,6 +185,11 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     }
 
     if (velocity.current.length() > 0.08) {
+      const stepGap = running ? 0.24 : crouching ? 0.52 : 0.36;
+      if (state.clock.elapsedTime - lastFootstepAt.current >= stepGap && localRef.current.position.y <= 0.02) {
+        lastFootstepAt.current = state.clock.elapsedTime;
+        playGameSound('footstep', 'ambient');
+      }
 
       const targetAngle = Math.atan2(-velocity.current.x, -velocity.current.z);
       const currentRotation = localRef.current.rotation.y;
@@ -218,6 +226,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       retrieval = beginEscapeRetrieval(state.clock.elapsedTime, localRef.current.position.toArray());
       if (retrieval.phase === 'chasing' && retrieval.sequence !== retrievalNoticeSequence.current) {
         retrievalNoticeSequence.current = retrieval.sequence;
+        playVoice('teacher-chase', { force: true });
         liveGame.setAmbientMessage(`${retrieval.assignedTeacher}: “Oh no you don’t!”`);
       }
     }

@@ -253,7 +253,7 @@ export function UI() {
   const activeReward = rewardEvents[0] ?? null;
   useEffect(() => {
     if (!activeReward) return;
-    playGameSound('tidy-place', 'interaction');
+    playGameSound('reward', 'interaction');
     const timer = window.setTimeout(() => dismissRewardEvent(activeReward.id), 2600);
     return () => window.clearTimeout(timer);
   }, [activeReward?.id, dismissRewardEvent]);
@@ -322,6 +322,7 @@ export function UI() {
       if (activeInteractable) {
         if (activeInteractable === 'binky') {
           pickUp('binky');
+          playGameSound('pickup', 'interaction');
           if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
             advanceQuestObjective('where-binky', 'search-storage');
           }
@@ -329,6 +330,7 @@ export function UI() {
           setActiveDialogue({ name: 'System', text: 'You found Binky! Return it to Leo.' });
         } else if (activeInteractable === 'shiny-rock') {
           if (collectShinyRock()) {
+            playGameSound('pickup', 'interaction');
             setActiveInteractable(null);
             setActiveDialogue({
               name: 'Shiny Rock',
@@ -337,6 +339,7 @@ export function UI() {
           }
         } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block' || activeInteractable === 'yellow-block') {
           pickUp(activeInteractable);
+          playGameSound('pickup', 'interaction');
           const objectiveId = `collect-${activeInteractable}`;
           advanceQuestObjective('rainbow-tidy-up', objectiveId);
           setActiveInteractable(null);
@@ -499,12 +502,14 @@ export function UI() {
         } else if (activeInteractable === 'garden-activity-host') {
           if (gardenActivityStep === 0) {
             startGardenActivity();
+            playGameSound('garden-plant', 'interaction');
             setActiveDialogue({
               name: 'Gardener Nia',
               text: 'Let’s wake up this planting bed. First, loosen the soil around the three seedlings.',
             });
           } else if (gardenActivityStep < 3) {
             const nextStep = advanceGardenActivity();
+            playGameSound(nextStep >= 3 ? 'garden-harvest' : 'garden-plant', 'interaction');
             if (nextStep >= 3) {
               completeActivity('garden-planting', 2, 1);
               setActiveDialogue(rivalStory.beat === 'garden-reversal'
@@ -530,9 +535,11 @@ export function UI() {
           const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
           if (gummyCrop.plantedAt === null) {
             plantGummyDrops();
+            playGameSound('garden-plant', 'interaction');
             setActiveDialogue({ name: 'Gummy Drop Garden', text: 'Seeds planted! They need five in-game hours to grow a full crop of ten Gummy Drops.' });
           } else if (cropIsReady(gummyCrop, now)) {
             harvestGummyDrops();
+            playGameSound('garden-harvest', 'interaction');
             setActiveDialogue({ name: 'Gummy Drop Garden', text: 'Ten Gummy Drops harvested! Sell the basket for $30, share them for cash and REP, or eat one.' });
           } else {
             setActiveDialogue({ name: 'Gummy Drop Garden', text: `The candy plants are ${Math.floor(cropProgress(gummyCrop, now) * 100)}% grown. A full crop takes five in-game hours.` });

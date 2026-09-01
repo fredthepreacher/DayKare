@@ -26,6 +26,10 @@ export interface DeviceSettings {
   touchSensitivity: number;
   /** The existing in-game mute toggle. Device-local: it is about this room, not this account. */
   audioEnabled: boolean;
+  /** Independent local mix controls; never synced between unlike speakers/headsets. */
+  musicVolume: number;
+  sfxVolume: number;
+  voiceVolume: number;
   hudSafeAreaOffset: number;
 }
 
@@ -41,12 +45,15 @@ export const defaultAccountSettings = (): AccountSettings => ({
 });
 
 export const defaultDeviceSettings = (): DeviceSettings => ({
-  version: 1,
+  version: 2,
   quality: 'auto',
   renderScale: 1,
   cameraSensitivity: 1,
   touchSensitivity: 1,
   audioEnabled: true,
+  musicVolume: 0.32,
+  sfxVolume: 0.65,
+  voiceVolume: 0.72,
   hudSafeAreaOffset: 0,
 });
 
@@ -76,12 +83,15 @@ export function normalizeDeviceSettings(raw: unknown): DeviceSettings {
   const value = raw as Partial<DeviceSettings>;
   const qualities = new Set(['auto', 'low', 'medium', 'high', 'ultra']);
   return {
-    version: 1,
+    version: 2,
     quality: qualities.has(value.quality as string) ? (value.quality as DeviceSettings['quality']) : base.quality,
     renderScale: clampNumber(value.renderScale, 0.5, 2, base.renderScale),
     cameraSensitivity: clampNumber(value.cameraSensitivity, 0.25, 3, base.cameraSensitivity),
     touchSensitivity: clampNumber(value.touchSensitivity, 0.25, 3, base.touchSensitivity),
     audioEnabled: bool(value.audioEnabled, base.audioEnabled),
+    musicVolume: clampNumber(value.musicVolume, 0, 1, base.musicVolume),
+    sfxVolume: clampNumber(value.sfxVolume, 0, 1, base.sfxVolume),
+    voiceVolume: clampNumber(value.voiceVolume, 0, 1, base.voiceVolume),
     hudSafeAreaOffset: clampNumber(value.hudSafeAreaOffset, 0, 200, base.hudSafeAreaOffset),
   };
 }

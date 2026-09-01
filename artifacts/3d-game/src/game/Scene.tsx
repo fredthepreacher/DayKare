@@ -18,6 +18,7 @@ import { ClockDriver } from './ClockDriver';
 import { useQualitySettings } from './useQualitySettings';
 import { PerformanceTelemetry, PerformanceTelemetryPanel } from './PerformanceTelemetryPanel';
 import { GameFrontEnd } from './GameFrontEnd';
+import { AudioWorldDirector } from './AudioWorldDirector';
 import { useModeStore } from './modeStore';
 import { GraphicsUnavailable } from './GraphicsUnavailable';
 import { probeWebGL, watchContextLoss, type WebGLStatus } from './webglSupport';
@@ -180,6 +181,7 @@ export function DayKareApp() {
         <ClockDriver />
         <PerformanceTelemetryPanel />
         <GameFrontEnd />
+        <AudioWorldDirector />
         {/* The canvas stays mounted so the browser can restore the context. */}
         {contextLost && <GraphicsUnavailable variant="lost" />}
       </div>

@@ -13,6 +13,8 @@ import { reportNpc, resetNpcTiers, tierFor, updateNpcTiers } from './npcTierRegi
 import { useQualitySettings } from './useQualitySettings';
 import { resolveMovement } from './world';
 import { playGameSound } from './audio';
+import { playVoice } from './audioDirector';
+import { voiceGroupForAmbientContext } from './audioAssets';
 import { objectiveIsActive } from './quests';
 import {
   activitySessionIsInterrupted,
@@ -337,6 +339,7 @@ function Teacher({
       && !game.zoneTransitioning
     ) {
       announcementKey.current = nextInterventionKey;
+      playVoice(schedule === 'art-time' ? 'teacher-art' : 'teacher-class');
       const announcement = liveIntervention.escalated
         ? `${name} asks you to help reset the play space.`
         : `${name} is helping a friend choose calmer play.`;
@@ -928,7 +931,9 @@ function Kid({
         commitSocialAction(name, state.clock.elapsedTime, decision);
         socialReactionRef.current = { reaction: decision.reaction ?? null, until: state.clock.elapsedTime + 2.4 };
         if (decision.message) {
-          playGameSound('greeting', 'social');
+          if (!playVoice('child-greeting', { ambient: true, attenuation: Math.max(0.35, 1 - distanceToPlayer / 18) })) {
+            playGameSound('greeting', 'social');
+          }
           game.setAmbientMessage(decision.message);
           if (greetingClearTimer.current) clearTimeout(greetingClearTimer.current);
           const spoken = decision.message;
@@ -1353,7 +1358,7 @@ function AmbientSocialMoments() {
       const scheduleMessages = messages[state.schedule] ?? messages['morning-play'];
       const message = scheduleMessages[messageIndex.current % scheduleMessages.length];
       messageIndex.current += 1;
-      playGameSound('greeting', 'social');
+      playVoice(voiceGroupForAmbientContext(state.schedule, 'daycare'), { ambient: true, attenuation: 0.72 });
       state.setAmbientMessage(message);
       if (clearTimer) clearTimeout(clearTimer);
       clearTimer = setTimeout(() => useGameStore.getState().setAmbientMessage(null), 3800);

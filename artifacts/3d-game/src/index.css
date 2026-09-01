@@ -1435,6 +1435,16 @@
   background: #effdfb;
 }
 
+.daykare-volume-row { cursor: default; }
+.daykare-volume-control { display: grid; grid-template-columns: minmax(110px, 190px) 42px; align-items: center; gap: 10px; }
+.daykare-volume-control input { width: 100%; min-height: 44px; accent-color: #35aaad; cursor: pointer; }
+.daykare-volume-control output { color: #65462f; font-size: 11px; font-weight: 900; text-align: right; }
+
+@media (max-width: 560px) {
+  .daykare-volume-row { align-items: stretch; flex-direction: column; }
+  .daykare-volume-control { grid-template-columns: minmax(0, 1fr) 42px; }
+}
+
 .daykare-switch {
   position: relative;
   width: 46px;

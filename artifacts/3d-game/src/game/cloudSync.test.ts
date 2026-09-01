@@ -245,6 +245,15 @@ assert.equal(
   'auto',
   'an unknown quality tier falls back to auto',
 );
+assert.deepEqual(
+  {
+    music: normalizeDeviceSettings({ musicVolume: 0.41 }).musicVolume,
+    sfx: normalizeDeviceSettings({ sfxVolume: -4 }).sfxVolume,
+    voice: normalizeDeviceSettings({ voiceVolume: 7 }).voiceVolume,
+  },
+  { music: 0.41, sfx: 0, voice: 1 },
+  'music, SFX and voice controls persist independently and clamp safely',
+);
 
 // --- Story / Online isolation ----------------------------------------------
 
