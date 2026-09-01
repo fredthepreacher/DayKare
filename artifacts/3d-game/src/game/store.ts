@@ -8,11 +8,22 @@ import {
   getUnlockedRoutes,
   MAX_ACTIVITY_RUNS,
   MAX_TOKENS,
+  MAX_REPUTATION,
   normalizeProgression,
   PROGRESSION_VERSION,
   type ProgressionState,
 } from './progression';
 import { normalizeWeatherSeed } from './weather';
+import {
+  achievementsEarned,
+  canPurchase,
+  getDripItem,
+  normalizeDripEquipped,
+  normalizeDripOwned,
+  type AchievementEvidence,
+  type DripCategory,
+  type DripEquipped,
+} from './drip';
 
 /**
  * The optional Star Token boost.
@@ -155,6 +166,10 @@ export interface GameState {
    * away is the modal dialogue.
    */
   tidyTutorialSeen: boolean;
+  /** Purchased and earned cosmetics. Achievement items are re-derived on load. */
+  dripOwned: string[];
+  /** One equipped item per slot. */
+  dripEquipped: DripEquipped;
   
   // Business
   juiceStock: number;
@@ -217,6 +232,9 @@ export interface GameState {
   advanceQuestObjective: (questId: string, objectiveId: string) => boolean;
   completeTidyToy: (item: string) => boolean;
   markTidyTutorialSeen: () => void;
+  purchaseDripItem: (itemId: string) => boolean;
+  equipDripItem: (itemId: string) => boolean;
+  unequipDripCategory: (category: DripCategory) => void;
   
   /** `cost` and `amount` are ignored - prices are authored in the store. */
   buyStock: (type: 'juice' | 'cracker' | 'supplies', cost: number, amount: number) => void;
@@ -316,6 +334,8 @@ const initialState = {
   droppedItems: [] as DroppedWorldItem[],
   tidyPlacedItems: [] as string[],
   tidyTutorialSeen: false,
+  dripOwned: [] as string[],
+  dripEquipped: {} as DripEquipped,
   
   juiceStock: 5,
   crackerStock: 5,
@@ -654,6 +674,40 @@ function normalizeJuiceClubState(
   return resetJuiceClubCustomerState({ waitingCustomers: [] });
 }
 
+
+/**
+ * The evidence achievements are judged on.
+ *
+ * Everything here is already recorded elsewhere in the save for its own reasons,
+ * which is the point: a prestige item is a claim about play that happened, so it
+ * is derived from the record of that play rather than from a flag that could be
+ * set directly.
+ */
+function dripEvidenceFrom(input: {
+  quests: QuestStates;
+  caper: { step: string };
+  progression: ProgressionState;
+  juiceClubCustomersServed: number;
+  friends: Record<string, { friendship: number }>;
+}): AchievementEvidence {
+  const runs = input.progression.activityRuns;
+  return {
+    binkyComplete: input.quests['where-binky']?.status === 'complete',
+    caperComplete: input.caper.step === 'complete',
+    rainbowRounds: runs['rainbow-tidy-up'] ?? 0,
+    gardenRuns: runs['garden-planting'] ?? 0,
+    juiceCustomersServed: input.juiceClubCustomersServed,
+    // The art achievement rides on garden/craft activity runs until 4C gives art
+    // its own counter; using a real counter now beats inventing a flag that
+    // nothing increments.
+    artActivities: runs['garden-planting'] ?? 0,
+    bestFriendship: Object.values(input.friends ?? {}).reduce(
+      (best, friend) => Math.max(best, friend?.friendship ?? 0),
+      0,
+    ),
+  };
+}
+
 export function normalizePersistedGameState(value: unknown) {
   const persisted = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Partial<GameState>
@@ -673,6 +727,18 @@ export function normalizePersistedGameState(value: unknown) {
     normalizeProgression(persisted.progression),
     quests,
     juiceClubCustomersServed,
+  );
+  const normalizedFriends = normalizeFriends(persisted.friends);
+  const normalizedCaper = normalizeCaper(persisted.caper);
+  const normalizedDripOwned = normalizeDripOwned(
+    persisted.dripOwned,
+    dripEvidenceFrom({
+      quests,
+      caper: normalizedCaper,
+      progression,
+      juiceClubCustomersServed,
+      friends: normalizedFriends,
+    }),
   );
   const shinyRockGenuinelyCollected = (
     quests['where-binky']?.currentObjectiveId === 'trade-with-sam'
@@ -728,7 +794,12 @@ export function normalizePersistedGameState(value: unknown) {
       ? normalizedCollectibles
       : normalizedCollectibles.filter((item) => item !== 'Shiny Rock'),
     isRiding: false,
-    friends: normalizeFriends(persisted.friends),
+    friends: normalizedFriends,
+    // Achievement cosmetics are recomputed from evidence, never trusted from the
+    // save, so a hand-edited dripOwned cannot mint a prestige item - and a
+    // player who earned one can never lose it either.
+    dripOwned: normalizedDripOwned,
+    dripEquipped: normalizeDripEquipped(persisted.dripEquipped, normalizedDripOwned),
     teacherSuspicion: safeNumber(persisted.teacherSuspicion, 0, 0, 100),
     binkyStatus,
     binkyClues: safeStringArray(persisted.binkyClues)
@@ -763,7 +834,7 @@ export function normalizePersistedGameState(value: unknown) {
     ambientMessage: null,
     rivalStory: normalizeRivalStory(persisted.rivalStory),
     rewardEvents: [],
-    caper: normalizeCaper(persisted.caper),
+    caper: normalizedCaper,
     districtProgress: normalizeDistrictProgress(persisted.districtProgress),
     optionalRewardBoostUntil: 0,
   };
@@ -788,6 +859,8 @@ export function serializeGameState(state: GameState) {
     droppedItems: state.droppedItems,
     tidyPlacedItems: state.tidyPlacedItems,
     tidyTutorialSeen: state.tidyTutorialSeen,
+    dripOwned: state.dripOwned,
+    dripEquipped: state.dripEquipped,
     juiceStock: state.juiceStock,
     crackerStock: state.crackerStock,
     juiceClubCash: state.juiceClubCash,
@@ -1094,7 +1167,7 @@ export const useGameStore = create<GameState>()(
           );
           const progression = withQualifiedRoutes({
             ...state.progression,
-            reputation: Math.min(100, state.progression.reputation + 8),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 8),
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
             trustedHelperPass: true,
           });
@@ -1140,6 +1213,79 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      /**
+       * Buy a cosmetic.
+       *
+       * The caller passes ONLY an id. Price, REP requirement and achievement
+       * gate are all read from the catalog here, so a forged call cannot say
+       * what an item costs - the same reason buyStock ignores its own cost
+       * argument. canPurchase is the single authority, shared with the UI, so
+       * the shop can never offer something this would refuse.
+       */
+      purchaseDripItem: (itemId) => {
+        let changed = false;
+        set((state) => {
+          const item = getDripItem(itemId);
+          if (!item) return state;
+          const evidence = dripEvidenceFrom({
+            quests: state.quests,
+            caper: state.caper,
+            progression: state.progression,
+            juiceClubCustomersServed: state.juiceClubCustomersServed,
+            friends: state.friends,
+          });
+          const verdict = canPurchase(
+            item,
+            { reputation: state.progression.reputation, cash: state.juiceClubCash },
+            achievementsEarned(evidence),
+            new Set(state.dripOwned),
+          );
+          if (!verdict.ok) return state;
+          changed = true;
+          const owned = normalizeDripOwned([...state.dripOwned, item.id], evidence);
+          return {
+            juiceClubCash: Math.max(0, state.juiceClubCash - item.priceCash),
+            dripOwned: owned,
+            // Equip it immediately - buying something you cannot see is a poor
+            // reward moment, and the slot it fills is unambiguous.
+            dripEquipped: normalizeDripEquipped(
+              { ...state.dripEquipped, [item.category]: item.id },
+              owned,
+            ),
+            rewardEvents: appendRewardEvent(state.rewardEvents, {
+              id: `drip-${item.id}`,
+              title: item.name,
+              detail: item.prestige ? 'Earned' : 'Added to your wardrobe',
+              tokens: 0,
+              reputation: 0,
+              sticker: item.rarity,
+            }),
+          };
+        });
+        return changed;
+      },
+      equipDripItem: (itemId) => {
+        let changed = false;
+        set((state) => {
+          const item = getDripItem(itemId);
+          if (!item || !state.dripOwned.includes(itemId)) return state;
+          if (state.dripEquipped[item.category] === itemId) return state;
+          changed = true;
+          return {
+            dripEquipped: normalizeDripEquipped(
+              { ...state.dripEquipped, [item.category]: itemId },
+              state.dripOwned,
+            ),
+          };
+        });
+        return changed;
+      },
+      unequipDripCategory: (category) => set((state) => {
+        if (!state.dripEquipped[category]) return state;
+        const next = { ...state.dripEquipped };
+        delete next[category];
+        return { dripEquipped: next };
+      }),
       markTidyTutorialSeen: () => set((state) => (
         state.tidyTutorialSeen ? state : { tidyTutorialSeen: true }
       )),
@@ -1164,7 +1310,7 @@ export const useGameStore = create<GameState>()(
             ? withQualifiedRoutes({
                 ...state.progression,
                 tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-                reputation: Math.min(100, state.progression.reputation + 2),
+                reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 2),
                 trustedHelperPass: true,
                 activityRuns: {
                   ...state.progression.activityRuns,
@@ -1302,7 +1448,7 @@ export const useGameStore = create<GameState>()(
           const tokenReward = reward.tokenReward * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
           const progression = withQualifiedRoutes({
             ...state.progression,
-            reputation: Math.min(100, state.progression.reputation + reward.reputationReward),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + reward.reputationReward),
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
             activityRuns: {
               ...state.progression.activityRuns,
@@ -1425,7 +1571,7 @@ export const useGameStore = create<GameState>()(
           ...state.progression,
           version: PROGRESSION_VERSION,
           tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-          reputation: Math.min(100, state.progression.reputation + definition.reputationReward),
+          reputation: Math.min(MAX_REPUTATION, state.progression.reputation + definition.reputationReward),
           activityRuns: nextRuns,
           activityRewards: nextRewards,
         };
@@ -1500,7 +1646,7 @@ export const useGameStore = create<GameState>()(
           const progression = withQualifiedRoutes({
             ...state.progression,
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
-            reputation: Math.min(100, state.progression.reputation + 4),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 4),
           });
           return {
             rivalStory,
@@ -1560,7 +1706,7 @@ export const useGameStore = create<GameState>()(
           const progression = withQualifiedRoutes({
             ...state.progression,
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-            reputation: Math.min(100, state.progression.reputation + 2),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 2),
           });
           return {
             caper,

@@ -26,6 +26,7 @@ import {
   type BoardStatus,
 } from './questBoard';
 import { WorldMap } from './WorldMap';
+import { DripPanel } from './DripPanel';
 
 /**
  * The Journal.
@@ -42,13 +43,14 @@ import { WorldMap } from './WorldMap';
  * longer describe themselves in three different vocabularies.
  */
 
-type TabId = 'active' | 'story' | 'activities' | 'business' | 'completed' | 'map' | 'kit';
+type TabId = 'active' | 'story' | 'activities' | 'business' | 'drip' | 'completed' | 'map' | 'kit';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'active', label: 'Active' },
   { id: 'story', label: 'Story' },
   { id: 'activities', label: 'Activities' },
   { id: 'business', label: 'Business' },
+  { id: 'drip', label: 'Drip' },
   { id: 'completed', label: 'Completed' },
   { id: 'map', label: 'Map' },
   { id: 'kit', label: 'Backpack' },
@@ -390,6 +392,8 @@ export function Journal() {
               </div>
             </div>
           )}
+
+          {tab === 'drip' && <DripPanel />}
 
           {tab === 'completed' && (
             <div className="space-y-3">

@@ -45,6 +45,20 @@ import {
 import { OPTIONAL_BOOST_DURATION_MS, normalizePersistedGameState, serializeGameState, useGameStore } from './store';
 import { getOptionalRewardMultiplier } from './storyProgression';
 import {
+  DRIP_CATALOG,
+  achievementsEarned,
+  canPurchase,
+  equippedAppearance,
+  isPurchasable,
+  normalizeDripEquipped,
+  normalizeDripOwned,
+  repTierName,
+  type AchievementEvidence,
+  type DripAchievement,
+} from './drip';
+import { AREA_GATES, evaluateAllAreaAccess } from './areaAccess';
+import { MAX_REPUTATION } from './progression';
+import {
   GLOBAL_SOCIAL_FLOOR,
   commitSocialAction,
   currentApproacher,
@@ -855,6 +869,221 @@ const socialContext = (overrides: Partial<SocialContext> = {}): SocialContext =>
   assert.equal(abandoned, null, 'an unreachable trike is released');
   assert.equal(claimantOf(state!.rideableId), null);
   resetRideables();
+}
+
+
+/* ========================================================================== */
+/* Drip: catalog, economy gates, anti-forgery                                 */
+/* ========================================================================== */
+
+{
+  // The catalog must match the authored economy, and REP must be reachable.
+  assert.equal(DRIP_CATALOG.length, 24, 'the whole Drop 01 catalog is present');
+  const ids = new Set(DRIP_CATALOG.map((item) => item.id));
+  assert.equal(ids.size, DRIP_CATALOG.length, 'no duplicate item ids');
+
+  const maxRep = Math.max(...DRIP_CATALOG.map((item) => item.repRequired));
+  assert.equal(maxRep, 750);
+  assert.ok(
+    MAX_REPUTATION >= maxRep,
+    `REP ceiling ${MAX_REPUTATION} must reach the catalog's ${maxRep}; at the old cap of 100, `
+    + 'three of the four authored tiers and half the catalog were unreachable at any price',
+  );
+
+  // Every category the brief names is represented.
+  for (const category of ['top', 'bottom', 'shoes', 'hat', 'backpack', 'accessory', 'ride_on'] as const) {
+    assert.ok(DRIP_CATALOG.some((item) => item.category === category), `${category} has items`);
+  }
+
+  // Not everything costs both. The economy rules are explicit that dual
+  // requirements are reserved for stronger status items.
+  const moneyOnly = DRIP_CATALOG.filter((item) => item.unlockType === 'money');
+  const achievementOnly = DRIP_CATALOG.filter((item) => item.unlockType === 'achievement');
+  assert.ok(moneyOnly.length >= 3, 'some items are simply for sale');
+  assert.ok(achievementOnly.length >= 5, 'some items cannot be bought at all');
+  for (const item of achievementOnly) {
+    assert.equal(item.priceCash, 0, `${item.id} is earned, so it has no price`);
+    assert.ok(item.achievement, `${item.id} names the achievement that grants it`);
+    assert.equal(isPurchasable(item), false);
+  }
+  for (const item of moneyOnly) {
+    assert.equal(item.repRequired, 0, `${item.id} is a starter item and gates on nothing`);
+    assert.ok(item.priceCash > 0);
+  }
+
+  // Rep tiers name where you are.
+  assert.equal(repTierName(0), 'Starter');
+  assert.equal(repTierName(120), 'Known Kid');
+  assert.equal(repTierName(260), 'Popular Kid');
+  assert.equal(repTierName(900), 'DayKare Legend');
+}
+
+const NO_EVIDENCE: AchievementEvidence = {
+  binkyComplete: false,
+  caperComplete: false,
+  rainbowRounds: 0,
+  gardenRuns: 0,
+  juiceCustomersServed: 0,
+  artActivities: 0,
+  bestFriendship: 0,
+};
+
+{
+  // Achievements come from evidence, and only from evidence.
+  assert.equal(achievementsEarned(NO_EVIDENCE).size, 0, 'a fresh save has earned nothing');
+
+  assert.ok(achievementsEarned({ ...NO_EVIDENCE, binkyComplete: true }).has('binky-complete'));
+  assert.ok(achievementsEarned({ ...NO_EVIDENCE, caperComplete: true }).has('sticker-parade-complete'));
+  assert.ok(achievementsEarned({ ...NO_EVIDENCE, rainbowRounds: 10 }).has('rainbow-10-rounds'));
+  assert.ok(!achievementsEarned({ ...NO_EVIDENCE, rainbowRounds: 9 }).has('rainbow-10-rounds'), 'nine rounds is not ten');
+  assert.ok(achievementsEarned({ ...NO_EVIDENCE, juiceCustomersServed: 25 }).has('juice-25-customers'));
+  assert.ok(!achievementsEarned({ ...NO_EVIDENCE, juiceCustomersServed: 24 }).has('juice-25-customers'));
+  assert.ok(achievementsEarned({ ...NO_EVIDENCE, gardenRuns: 1 }).has('garden-first-milestone'));
+  assert.ok(!achievementsEarned({ ...NO_EVIDENCE, gardenRuns: 1 }).has('garden-mastery'), 'one run is not mastery');
+  assert.ok(achievementsEarned({ ...NO_EVIDENCE, gardenRuns: 5 }).has('garden-mastery'));
+  assert.ok(achievementsEarned({ ...NO_EVIDENCE, bestFriendship: 60 }).has('friend-trusted'));
+}
+
+{
+  // Purchase gating. canPurchase is the single authority the UI and the store
+  // action share, so a button can never offer what the action would refuse.
+  const tee = DRIP_CATALOG.find((item) => item.id === 'sunbeam_tee')!;
+  const legend = DRIP_CATALOG.find((item) => item.id === 'daykare_legend_scooter')!;
+  const cap = DRIP_CATALOG.find((item) => item.id === 'sticker_parade_cap')!;
+  const runners = DRIP_CATALOG.find((item) => item.id === 'rainbow_runners')!;
+  const none = new Set<never>() as Set<DripAchievement>;
+  const empty = new Set<string>();
+
+  assert.ok(canPurchase(tee, { reputation: 0, cash: 4 }, none, empty).ok, 'a starter item needs only its price');
+  assert.equal(canPurchase(tee, { reputation: 0, cash: 3 }, none, empty).ok, false, 'and it does need the price');
+  assert.match(canPurchase(tee, { reputation: 0, cash: 3 }, none, empty).reason!, /\$4/);
+
+  assert.equal(canPurchase(legend, { reputation: 749, cash: 999 }, none, empty).ok, false, 'one REP short is short');
+  assert.ok(canPurchase(legend, { reputation: 750, cash: 60 }, none, empty).ok);
+
+  // An earned-only item can never be bought, at any wealth.
+  const richest = canPurchase(cap, { reputation: 999_999, cash: 999_999 }, none, empty);
+  assert.equal(richest.ok, false, 'money cannot buy a prestige item');
+  assert.equal(richest.reason, cap.unlockDetail, 'and it says how to earn it instead');
+
+  // A dual-gate item needs all three.
+  assert.equal(canPurchase(runners, { reputation: 250, cash: 18 }, none, empty).ok, false, 'achievement missing');
+  const withRounds = new Set<DripAchievement>(['rainbow-10-rounds']);
+  assert.equal(canPurchase(runners, { reputation: 249, cash: 18 }, withRounds, empty).ok, false, 'REP missing');
+  assert.equal(canPurchase(runners, { reputation: 250, cash: 17 }, withRounds, empty).ok, false, 'cash missing');
+  assert.ok(canPurchase(runners, { reputation: 250, cash: 18 }, withRounds, empty).ok, 'all three met');
+
+  // Owning it stops the offer.
+  assert.equal(canPurchase(tee, { reputation: 0, cash: 99 }, none, new Set(['sunbeam_tee'])).ok, false);
+}
+
+{
+  // THE ANTI-FORGERY PROPERTY. A hand-edited save may not mint prestige items.
+  const forged = normalizeDripOwned(
+    ['sticker_parade_cap', 'binky_buddy_pack', 'garden_rain_boots', 'friendship_band', 'maker_art_smock'],
+    NO_EVIDENCE,
+  );
+  assert.deepEqual(forged, [], 'editing localStorage grants no achievement item');
+
+  // Nor may it invent items or duplicate them.
+  assert.deepEqual(normalizeDripOwned(['not_a_real_item', 42, null], NO_EVIDENCE), []);
+  assert.deepEqual(normalizeDripOwned(['sunbeam_tee', 'sunbeam_tee'], NO_EVIDENCE), ['sunbeam_tee']);
+  assert.deepEqual(normalizeDripOwned('nonsense', NO_EVIDENCE), []);
+
+  // Purchased items ARE trusted, because cash history is not reconstructible.
+  assert.deepEqual(normalizeDripOwned(['sunbeam_tee', 'little_bucket_hat'], NO_EVIDENCE).sort(),
+    ['little_bucket_hat', 'sunbeam_tee']);
+
+  // And an earned item is granted even when the save never listed it, so a
+  // player who earns one can never lose it to a corrupt save.
+  const earnedBack = normalizeDripOwned([], { ...NO_EVIDENCE, binkyComplete: true });
+  assert.ok(earnedBack.includes('binky_buddy_pack'), 'evidence grants the item on its own');
+}
+
+{
+  // Equipping is constrained to owned items in their own slot.
+  const owned = ['sunbeam_tee', 'little_bucket_hat'];
+  assert.deepEqual(normalizeDripEquipped({ top: 'sunbeam_tee', hat: 'little_bucket_hat' }, owned),
+    { top: 'sunbeam_tee', hat: 'little_bucket_hat' });
+  assert.deepEqual(normalizeDripEquipped({ top: 'starlight_sneakers' }, owned), {}, 'shoes cannot fill the top slot');
+  assert.deepEqual(normalizeDripEquipped({ top: 'playground_hoodie' }, owned), {}, 'an unowned item cannot be worn');
+  assert.deepEqual(normalizeDripEquipped('nonsense', owned), {});
+
+  const look = equippedAppearance({ top: 'sunbeam_tee', hat: 'little_bucket_hat' });
+  assert.ok(look.top && look.hat, 'equipped items produce colours for the rig');
+  assert.equal(equippedAppearance({}).top, undefined, 'and nothing equipped tints nothing');
+}
+
+{
+  // End to end through the real store: the browser cannot mint currency.
+  const store = useGameStore.getState();
+  store.resetGame();
+  assert.deepEqual(useGameStore.getState().dripOwned, [], 'a new save owns nothing');
+
+  const cash = useGameStore.getState().juiceClubCash;
+  assert.ok(cash < 60, 'a new save cannot afford the Legendary item');
+  assert.equal(
+    useGameStore.getState().purchaseDripItem('daykare_legend_scooter'),
+    false,
+    'and the store refuses it',
+  );
+  assert.equal(useGameStore.getState().juiceClubCash, cash, 'a refused purchase costs nothing');
+  assert.deepEqual(useGameStore.getState().dripOwned, []);
+
+  // An unknown id is refused rather than crashing.
+  assert.equal(useGameStore.getState().purchaseDripItem('free_everything'), false);
+
+  // An affordable one goes through, charges exactly the catalog price, and is
+  // equipped so the player can see what they bought.
+  useGameStore.setState({ juiceClubCash: 10 });
+  assert.equal(useGameStore.getState().purchaseDripItem('sunbeam_tee'), true);
+  assert.equal(useGameStore.getState().juiceClubCash, 6, 'charged exactly $4');
+  assert.ok(useGameStore.getState().dripOwned.includes('sunbeam_tee'));
+  assert.equal(useGameStore.getState().dripEquipped.top, 'sunbeam_tee', 'and worn immediately');
+
+  // Buying it twice does not double-charge or duplicate.
+  assert.equal(useGameStore.getState().purchaseDripItem('sunbeam_tee'), false);
+  assert.equal(useGameStore.getState().juiceClubCash, 6);
+
+  // Equip/unequip round trip.
+  useGameStore.getState().unequipDripCategory('top');
+  assert.equal(useGameStore.getState().dripEquipped.top, undefined);
+  assert.equal(useGameStore.getState().equipDripItem('sunbeam_tee'), true);
+  assert.equal(useGameStore.getState().equipDripItem('playground_hoodie'), false, 'cannot wear what you do not own');
+
+  // Ownership and equipment survive a save round trip.
+  const saved = serializeGameState(useGameStore.getState()) as Record<string, unknown>;
+  const reloaded = normalizePersistedGameState(saved);
+  assert.ok(reloaded.dripOwned.includes('sunbeam_tee'), 'purchases persist');
+  assert.equal(reloaded.dripEquipped.top, 'sunbeam_tee', 'so does what you are wearing');
+
+  useGameStore.getState().resetGame();
+}
+
+{
+  // Area gates: specified, evaluated, and structurally unable to block Story.
+  for (const gate of AREA_GATES) {
+    assert.equal(gate.coreStoryBlocked, false, `${gate.id} must never gate required Story content`);
+  }
+
+  const poor = evaluateAllAreaAccess({
+    progression: createInitialProgression(),
+    cash: 0,
+    quests: createInitialQuests(),
+    storyChapter: 1,
+    gardenRuns: 0,
+  });
+  assert.ok(poor.every((area) => !area.unlocked), 'a new save qualifies for none of them');
+  assert.ok(poor.every((area) => area.outstanding.length > 0), 'and each says exactly what it needs');
+
+  const rich = evaluateAllAreaAccess({
+    progression: { ...createInitialProgression(), reputation: 999, routeUnlocks: ['maker-market'] },
+    cash: 999,
+    quests: createInitialQuests(),
+    storyChapter: 9,
+    gardenRuns: 9,
+  });
+  assert.ok(rich.every((area) => area.unlocked), 'and a fully-progressed save qualifies for all');
 }
 
 console.log('overhaul checks passed');

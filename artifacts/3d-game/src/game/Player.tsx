@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useMemo, useRef, useImperativeHandle, useState }
 import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { useEquippedAppearance } from './useEquippedAppearance';
 import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
@@ -327,20 +328,58 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     }
   });
 
+  const appearance = useEquippedAppearance();
+
   return (
     <group ref={localRef} position={playerPosition}>
       <group position={[0, isRiding ? 0.3 : 0, 0]}>
+        {/* Equipped Drip tints the player. Buying a hoodie and seeing nothing
+            change would make the whole economy abstract, so the cosmetic slots
+            drive the rig's colours directly; unequipped slots fall back to the
+            original palette rather than to grey. */}
         <CharacterModel
-          bodyColor="#f47b43"
-          accentColor="#ffc857"
+          bodyColor={appearance.top ?? '#f47b43'}
+          accentColor={appearance.accent ?? '#ffc857'}
           hairColor="#713f32"
-          hairStyle="cap"
+          hairStyle={appearance.hat ? 'cap' : 'cap'}
           mood="excited"
           isCrouching={isCrouching && !isRiding}
           imaginationMode={isImaginationMode}
           motionSeed={1.3}
           idleEnergy={1.05}
         />
+        {/* Hat and shoes have no slot in the rig, so they are drawn here as
+            simple shapes rather than left invisible. */}
+        {appearance.hat && (
+          <group position={[0, 1.34, 0]}>
+            <mesh castShadow>
+              <cylinderGeometry args={[0.27, 0.29, 0.12, 12]} />
+              <meshStandardMaterial color={appearance.hat} roughness={0.75} />
+            </mesh>
+            <mesh position={[0, -0.04, 0.2]} castShadow>
+              <boxGeometry args={[0.4, 0.04, 0.26]} />
+              <meshStandardMaterial color={appearance.hat} roughness={0.75} />
+            </mesh>
+          </group>
+        )}
+        {appearance.shoes && (
+          <group position={[0, 0.06, 0.02]}>
+            <mesh position={[-0.12, 0, 0]} castShadow>
+              <boxGeometry args={[0.16, 0.11, 0.28]} />
+              <meshStandardMaterial color={appearance.shoes} roughness={0.7} />
+            </mesh>
+            <mesh position={[0.12, 0, 0]} castShadow>
+              <boxGeometry args={[0.16, 0.11, 0.28]} />
+              <meshStandardMaterial color={appearance.shoes} roughness={0.7} />
+            </mesh>
+          </group>
+        )}
+        {appearance.bottom && (
+          <mesh position={[0, 0.44, 0]} castShadow>
+            <boxGeometry args={[0.44, 0.3, 0.32]} />
+            <meshStandardMaterial color={appearance.bottom} roughness={0.8} />
+          </mesh>
+        )}
       </group>
       
       {/* Dropped shadow indicator */}

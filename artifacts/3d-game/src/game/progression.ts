@@ -27,6 +27,25 @@ export interface ProgressionState {
 }
 
 export const PROGRESSION_VERSION = 4;
+/**
+ * Reputation ceiling.
+ *
+ * This was 100, which predates the Drip economy. The authored catalog's tiers -
+ * Starter 0-99, Known Kid 100-249, Popular Kid 250-499, DayKare Legend 500+ -
+ * and its top item at 750 REP are all unreachable under a cap of 100, so three
+ * of the four tiers could never be entered and half the catalog could never be
+ * bought at any price.
+ *
+ * Raising the ceiling is purely additive: every existing save holds at most 100,
+ * every existing gate (the Garden route needs 10) is untouched, and nothing
+ * reads reputation as a percentage.
+ *
+ * See the delivery notes on earn rates - the ceiling is now reachable in
+ * principle, which is a different question from whether it is reachable in a
+ * reasonable number of sessions.
+ */
+export const MAX_REPUTATION = 1000;
+
 export const MAX_TOKENS = 999_999;
 export const MAX_ACTIVITY_RUNS = 99_999;
 
@@ -124,7 +143,7 @@ export function normalizeProgression(value: unknown): ProgressionState {
 
   const normalized: ProgressionState = {
     version: PROGRESSION_VERSION,
-    reputation: safeCount(candidate.reputation, 0, 100),
+    reputation: safeCount(candidate.reputation, 0, MAX_REPUTATION),
     tokens: safeCount(candidate.tokens, 0, MAX_TOKENS),
     routeUnlocks,
     activityRuns: safeCountRecord(candidate.activityRuns, knownActivityIds, MAX_ACTIVITY_RUNS),
