@@ -252,7 +252,7 @@ useGameStore.getState().advanceSchedule();
 const rolledDay = useGameStore.getState();
 assert.equal(rolledDay.dayNumber, dayBeforeRollover + 1);
 assert.equal(rolledDay.timeOfDay, 9);
-assert.equal(rolledDay.schedule, 'morning-play');
+assert.equal(rolledDay.schedule, 'breakfast');
 assert.equal(rolledDay.progression.tokens, 26, 'day rollover preserves permanent progression');
 assert.equal(rolledDay.progression.reputation, 17);
 
@@ -1016,7 +1016,7 @@ const corruptSave = normalizePersistedGameState({
 });
 assert.equal(corruptSave.quality, 'high', 'an unknown quality preset falls back rather than being stored');
 assert.equal(corruptSave.timeOfDay, 9);
-assert.equal(corruptSave.schedule, 'morning-play');
+assert.equal(corruptSave.schedule, 'breakfast');
 assert.equal(corruptSave.isRainy, false);
 assert.deepEqual(corruptSave.inventory, []);
 assert.deepEqual(corruptSave.collectibles, []);
@@ -1254,7 +1254,7 @@ for (const teacher of [
   { name: 'Ms. Harper', defaultPos: [-2, 0, 2] as [number, number, number] },
   { name: 'Mr. Davis', defaultPos: [4, 0, 4] as [number, number, number] },
 ]) {
-  for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+  for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'outdoor-play', 'pickup']) {
     for (const rainy of [false, true]) {
       for (const patrolPoint of teacherPatrolSpots(teacher.name, scheduleName, rainy, teacher.defaultPos)) {
         assert.equal(
@@ -1267,16 +1267,16 @@ for (const teacher of [
   }
 }
 
-for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'outdoor-play', 'pickup']) {
   assert.ok(
-    ['standing', 'walking', 'sitting', 'playing', 'gathering', 'coloring', 'toy-play', 'conversation', 'reading', 'singing', 'dancing', 'pretend-play', 'circle-time', 'snacking', 'following', 'reacting', 'intervening']
+    ['standing', 'walking', 'sitting', 'playing', 'gathering', 'coloring', 'toy-play', 'conversation', 'reading', 'singing', 'dancing', 'pretend-play', 'circle-time', 'snacking', 'napping', 'following', 'reacting', 'intervening']
       .includes(kidActivityMode(scheduleName, false, 4.2)),
     `kid activity mode is defined for ${scheduleName}`,
   );
 }
 
 const authoredActivityKinds = new Set<string>();
-for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-play', 'pickup']) {
+for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'outdoor-play', 'pickup']) {
   for (const rainy of [false, true]) {
     const firstCyclePositions = new Set<string>();
     for (const [index, kid] of KID_CAST.entries()) {
@@ -1289,11 +1289,11 @@ for (const scheduleName of ['morning-play', 'art-time', 'juice-club', 'outdoor-p
           `${kid.name} ${scheduleName} ${rainy ? 'rainy' : 'dry'} activity ${plan.activity} must be reachable`,
         );
         assert.ok(
-          scheduleName === 'juice-club'
+          scheduleName === 'nap' ? plan.duration === 30 : scheduleName === 'juice-club'
             ? plan.duration >= 4 && plan.duration < 5
             : plan.duration >= MIN_CHILD_ACTIVITY_DWELL_SECONDS
               && plan.duration <= MAX_CHILD_ACTIVITY_DWELL_SECONDS,
-          scheduleName === 'juice-club'
+          scheduleName === 'nap' ? 'Nap activities remain settled for the full rest block' : scheduleName === 'juice-club'
             ? 'Juice Club keeps its original customer turnover timing'
             : 'authored toddler activities remain visible long enough to notice while staying bounded',
         );
@@ -2187,7 +2187,7 @@ const tickRealSeconds = (seconds: number) => {
   assert.equal(migrated.clock.dayIndex, 6, 'and from its own day number');
   assert.equal(migrated.timeOfDay, 13.5, 'the legacy timeOfDay is untouched');
   assert.equal(migrated.dayNumber, 6, 'the legacy day number is untouched');
-  assert.equal(migrated.schedule, 'outdoor-play', 'and the schedule still resolves the same way it always did');
+  assert.equal(migrated.schedule, 'recess', 'and the save resolves into the newly authored recess block');
   assert.equal(migrated.juiceStock, 4, 'unrelated progress survives the migration');
   assert.equal(migrated.crackerStock, 2, 'including crackers');
   assert.equal(migrated.juiceClubCash, 11, 'including Juice Club cash');

@@ -70,6 +70,8 @@ export interface BoardEntry {
   requirement?: string;
   /** Progress within the CURRENT round - never the lifetime total. */
   roundProgress?: BoardProgress;
+  /** Permanent goal progress, separate from a repeatable's resettable round. */
+  milestoneProgress?: BoardProgress;
   /** Lifetime completions, stated as such so it cannot be mistaken for progress. */
   lifetime?: string;
   reward?: string;
@@ -147,6 +149,9 @@ function questEntry(definition: (typeof QUEST_DEFINITIONS)[number], input: Board
       status: done > 0 ? 'active' : 'repeatable',
       nextAction: objective ? `${objective.label} — ${objective.guidance}` : undefined,
       roundProgress: { done, total, label: `${done}/${total} this round` },
+      milestoneProgress: definition.id === 'rainbow-tidy-up'
+        ? { done: Math.min(3, rounds), total: 3, label: rounds >= 3 ? `Storybook Lane unlocked · ${rounds} lifetime rounds` : `${rounds}/3 rounds toward Storybook Lane` }
+        : undefined,
       lifetime: rounds > 0 ? `${rounds} round${rounds === 1 ? '' : 's'} completed` : undefined,
     };
   }

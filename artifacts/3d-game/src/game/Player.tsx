@@ -12,6 +12,7 @@ import { isGameplayBlocked } from './gameplayGate';
 import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, resolveMovement, trackPlayerPosition } from './world';
 import { CameraRig, advanceCameraPosition } from './cameraRig';
 import { useModeStore } from './modeStore';
+import { playerFollowsSchedule, schedulePolicy } from './schedulePolicy';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -56,6 +57,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const [isCrouching, setIsCrouching] = useState(false);
   const lastTeleport = useRef(teleportTrigger);
   const positionSaveAccumulator = useRef(0);
+  const scheduleEscort = useRef({ key: '', outsideSince: 0, announced: false });
   gameplayBlocked.current = isGameplayBlocked({ journalOpen, activeDialogue, zoneTransitioning, frontEndBlocked });
   const cameraProfile = getCameraProfile(size.width, size.height);
   const zoneCameraBlockers = useMemo(
@@ -203,6 +205,28 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     resolvedDisplacement.current.copy(resolvedPosition).sub(localRef.current.position);
     localRef.current.position.x = resolvedPosition.x;
     localRef.current.position.z = resolvedPosition.z;
+    const liveGame = useGameStore.getState();
+    const policy = schedulePolicy(liveGame.schedule);
+    const follows = playerFollowsSchedule(liveGame.schedule, liveGame.zone, localRef.current.position.toArray());
+    const escortKey = `${liveGame.schedule}:${liveGame.zone}`;
+    if (scheduleEscort.current.key !== escortKey || follows) scheduleEscort.current = { key: escortKey, outsideSince: follows ? 0 : state.clock.elapsedTime, announced: false };
+    if (policy && !follows && !blocked && state.clock.elapsedTime - scheduleEscort.current.outsideSince >= 2.5) {
+      if (!scheduleEscort.current.announced) {
+        scheduleEscort.current.announced = true;
+        liveGame.setAmbientMessage(`${policy.teacher} takes your hand. ${policy.instruction}`);
+      }
+      if (liveGame.zone !== policy.zone && !liveGame.zoneTransitioning) {
+        if (policy.zone === 'garden') liveGame.enterGarden(); else liveGame.returnToHub();
+      } else if (liveGame.zone === policy.zone) {
+        const target = new THREE.Vector3(...policy.anchor);
+        const remaining = localRef.current.position.distanceTo(target);
+        const escorted = localRef.current.position.clone().add(target.sub(localRef.current.position).setY(0).normalize().multiplyScalar(Math.min(7.5 * delta, remaining)));
+        const corrected = resolveMovement(localRef.current.position, escorted, PLAYER_RADIUS, 0.38, zone);
+        localRef.current.position.x = corrected.x;
+        localRef.current.position.z = corrected.z;
+        velocity.current.set(0, 0, 0);
+      }
+    }
     trackPlayerPosition(localRef.current.position);
     positionSaveAccumulator.current += delta;
     if (positionSaveAccumulator.current >= 0.5) {

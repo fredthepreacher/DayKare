@@ -37,9 +37,14 @@ export const DAY_START_MINUTE = 9 * 60;      // 09:00
 export const DAY_END_MINUTE = 17 * 60 + 30;  // 17:30
 
 export type ScheduleBlockId =
+  | 'breakfast'
   | 'morning-play'
+  | 'show-and-tell'
   | 'art-time'
+  | 'lunch'
   | 'juice-club'
+  | 'nap'
+  | 'recess'
   | 'outdoor-play'
   | 'pickup';
 
@@ -84,7 +89,7 @@ export interface ScheduleBlock {
   /** Minutes since midnight, exclusive. */
   endMinute: number;
   label: string;
-  activityType: 'free-play' | 'craft' | 'business' | 'outdoor' | 'departure';
+  activityType: 'meal' | 'free-play' | 'group' | 'craft' | 'business' | 'rest' | 'outdoor' | 'departure';
   /** Reserved for 4C. Absent means "unchanged from the previous block". */
   npcProfile?: string;
   /** Reserved for 4C. */
@@ -108,10 +113,15 @@ export interface ScheduleBlock {
  * for 4E and are read by nothing. See the note on ScheduleBlock above.
  */
 export const SCHEDULE_BLOCKS: readonly ScheduleBlock[] = [
-  { id: 'morning-play', startMinute: DAY_START_MINUTE, endMinute: 10 * 60 + 30, label: 'Morning Play', activityType: 'free-play', lightingProfile: 'morning', musicContext: 'morning' },
-  { id: 'art-time', startMinute: 10 * 60 + 30, endMinute: 12 * 60, label: 'Art Time', activityType: 'craft', lightingProfile: 'midday', musicContext: 'craft' },
-  { id: 'juice-club', startMinute: 12 * 60, endMinute: 13 * 60 + 30, label: 'Juice Club', activityType: 'business', lightingProfile: 'midday', musicContext: 'business' },
-  { id: 'outdoor-play', startMinute: 13 * 60 + 30, endMinute: 15 * 60 + 30, label: 'Outdoor Play', activityType: 'outdoor', lightingProfile: 'afternoon', musicContext: 'outdoor' },
+  { id: 'breakfast', startMinute: DAY_START_MINUTE, endMinute: 9 * 60 + 15, label: 'Breakfast', activityType: 'meal', lightingProfile: 'morning', musicContext: 'morning' },
+  { id: 'morning-play', startMinute: 9 * 60 + 15, endMinute: 10 * 60 + 15, label: 'Morning Play', activityType: 'free-play', lightingProfile: 'morning', musicContext: 'morning' },
+  { id: 'show-and-tell', startMinute: 10 * 60 + 15, endMinute: 10 * 60 + 30, label: 'Show & Tell', activityType: 'group', lightingProfile: 'morning', musicContext: 'circle' },
+  { id: 'art-time', startMinute: 10 * 60 + 30, endMinute: 11 * 60 + 45, label: 'Art Time', activityType: 'craft', lightingProfile: 'midday', musicContext: 'craft' },
+  { id: 'lunch', startMinute: 11 * 60 + 45, endMinute: 12 * 60, label: 'Lunch', activityType: 'meal', lightingProfile: 'midday', musicContext: 'meal' },
+  { id: 'juice-club', startMinute: 12 * 60, endMinute: 13 * 60, label: 'Juice Club', activityType: 'business', lightingProfile: 'midday', musicContext: 'business' },
+  { id: 'nap', startMinute: 13 * 60, endMinute: 13 * 60 + 30, label: 'Nap Time', activityType: 'rest', lightingProfile: 'midday', musicContext: 'quiet' },
+  { id: 'recess', startMinute: 13 * 60 + 30, endMinute: 14 * 60, label: 'Garden Recess', activityType: 'outdoor', lightingProfile: 'afternoon', musicContext: 'outdoor' },
+  { id: 'outdoor-play', startMinute: 14 * 60, endMinute: 15 * 60 + 30, label: 'Afternoon Play', activityType: 'outdoor', lightingProfile: 'afternoon', musicContext: 'outdoor' },
   { id: 'pickup', startMinute: 15 * 60 + 30, endMinute: DAY_END_MINUTE, label: 'Pickup', activityType: 'departure', lightingProfile: 'late-afternoon', musicContext: 'pickup' },
 ];
 

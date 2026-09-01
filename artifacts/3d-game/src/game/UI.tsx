@@ -31,6 +31,7 @@ import {
   interventionIsActive,
 } from './teacherInterventions';
 import { useMonetizationStore } from './monetizationStore';
+import { absoluteGameMinute, cropIsReady, cropProgress, GUMMY_HARVEST_SIZE } from './gardenEconomy';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -92,6 +93,12 @@ export function UI() {
     startGardenActivity,
     advanceGardenActivity,
     resetGardenActivity,
+    gummyCrop,
+    plantGummyDrops,
+    harvestGummyDrops,
+    eatGummyDrop,
+    feedGummyDrop,
+    sellGummyCrop,
     completeActivity,
     ambientMessage,
     activeInstruction,
@@ -412,6 +419,26 @@ export function UI() {
               text: 'The bed is ready for another planting round whenever you are.',
             });
           }
+        } else if (activeInteractable === 'gummy-drop-bed') {
+          const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
+          if (gummyCrop.plantedAt === null) {
+            plantGummyDrops();
+            setActiveDialogue({ name: 'Gummy Drop Garden', text: 'Seeds planted! They need five in-game hours to grow a full crop of ten Gummy Drops.' });
+          } else if (cropIsReady(gummyCrop, now)) {
+            harvestGummyDrops();
+            setActiveDialogue({ name: 'Gummy Drop Garden', text: 'Ten Gummy Drops harvested! Sell the basket for $30, share them for cash and REP, or eat one.' });
+          } else {
+            setActiveDialogue({ name: 'Gummy Drop Garden', text: `The candy plants are ${Math.floor(cropProgress(gummyCrop, now) * 100)}% grown. A full crop takes five in-game hours.` });
+          }
+          if (gummyCrop.gummyDrops > 0) setActiveDialogue({
+            name: 'Gummy Drop Basket', text: `${gummyCrop.gummyDrops} Gummy Drops ready. Sharing earns respect; a full basket sells for $30.`,
+            options: [
+              ...(gummyCrop.gummyDrops >= GUMMY_HARVEST_SIZE ? [{ label: 'Sell 10 for $30 + 5 REP', action: () => { sellGummyCrop(); setActiveDialogue(null); } }] : []),
+              { label: 'Share 1 · $3 + 2 REP', action: () => { feedGummyDrop(); setActiveDialogue(null); } },
+              { label: 'Eat 1 · +1 REP', action: () => { eatGummyDrop(); setActiveDialogue(null); } },
+              { label: 'Leave', action: () => setActiveDialogue(null) },
+            ],
+          });
         } else if (activeInteractable.startsWith('garden-landmark-')) {
           const landmark = activeInteractable.replace('garden-landmark-', '');
           const landmarkDialogue: Record<string, { name: string; text: string }> = {
@@ -576,7 +603,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
@@ -777,6 +804,12 @@ export function UI() {
       if (gardenActivityStep < 3) return `Tend Seedlings · ${gardenActivityStep}/3`;
       return 'Plant Another Bed';
     }
+    if (activeInteractable === 'gummy-drop-bed') {
+      const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
+      if (gummyCrop.gummyDrops > 0) return `Gummy Basket · ${gummyCrop.gummyDrops}`;
+      if (cropIsReady(gummyCrop, now)) return 'Harvest 10 Gummy Drops';
+      return gummyCrop.plantedAt === null ? 'Plant Gummy Drop Seeds' : `Check Candy Plants · ${Math.floor(cropProgress(gummyCrop, now) * 100)}%`;
+    }
     if (activeInteractable === 'caper-board') {
       if (caper.step === 'idle' || caper.step === 'complete') return 'Start Sticker Parade';
       if (caper.step === 'celebrate') return 'Launch Sticker Parade';
@@ -811,6 +844,7 @@ export function UI() {
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
     if (activeInteractable === 'garden-activity-host') return 'Repeatable Garden activity · modest reward';
+    if (activeInteractable === 'gummy-drop-bed') return 'Five-hour crop · $30 per full basket · REP from sharing';
     if (activeInteractable === 'caper-board') return 'Safe caper · planned with teacher supervision';
     if (activeInteractable === 'parade-banner') return 'Authorized story objective · teacher supervised';
     if (activeInteractable === 'caper-bubble-table') return 'Public hall setup · supervised activity';

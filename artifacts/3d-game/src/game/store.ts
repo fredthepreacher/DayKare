@@ -100,8 +100,9 @@ import {
   getOptionalRewardMultiplier,
 } from './storyProgression';
 import { monetizedReputation } from './monetizationStore';
+import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GummyCropState } from './gardenEconomy';
 
-export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
+export type ScheduleState = import('./gameClock').ScheduleBlockId;
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
 export type JuiceClubCustomerPhase = 'idle' | 'entry' | 'queue' | 'ordering' | 'service' | 'drink' | 'reaction' | 'departure';
 
@@ -198,6 +199,7 @@ export interface GameState {
   zoneTransitioning: boolean;
   pendingZone: GameZone | null;
   gardenActivityStep: number;
+  gummyCrop: GummyCropState;
   ambientMessage: string | null;
   activeInstruction: GameplayInstruction | null;
   recentInstructions: GameplayInstruction[];
@@ -261,6 +263,11 @@ export interface GameState {
   startGardenActivity: () => boolean;
   advanceGardenActivity: () => number;
   resetGardenActivity: () => void;
+  plantGummyDrops: () => boolean;
+  harvestGummyDrops: () => boolean;
+  eatGummyDrop: () => boolean;
+  feedGummyDrop: () => boolean;
+  sellGummyCrop: () => boolean;
   setAmbientMessage: (message: string | null) => void;
   showInstruction: (instruction: Omit<GameplayInstruction, 'shownAt'> & { shownAt?: number }) => boolean;
   dismissInstruction: () => void;
@@ -330,7 +337,7 @@ const initialState = {
   timeOfDay: 9.0,
   clock: createClockState(1, 9 * 60),
   dayNumber: 1,
-  schedule: 'morning-play' as ScheduleState,
+  schedule: 'breakfast' as ScheduleState,
   isRainy: false,
   weatherSeed: 0x5eed,
   isImaginationMode: false,
@@ -374,6 +381,7 @@ const initialState = {
   zoneTransitioning: false,
   pendingZone: null,
   gardenActivityStep: 0,
+  gummyCrop: createGummyCrop(),
   ambientMessage: null,
   activeInstruction: null,
   recentInstructions: [] as GameplayInstruction[],
@@ -862,6 +870,7 @@ export function normalizePersistedGameState(value: unknown) {
     zoneTransitioning: false,
     pendingZone: null,
     gardenActivityStep: 0,
+    gummyCrop: normalizeGummyCrop(persisted.gummyCrop),
     ambientMessage: null,
     activeInstruction: null,
     recentInstructions,
@@ -911,6 +920,7 @@ export function serializeGameState(state: GameState) {
     playerPosition: state.playerPosition,
     hubPosition: state.hubPosition,
     gardenPosition: state.gardenPosition,
+    gummyCrop: state.gummyCrop,
     rivalStory: state.rivalStory,
     caper: state.caper,
     districtProgress: state.districtProgress,
@@ -1663,6 +1673,52 @@ export const useGameStore = create<GameState>()(
         return nextStep;
       },
       resetGardenActivity: () => set({ gardenActivityStep: 0 }),
+      plantGummyDrops: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'garden' || state.gummyCrop.plantedAt !== null) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, plantedAt: absoluteGameMinute(state.dayNumber, state.clock.minute) } };
+        });
+        return changed;
+      },
+      harvestGummyDrops: () => {
+        let changed = false;
+        set((state) => {
+          const now = absoluteGameMinute(state.dayNumber, state.clock.minute);
+          if (state.zone !== 'garden' || !cropIsReady(state.gummyCrop, now)) return state;
+          changed = true;
+          return { gummyCrop: { plantedAt: null, gummyDrops: Math.min(999, state.gummyCrop.gummyDrops + GUMMY_HARVEST_SIZE), harvests: state.gummyCrop.harvests + 1 } };
+        });
+        return changed;
+      },
+      eatGummyDrop: () => {
+        let changed = false;
+        set((state) => {
+          if (state.gummyCrop.gummyDrops < 1) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - 1 }, progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(1)) }) };
+        });
+        return changed;
+      },
+      feedGummyDrop: () => {
+        let changed = false;
+        set((state) => {
+          if (state.gummyCrop.gummyDrops < 1) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - 1 }, juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_UNIT_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)) }) };
+        });
+        return changed;
+      },
+      sellGummyCrop: () => {
+        let changed = false;
+        set((state) => {
+          if (state.gummyCrop.gummyDrops < GUMMY_HARVEST_SIZE) return state;
+          changed = true;
+          return { gummyCrop: { ...state.gummyCrop, gummyDrops: state.gummyCrop.gummyDrops - GUMMY_HARVEST_SIZE }, juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_FULL_CROP_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(5)) }) };
+        });
+        return changed;
+      },
       setAmbientMessage: (ambientMessage) => set((state) => (
         state.zone !== 'hub' || state.activeDialogue || state.journalOpen || state.zoneTransitioning
           ? { ambientMessage: null }
@@ -1910,7 +1966,7 @@ export const useGameStore = create<GameState>()(
           if (
             state.zone !== 'hub'
             || state.zoneTransitioning
-            || !getUnlockedRoutes(state.progression).includes('garden-district')
+            || (!getUnlockedRoutes(state.progression).includes('garden-district') && state.schedule !== 'recess')
           ) return state;
           changed = true;
           const position = currentPosition(state);

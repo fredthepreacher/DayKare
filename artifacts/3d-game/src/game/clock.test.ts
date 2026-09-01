@@ -176,7 +176,7 @@ assert.equal(setTimeScale(createClockState(), 8 as unknown as 1).timeScale, 1, '
   const tick = advanceClock(clock, 600, 600);
   assert.deepEqual(
     tick.crossed.map((b) => b.id),
-    ['art-time', 'juice-club', 'outdoor-play', 'pickup'],
+    ['morning-play', 'show-and-tell', 'art-time', 'lunch', 'juice-club', 'nap', 'recess', 'outdoor-play', 'pickup'],
     'a single tick spanning the day reports every boundary once, in order',
   );
   assert.ok(tick.reachedDayEnd, 'and reports that the day ended');
@@ -219,7 +219,7 @@ assert.equal(setTimeScale(createClockState(), 8 as unknown as 1).timeScale, 1, '
   const preClock = normalizeClockState(undefined, 13.5, 5);
   assert.equal(preClock.minute, 13.5 * 60, 'a pre-clock save migrates from its timeOfDay');
   assert.equal(preClock.dayIndex, 5, 'and keeps its day');
-  assert.equal(scheduleIdForMinute(preClock.minute), 'outdoor-play', 'and lands in the right block');
+  assert.equal(scheduleIdForMinute(preClock.minute), 'recess', 'and lands in the right block');
 }
 assert.equal(normalizeClockState('nonsense', 9, 1).minute, DAY_START_MINUTE, 'a corrupt clock falls back rather than throwing');
 assert.equal(normalizeClockState({ minute: 99999 }, 9, 1).minute, DAY_END_MINUTE, 'an out-of-range minute is clamped, not trusted');
@@ -235,11 +235,15 @@ assert.equal(dayProgress(DAY_START_MINUTE), 0, 'the day starts at 0 progress');
 assert.equal(dayProgress(DAY_END_MINUTE), 1, 'and ends at 1');
 
 // Every block boundary agrees with the schedule lookup the game already used.
-assert.equal(scheduleIdForMinute(9 * 60), 'morning-play');
-assert.equal(scheduleIdForMinute(10 * 60 + 29), 'morning-play');
+assert.equal(scheduleIdForMinute(9 * 60), 'breakfast');
+assert.equal(scheduleIdForMinute(9 * 60 + 15), 'morning-play');
+assert.equal(scheduleIdForMinute(10 * 60 + 15), 'show-and-tell');
 assert.equal(scheduleIdForMinute(10 * 60 + 30), 'art-time', 'art time starts at 10:30, as it always did');
+assert.equal(scheduleIdForMinute(11 * 60 + 45), 'lunch');
 assert.equal(scheduleIdForMinute(12 * 60), 'juice-club', 'juice club starts at noon, as it always did');
-assert.equal(scheduleIdForMinute(13 * 60 + 30), 'outdoor-play');
+assert.equal(scheduleIdForMinute(13 * 60), 'nap');
+assert.equal(scheduleIdForMinute(13 * 60 + 30), 'recess');
+assert.equal(scheduleIdForMinute(14 * 60), 'outdoor-play');
 assert.equal(scheduleIdForMinute(15 * 60 + 30), 'pickup');
 assert.equal(scheduleIdForMinute(DAY_END_MINUTE), 'pickup', 'the last block owns the end of the day');
 assert.equal(blockForMinute(12 * 60).label, 'Juice Club', 'blocks carry a player-facing label');

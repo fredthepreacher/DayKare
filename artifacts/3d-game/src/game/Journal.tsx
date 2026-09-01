@@ -117,6 +117,12 @@ function EntryCard({ entry, emphasised = false }: { entry: BoardEntry; emphasise
           <ProgressBar done={entry.roundProgress.done} total={entry.roundProgress.total} />
         </div>
       )}
+      {entry.milestoneProgress && (
+        <div className="mt-3 rounded-xl bg-emerald-50 p-2.5 text-emerald-900">
+          <div className="mb-1 flex items-center justify-between text-[11px] font-black"><span>Permanent route progress</span><span>{entry.milestoneProgress.label}</span></div>
+          <ProgressBar done={entry.milestoneProgress.done} total={entry.milestoneProgress.total} />
+        </div>
+      )}
 
       {entry.roundProgress && entry.roundProgress.total === 0 && (
         <div className="mt-2 text-[11px] font-bold text-[#8b5a2b]">{entry.roundProgress.label}</div>
@@ -130,7 +136,7 @@ function EntryCard({ entry, emphasised = false }: { entry: BoardEntry; emphasise
         {entry.reward && <span>★ {entry.reward}</span>}
       </footer>
 
-      {entry.unlocks && entry.unlocks.length > 0 && (
+      {entry.unlocks && entry.unlocks.length > 0 && !entry.milestoneProgress && (
         <div className="daykare-entry-unlocks">Opens {entry.unlocks.join(' · ')}</div>
       )}
     </article>

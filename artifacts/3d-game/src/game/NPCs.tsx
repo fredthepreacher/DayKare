@@ -150,6 +150,7 @@ function scheduleDestination(
 ) {
   const slot = (Math.abs(Math.floor(phase * 10)) + cycle) % 6;
   const activitySpots: Record<string, [number, number, number][]> = {
+    breakfast: [[-4,0,-1],[-2,0,-1],[0,0,-1],[2,0,-1],[4,0,-1],[-3,0,1]],
     'morning-play': [
       [-3.4, 0, -0.8], [-2.2, 0, 2.4], [0, 0, 3.4],
       [2.5, 0, 2.2], [3.5, 0, 0.2], [1.8, 0, -1.8],
@@ -158,10 +159,13 @@ function scheduleDestination(
       [-14.5, 0, -12.8], [-14.5, 0, -10.4], [-12.8, 0, -9.2],
       [-10.4, 0, -9.2], [-9.2, 0, -11.2], [-9.2, 0, -14.4],
     ],
+    'show-and-tell': [[-2,0,2.3],[-1,0,0.6],[1,0,0.6],[2,0,2.3],[1,0,4],[-1,0,4]],
+    lunch: [[-4,0,-1],[-2,0,-1],[0,0,-1],[2,0,-1],[4,0,-1],[-3,0,1]],
     'juice-club': [
       [0.9, 0, -3.0], [0.6, 0, -1.7], [-0.6, 0, -2.2],
       [-1.6, 0, -1.0], [0.8, 0, 0.2], [-2.2, 0, 0.5],
     ],
+    nap: [[-4.8,0,3.7],[-2.5,0,3.7],[-0.2,0,3.7],[2.1,0,3.7],[4.4,0,3.7],[-4.8,0,5.85]],
     pickup: [
       [-9.2, 0, -5.2], [-9.2, 0, -3.2], [-9.2, 0, -1.2],
       [-9.2, 0, 1.2], [-9.2, 0, 3.2], [-9.2, 0, 5.2],
@@ -509,11 +513,17 @@ export function teacherPatrolSpots(
   defaultPos: [number, number, number],
 ): [number, number, number][] {
   if (name === 'Ms. Harper') {
+    if (schedule === 'breakfast' || schedule === 'lunch') return [[-1, 0, -2.8], [4.8, 0, -2.8]];
+    if (schedule === 'show-and-tell') return [[0, 0, 0.2], [0, 0, 4.8]];
+    if (schedule === 'nap') return [[-5.8, 0, 4.8], [5.8, 0, 4.8]];
     if (schedule === 'art-time') return [[-9.7, 0, -10], [-9.2, 0, -13.8]];
     if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, -2], [12, 0, 10.8]];
     if (schedule === 'pickup') return [[-6, 0, -1.6], [-6, 0, 2]];
     return [defaultPos, [-4.5, 0, 2.8]];
   }
+  if (schedule === 'breakfast' || schedule === 'lunch') return [[4.8, 0, -2.8], [-1, 0, -2.8]];
+  if (schedule === 'show-and-tell') return [[0, 0, 0.2], [2.8, 0, 2.3]];
+  if (schedule === 'nap') return [[5.8, 0, 4.8], [-5.8, 0, 4.8]];
   if (schedule === 'art-time') return [[-9.4, 0, -9.8], [-9.4, 0, -14.2], [-12, 0, -7]];
   if (schedule === 'juice-club') return [[5.2, 0, -3], [5.2, 0, -0.8], [1.2, 0, 1.5]];
   if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, 10], [14.8, 0, 5.5], [14, 0, -8.5], [10, 0, -12]];
@@ -1077,10 +1087,14 @@ function hasActiveQuest(quests: ReturnType<typeof useGameStore.getState>['quests
 
 function kidGreeting(name: string, schedule: string) {
   const greetings: Record<string, string> = {
+    breakfast: `${name} saves you a breakfast seat.`,
     'morning-play': `${name} gives you a cheerful wave from the game.`,
     'art-time': `${name} holds up their work with a proud little grin.`,
+    'show-and-tell': `${name} listens from the circle-time mat.`,
+    lunch: `${name} waves from the lunch table.`,
     'juice-club': `${name} waves from the Juice Club line.`,
     'outdoor-play': `${name} calls, "Want to play?"`,
+    nap: `${name} is resting quietly.`,
     pickup: `${name} gives you a quick goodbye wave.`,
   };
   return greetings[schedule] ?? `${name} waves hello.`;
