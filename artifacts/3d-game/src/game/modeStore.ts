@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type GameMode = 'story' | 'online-preview';
-export type FrontEndPanel = 'menu' | 'customize' | 'progress' | 'settings' | 'accessibility';
+export type FrontEndPanel = 'menu' | 'shop' | 'customize' | 'progress' | 'settings' | 'accessibility';
 export type OnlineVisibility = 'public' | 'friends' | 'invite';
 
 export const ONLINE_STORAGE_KEY = 'daykare-online-preview';

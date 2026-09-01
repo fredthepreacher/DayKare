@@ -99,6 +99,7 @@ import {
   type RivalStoryState,
   getOptionalRewardMultiplier,
 } from './storyProgression';
+import { monetizedReputation } from './monetizationStore';
 
 export type ScheduleState = 'morning-play' | 'art-time' | 'juice-club' | 'outdoor-play' | 'pickup';
 export type BinkyStatus = 'not-started' | 'talked-to-owner' | 'found-clue' | 'traded-info' | 'found' | 'returned-good' | 'returned-bad';
@@ -235,6 +236,8 @@ export interface GameState {
   completeTidyToy: (item: string) => boolean;
   markTidyTutorialSeen: () => void;
   purchaseDripItem: (itemId: string) => boolean;
+  /** Grants only known, non-prestige catalog cosmetics after verified fulfillment. */
+  grantMonetizationCosmetics: (itemIds: string[]) => void;
   equipDripItem: (itemId: string) => boolean;
   unequipDripCategory: (category: DripCategory) => void;
   
@@ -1198,7 +1201,7 @@ export const useGameStore = create<GameState>()(
           );
           const progression = withQualifiedRoutes({
             ...state.progression,
-            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 8),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(8)),
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
             trustedHelperPass: true,
           });
@@ -1212,7 +1215,7 @@ export const useGameStore = create<GameState>()(
               title: 'Binky is home!',
               detail: 'Trusted Helper Pass earned',
               tokens: 5,
-              reputation: 8,
+              reputation: monetizedReputation(8),
               sticker: 'Binky Buddy',
             }),
             inventory: state.inventory.filter((item) => item !== 'binky'),
@@ -1295,6 +1298,24 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      grantMonetizationCosmetics: (itemIds) => set((state) => {
+        const safeIds = Array.isArray(itemIds)
+          ? itemIds.filter((id) => {
+              const item = typeof id === 'string' ? getDripItem(id) : undefined;
+              return Boolean(item && !item.prestige);
+            })
+          : [];
+        if (!safeIds.length) return state;
+        const evidence = dripEvidenceFrom({
+          quests: state.quests,
+          caper: state.caper,
+          progression: state.progression,
+          juiceClubCustomersServed: state.juiceClubCustomersServed,
+          friends: state.friends,
+        });
+        const dripOwned = normalizeDripOwned([...state.dripOwned, ...safeIds], evidence);
+        return { dripOwned };
+      }),
       equipDripItem: (itemId) => {
         let changed = false;
         set((state) => {
@@ -1341,7 +1362,7 @@ export const useGameStore = create<GameState>()(
             ? withQualifiedRoutes({
                 ...state.progression,
                 tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-                reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 2),
+                reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)),
                 trustedHelperPass: true,
                 activityRuns: {
                   ...state.progression.activityRuns,
@@ -1374,7 +1395,7 @@ export const useGameStore = create<GameState>()(
                   title: 'Rainbow Tidy-Up!',
                   detail: 'A fresh round is ready',
                   tokens: tokenReward,
-                  reputation: 2,
+                  reputation: monetizedReputation(2),
                   sticker: 'Rainbow Ribbon',
                 })
               : state.rewardEvents,
@@ -1479,7 +1500,7 @@ export const useGameStore = create<GameState>()(
           const tokenReward = reward.tokenReward * getOptionalRewardMultiplier(state.optionalRewardBoostUntil);
           const progression = withQualifiedRoutes({
             ...state.progression,
-            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + reward.reputationReward),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(reward.reputationReward)),
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
             activityRuns: {
               ...state.progression.activityRuns,
@@ -1515,7 +1536,7 @@ export const useGameStore = create<GameState>()(
               title: 'Happy customer!',
               detail: `${servedId} loved the snack`,
               tokens: tokenReward,
-              reputation: reward.reputationReward,
+              reputation: monetizedReputation(reward.reputationReward),
             }),
             friends: {
               ...state.friends,
@@ -1602,7 +1623,7 @@ export const useGameStore = create<GameState>()(
           ...state.progression,
           version: PROGRESSION_VERSION,
           tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-          reputation: Math.min(MAX_REPUTATION, state.progression.reputation + definition.reputationReward),
+          reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(definition.reputationReward)),
           activityRuns: nextRuns,
           activityRewards: nextRewards,
         };
@@ -1615,7 +1636,7 @@ export const useGameStore = create<GameState>()(
             title: 'Seedlings standing tall!',
             detail: 'The garden plan is complete',
             tokens: tokenReward,
-            reputation: definition.reputationReward,
+            reputation: monetizedReputation(definition.reputationReward),
             sticker: 'Garden Helper',
           }),
         };
@@ -1696,7 +1717,7 @@ export const useGameStore = create<GameState>()(
           const progression = withQualifiedRoutes({
             ...state.progression,
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
-            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 4),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(4)),
           });
           return {
             rivalStory,
@@ -1715,7 +1736,7 @@ export const useGameStore = create<GameState>()(
               title: 'Two Stars, One Team!',
               detail: 'Nickname earned: Bridge Builder',
               tokens: 5,
-              reputation: 4,
+              reputation: monetizedReputation(4),
               sticker: 'Two Stars',
             }),
           };
@@ -1756,7 +1777,7 @@ export const useGameStore = create<GameState>()(
           const progression = withQualifiedRoutes({
             ...state.progression,
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
-            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + 2),
+            reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)),
           });
           return {
             caper,
@@ -1767,7 +1788,7 @@ export const useGameStore = create<GameState>()(
               title: 'Sticker Parade complete!',
               detail: 'Everyone had a safe role in the plan',
               tokens: tokenReward,
-              reputation: 2,
+              reputation: monetizedReputation(2),
               sticker: 'Kindness Crew',
             }),
           };

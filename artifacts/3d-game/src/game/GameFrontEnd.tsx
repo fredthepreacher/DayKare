@@ -17,8 +17,10 @@ import { useSettingsStore } from './settingsStore';
 import { useCloudSyncStore, resolveConflict } from './cloudSync';
 import { formatRelativeTime } from '@workspace/cloud-sync';
 import { setGameAudioEnabled } from './audio';
+import { MonetizationShop } from './MonetizationShop';
 
 const panelCopy: Record<Exclude<FrontEndPanel, 'menu'>, { title: string; eyebrow: string }> = {
+  shop: { eyebrow: 'Play first · extras optional', title: 'Kare Shop' },
   customize: { eyebrow: 'Make it yours', title: 'Customize' },
   progress: { eyebrow: 'Your DayKare story', title: 'Journal & Map' },
   settings: { eyebrow: 'Play your way', title: 'Settings' },
@@ -354,6 +356,15 @@ export function GameFrontEnd() {
     setGameAudioEnabled(audioEnabled);
   }, [reducedMotion, highContrast, largerText, audioEnabled]);
 
+  useEffect(() => {
+    if (!menuOpen || panel === 'menu') return undefined;
+    const closePanel = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') useModeStore.getState().backToMenu();
+    };
+    window.addEventListener('keydown', closePanel);
+    return () => window.removeEventListener('keydown', closePanel);
+  }, [menuOpen, panel]);
+
   if (activeMode === 'online-preview') {
     return <OnlineLobby />;
   }
@@ -361,8 +372,9 @@ export function GameFrontEnd() {
   if (panel !== 'menu') {
     return (
       <div className="daykare-front-panel-shell" data-testid={`overlay-front-panel-${panel}`}>
-        <section className="daykare-front-panel" role="dialog" aria-modal="true">
+        <section className={`daykare-front-panel ${panel === 'shop' ? 'daykare-front-panel-shop' : ''}`} role="dialog" aria-modal="true">
           <PanelHeader panel={panel} />
+          {panel === 'shop' && <MonetizationShop />}
           {panel === 'customize' && <CustomizePanel />}
           {panel === 'progress' && <ProgressPanel />}
           {panel === 'settings' && <SettingsPanel />}
@@ -379,6 +391,7 @@ export function GameFrontEnd() {
       onDayKareOnline={enterOnlinePreview}
       onCustomize={() => openPanel('customize')}
       onProgress={() => openPanel('progress')}
+      onShop={() => openPanel('shop')}
       onSettings={() => openPanel('settings')}
       onAccessibility={() => openPanel('accessibility')}
       onlineSeatCount={online.seats.length}

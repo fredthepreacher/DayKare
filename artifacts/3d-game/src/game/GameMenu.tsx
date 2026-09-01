@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react';
-import { 
-  Play, 
-  Globe2, 
-  Wand2, 
-  BookOpen, 
-  Settings, 
-  Accessibility, 
+import {
+  Play,
+  Globe2,
+  Wand2,
+  BookOpen,
+  Settings,
+  Accessibility,
   X,
-  ChevronRight
+  ChevronRight,
+  ShoppingBag,
 } from 'lucide-react';
 
 export interface GameMenuProps {
@@ -17,6 +18,7 @@ export interface GameMenuProps {
   onDayKareOnline: () => void;
   onCustomize: () => void;
   onProgress: () => void;
+  onShop: () => void;
   onSettings: () => void;
   onAccessibility: () => void;
   onlineSeatCount?: number;
@@ -29,6 +31,7 @@ export function GameMenu({
   onDayKareOnline,
   onCustomize,
   onProgress,
+  onShop,
   onSettings,
   onAccessibility,
   onlineSeatCount
@@ -84,6 +87,17 @@ export function GameMenu({
       ) : null
     },
     { 
+      id: 'shop',
+      label: 'Kare Shop',
+      icon: ShoppingBag,
+      onClick: onShop,
+      bgClass: 'bg-[#b28ad6]',
+      borderClass: 'border-[#9270b8]',
+      hoverClass: 'hover:bg-[#c19be0]',
+      titleColor: 'text-[#3e245b]',
+      description: 'Care Coins, passes & optional extras'
+    },
+    {
       id: 'customize', 
       label: 'Customize', 
       icon: Wand2, 

@@ -17,6 +17,7 @@ import {
   MapPinned,
   Star,
   Menu,
+  ShoppingBag,
 } from 'lucide-react';
 import { TouchControls } from './TouchControls';
 import { HUB_ROUTES, isRouteUnlocked, requirementLabel, requirementProgressLabel } from './progression';
@@ -29,6 +30,7 @@ import {
   getTeacherInterventionSnapshot,
   interventionIsActive,
 } from './teacherInterventions';
+import { useMonetizationStore } from './monetizationStore';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -125,6 +127,14 @@ export function UI() {
   const weatherLabel = useWeatherLabel();
   const frontEndBlocked = useModeStore((state) => state.menuOpen || state.activeMode === 'online-preview');
   const openMenu = useModeStore((state) => state.openMenu);
+  const openPanel = useModeStore((state) => state.openPanel);
+  const careCoins = useMonetizationStore((state) => state.careCoins);
+  const careGems = useMonetizationStore((state) => state.careGems);
+  const reconcileGameplayRewards = useMonetizationStore((state) => state.reconcileGameplayRewards);
+
+  useEffect(() => {
+    reconcileGameplayRewards(progression.reputation);
+  }, [progression.reputation, reconcileGameplayRewards]);
 
   const [subscribe] = useKeyboardControls<Controls>();
   const interactRef = useRef<() => void>(() => undefined);
@@ -909,6 +919,19 @@ export function UI() {
         >
           <span className="font-bold hidden sm:block">Menu</span>
           <Menu className="w-6 h-6 text-primary" />
+        </button>
+        <button
+          type="button"
+          onClick={() => openPanel('shop')}
+          disabled={Boolean(activeDialogue) || zoneTransitioning}
+          className="bg-card/90 backdrop-blur border-2 border-violet-400/25 px-3 py-2 rounded-xl shadow-lg flex items-center gap-2 hover:scale-105 transition-transform"
+          data-testid="button-open-kare-shop"
+          aria-label="Open Kare Shop"
+        >
+          <ShoppingBag className="w-5 h-5 text-violet-600" />
+          <span className="font-bold hidden sm:block">Kare Shop</span>
+          <span className="text-[10px] font-black text-amber-700">{careCoins} C</span>
+          <span className="text-[10px] font-black text-violet-700">{careGems} G</span>
         </button>
         <button 
           onClick={toggleJournal}
