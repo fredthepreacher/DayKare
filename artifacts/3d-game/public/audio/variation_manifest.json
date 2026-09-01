@@ -1,0 +1,21 @@
+{
+  "pack": "DayKare New Audio Variation Pack",
+  "voice_mapping": [
+    { "file": "new_voice_variant_01.wav", "role": "child", "line": "alphabet recitation", "contexts": ["social", "art"] },
+    { "file": "new_voice_variant_02.wav", "role": "child", "line": "one, two, three", "contexts": ["social", "show-and-tell"] },
+    { "file": "new_voice_variant_03.wav", "role": "teacher", "line": "It's time for show and tell", "contexts": ["show-and-tell"] },
+    { "file": "new_voice_variant_04.wav", "role": "child", "line": "Oh man!", "contexts": ["playful-reaction"] },
+    { "file": "new_voice_variant_05.wav", "role": "teacher", "line": "Recess time", "contexts": ["recess"] },
+    { "file": "new_voice_variant_06.wav", "role": "child", "line": "Juice time!", "contexts": ["juice-club", "food"] },
+    { "file": "new_voice_variant_07.wav", "role": "child", "line": "Mmm, delicioso!", "contexts": ["food", "juice-club"] },
+    { "file": "new_voice_variant_08.wav", "role": "teacher", "line": "It's nap time!", "contexts": ["nap"] }
+  ],
+  "music_mapping": {
+    "music_menu_alt_01.ogg": ["menu"],
+    "music_daycare_alt_01.ogg": ["daycare", "art", "show-and-tell"],
+    "music_storybook_alt_01.ogg": ["storybook"],
+    "music_garden_alt_01.ogg": ["garden", "fishing"],
+    "music_recess_alt_01.ogg": ["recess"],
+    "music_heist_tech_alt_01.ogg": ["heist", "tech-market"]
+  }
+}

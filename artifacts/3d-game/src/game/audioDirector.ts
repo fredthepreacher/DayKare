@@ -1,6 +1,7 @@
 import {
   MUSIC_BY_SCENE,
-  chooseVoiceClip,
+  VOICES_BY_GROUP,
+  chooseMusicCue,
   type AudioScene,
   type VoiceGroup,
 } from "./audioAssets";
@@ -36,7 +37,6 @@ const clamp = (value: number) =>
 const assetUrl = (path: string) =>
   `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 const warned = new Set<string>();
-const recentVoices: string[] = [];
 
 let mix: AudioMix = {
   enabled: true,
@@ -52,6 +52,11 @@ let dialogueDucked = false;
 let activeVoice: HTMLAudioElement | null = null;
 let lastAmbientVoiceAt = -Infinity;
 let lastTeacherVoiceAt = -Infinity;
+let lastAnyVoiceAt = -Infinity;
+const voiceLastPlayedAt = new Map<string, number>();
+const lastCueByScene = new Map<AudioScene, string>();
+let selectedCue = chooseMusicCue(scene);
+lastCueByScene.set(scene, selectedCue.id);
 
 const debug = (): DayKareAudioDebug => {
   if (typeof window === "undefined") {
@@ -92,11 +97,11 @@ function reportFailure(label: string, error: unknown) {
 
 function targetMusicVolume() {
   if (!mix.enabled) return 0;
-  const cue = MUSIC_BY_SCENE[scene];
+  const cue = selectedCue;
   return clamp(
     mix.musicVolume *
       cue.defaultVolume *
-      (dialogueDucked || activeVoice ? 0.52 : 1),
+      (dialogueDucked ? 0.52 : activeVoice ? 0.8 : 1),
   );
 }
 
@@ -146,7 +151,7 @@ function refreshDebug() {
 
 function startSceneMusic() {
   if (typeof Audio === "undefined" || !unlocked || !mix.enabled) return;
-  const cue = MUSIC_BY_SCENE[scene];
+  const cue = selectedCue;
   if (music?.dataset.cue === cue.id) {
     music.volume = targetMusicVolume();
     if (music.paused)
@@ -160,22 +165,28 @@ function startSceneMusic() {
   const previous = music;
   const next = new Audio(assetUrl(`audio/music/safe-loops/${cue.file}`));
   next.dataset.cue = cue.id;
-  next.loop = true;
+  next.loop = MUSIC_BY_SCENE[scene].length === 1;
   next.preload = "auto";
   next.volume = 0;
   next.addEventListener('timeupdate', refreshDebug);
+  next.addEventListener("ended", () => {
+    if (music !== next) return;
+    selectedCue = chooseMusicCue(scene, next.dataset.cue);
+    lastCueByScene.set(scene, selectedCue.id);
+    startSceneMusic();
+  }, { once: true });
   music = next;
   const play = next.play();
   void play
     .then(() => {
       debug().currentTrack = cue.id;
-      fadeVolume(next, targetMusicVolume(), 1100);
+      fadeVolume(next, targetMusicVolume(), 1900);
       if (previous) {
         const old = previous;
         const oldStart = old.volume;
         const startedAt = performance.now();
         const oldFade = window.setInterval(() => {
-          const progress = Math.min(1, (performance.now() - startedAt) / 900);
+          const progress = Math.min(1, (performance.now() - startedAt) / 1800);
           old.volume = clamp(oldStart * (1 - progress));
           if (progress === 1) {
             window.clearInterval(oldFade);
@@ -223,6 +234,8 @@ export function unlockRichGameAudio(initialScene?: AudioScene) {
 export function setAudioScene(nextScene: AudioScene) {
   if (scene === nextScene) return;
   scene = nextScene;
+  selectedCue = chooseMusicCue(scene, lastCueByScene.get(scene));
+  lastCueByScene.set(scene, selectedCue.id);
   startSceneMusic();
   refreshDebug();
 }
@@ -267,18 +280,23 @@ export function playVoice(group: VoiceGroup, options: VoiceOptions = {}) {
   const teacher = group.startsWith("teacher-");
   if (activeVoice && !activeVoice.paused && !activeVoice.ended) return false;
   if (!options.force) {
+    if (now - lastAnyVoiceAt < 8) return false;
     if (options.ambient && now - lastAmbientVoiceAt < 18) return false;
     if (teacher && now - lastTeacherVoiceAt < 12) return false;
   }
-  const file = chooseVoiceClip(group, recentVoices.slice(-4));
+  const eligible = VOICES_BY_GROUP[group].filter(
+    (file) => now - (voiceLastPlayedAt.get(file) ?? -Infinity) >= 45,
+  );
+  if (!eligible.length) return false;
+  const file = eligible[Math.floor(Math.random() * eligible.length)] ?? eligible[0];
   const audio = new Audio(assetUrl(`audio/voices/${file}`));
   audio.preload = "auto";
   audio.volume = clamp(mix.voiceVolume * (options.attenuation ?? 1));
   activeVoice = audio;
   if (options.ambient) lastAmbientVoiceAt = now;
   if (teacher) lastTeacherVoiceAt = now;
-  recentVoices.push(file);
-  while (recentVoices.length > 8) recentVoices.shift();
+  lastAnyVoiceAt = now;
+  voiceLastPlayedAt.set(file, now);
   if (music) fadeVolume(music, targetMusicVolume(), 180);
   const restore = () => {
     if (activeVoice === audio) activeVoice = null;

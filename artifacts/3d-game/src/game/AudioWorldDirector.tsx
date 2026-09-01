@@ -12,17 +12,26 @@ import {
   setAudioScene,
   unlockRichGameAudio,
 } from "./audioDirector";
-import { voiceGroupForAmbientContext, type AudioScene } from "./audioAssets";
+import {
+  teacherVoiceGroupForSchedule,
+  voiceGroupForAmbientContext,
+  type AudioScene,
+} from "./audioAssets";
 
 function sceneFor(
   menuOpen: boolean,
   zone: string,
   schedule: string,
+  heistActive = false,
 ): AudioScene {
   if (menuOpen) return "menu";
-  if (zone === "garden") return "garden";
+  if (heistActive) return "heist";
   if (zone === "storybook") return "storybook";
-  if (schedule === "recess" || schedule === "outdoor-play") return "garden";
+  if (schedule === "recess") return "recess";
+  if (zone === "garden") return "garden";
+  if (schedule === "outdoor-play") return "garden";
+  if (schedule === "show-and-tell") return "show-and-tell";
+  if (schedule === "art-time") return "art";
   if (schedule === "juice-club") return "juice-club";
   if (schedule === "nap") return "nap";
   return "daycare";
@@ -35,8 +44,12 @@ export function AudioWorldDirector() {
   const schedule = useGameStore((state) => state.schedule);
   const activeDialogue = useGameStore((state) => state.activeDialogue);
   const zoneTransitioning = useGameStore((state) => state.zoneTransitioning);
+  const heistActive = useGameStore((state) =>
+    state.expansion.techHeistStep === "diversion" ||
+    state.expansion.techHeistStep === "retrieve",
+  );
   const device = useSettingsStore((state) => state.device);
-  const currentScene = sceneFor(menuOpen, zone, schedule);
+  const currentScene = sceneFor(menuOpen, zone, schedule, heistActive);
 
   useEffect(() => {
     configureRichGameAudio({
@@ -52,7 +65,13 @@ export function AudioWorldDirector() {
     device.voiceVolume,
   ]);
 
-  useEffect(() => setAudioScene(currentScene), [currentScene]);
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () => setAudioScene(currentScene),
+      currentScene === "menu" ? 0 : 1600,
+    );
+    return () => window.clearTimeout(timer);
+  }, [currentScene]);
   useEffect(
     () => setAudioDialogueDucked(Boolean(activeDialogue) || zoneTransitioning),
     [activeDialogue, zoneTransitioning],
@@ -90,6 +109,8 @@ export function AudioWorldDirector() {
         useModeStore.getState().menuOpen,
         state.zone,
         state.schedule,
+        state.expansion.techHeistStep === "diversion" ||
+          state.expansion.techHeistStep === "retrieve",
       );
       if (liveScene === "nap") return;
       playVoice(voiceGroupForAmbientContext(state.schedule, liveScene), {
@@ -109,6 +130,14 @@ export function AudioWorldDirector() {
       window.clearInterval(interval);
     };
   }, [menuOpen, zone, zoneTransitioning, activeDialogue]);
+
+  useEffect(() => {
+    if (menuOpen || zoneTransitioning) return;
+    const group = teacherVoiceGroupForSchedule(schedule);
+    if (!group) return;
+    const timer = window.setTimeout(() => playVoice(group), 1200);
+    return () => window.clearTimeout(timer);
+  }, [menuOpen, schedule, zoneTransitioning]);
 
   useEffect(() => {
     if (menuOpen || zoneTransitioning || activeDialogue) return undefined;

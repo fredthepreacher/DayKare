@@ -10,3 +10,8 @@ The supplied authored cues were transcribed before release. Several contained ex
 - `storybook-dream-loop.mp3` — `best_wishes_full.mp3`, 0–10.1 seconds
 
 The original source archives were not modified or copied into the web build.
+
+The six `music_*_alt_01.ogg` files are additive, normalized segments from the
+owner-supplied `DayKare_New_Audio_Variation_Pack.zip`. Their contextual mapping
+is documented in `public/audio/variation_manifest.json`; the four established
+safe loops above remain available in every applicable rotation.
