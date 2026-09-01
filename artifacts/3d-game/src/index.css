@@ -2019,12 +2019,21 @@
   }
 }
 
-/* Landscape is short. Lay the two buttons side by side so the cluster is one
-   row tall and cannot reach up into Center Camera's floating slot. */
+/* Landscape is short and the right edge is crowded. Measured on a 750x342
+   viewport, the right side is already occupied by the HUD (y 0-172), Center
+   Camera (x 692-738, y 197-243) and the interaction button (y 254+). A column
+   here does not fit, and a row at the bottom-right lands straight on Center
+   Camera - which a layout check against the real build caught.
+
+   The free band is x < 692, y 172-254. The cluster goes there: one row, tucked
+   left of Center Camera and above the interact button. Clearing it horizontally
+   rather than vertically is what makes it robust, since the interact button
+   grows with its label. */
 @media (pointer: coarse) and (orientation: landscape) {
   .daykare-touch-actions {
     flex-direction: row;
-    bottom: max(84px, calc(env(safe-area-inset-bottom) + 78px));
+    bottom: max(116px, calc(env(safe-area-inset-bottom) + 110px));
+    right: max(76px, calc(env(safe-area-inset-right) + 68px));
     gap: 8px;
   }
 
