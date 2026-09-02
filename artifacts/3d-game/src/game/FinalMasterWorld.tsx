@@ -9,6 +9,11 @@ import { registerInteractionCandidate, updateInteractionCandidate } from './inte
 import { getTrackedPlayerPosition } from './world';
 
 const STEP_POSITIONS: [number, number, number][] = [[9.3, 0, 10.7], [-5.5, 0, -5], [-12, 0, -9], [4.2, 0, 1], [-13, 0, 11.5], [10.2, 0, 11.2]];
+const HEIST_EVENT_POSITIONS: Record<string, [number, number, number]> = {
+  'miss-leslie-intro': [8.2, 0, 11.3], 'scope-window': [-5.5, 0, -5], 'scope-hall': [-10, 0, 0],
+  'scope-gate': [12, 0, -10.5], 'mia-door': [-12, 0, -9], 'noah-distraction': [4.2, 0, 1],
+  'grabber-collected': [-13, 0, 11.5], 'finale-regroup': [10.2, 0, 11.2],
+};
 
 function useCandidate(id: string, position: [number, number, number], valid: boolean, priority = 80) {
   const vector = useMemo(() => new THREE.Vector3(...position), [position]);
@@ -29,9 +34,12 @@ function MissLeslie() {
 function HeistBoard() {
   const status = useFinalMasterStore((state) => state.heistStatus);
   const step = useFinalMasterStore((state) => state.heistStep);
+  const completed = useFinalMasterStore((state) => state.heistCompletedEvents);
   const tutorialComplete = useFinalMasterStore((state) => state.tutorialComplete);
-  const position = STEP_POSITIONS[Math.min(step, STEP_POSITIONS.length - 1)];
-  useCandidate('final-heist-objective', position, tutorialComplete && status === 'active', 100);
+  const activeStep = HEIST_STEPS[Math.min(step, HEIST_STEPS.length - 1)];
+  const event = activeStep?.events.find((candidate) => !completed.includes(candidate)) ?? activeStep?.events[0];
+  const position = event ? HEIST_EVENT_POSITIONS[event] : STEP_POSITIONS[Math.min(step, STEP_POSITIONS.length - 1)];
+  useCandidate(`final-heist-${event ?? 'none'}`, position, tutorialComplete && status === 'active' && Boolean(event), 100);
   return <>
     <group position={[10.2, 0, 11.4]}>
       <mesh position={[0, 1, 0]} castShadow><boxGeometry args={[2.1, 1.65, 0.16]} /><meshStandardMaterial color="#6e4935" /></mesh>
@@ -41,6 +49,19 @@ function HeistBoard() {
     </group>
     {status === 'active' && <group position={position}><mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.65, 0.83, 28]} /><meshBasicMaterial color="#ffd84d" transparent opacity={0.82} /></mesh><Text position={[0, 1.15, 0]} fontSize={0.22} color="#5b351f" anchorX="center">{HEIST_STEPS[Math.min(step, HEIST_STEPS.length - 1)].title}</Text></group>}
   </>;
+}
+
+function TutorialMovementValidator() {
+  const previous = useRef<[number, number, number] | null>(null);
+  useFrame(() => {
+    const current = getTrackedPlayerPosition();
+    if (previous.current) {
+      const distance = Math.hypot(current[0] - previous.current[0], current[2] - previous.current[2]);
+      if (distance > 0 && distance < 2) useFinalMasterStore.getState().recordTutorialMovement(distance);
+    }
+    previous.current = current;
+  });
+  return null;
 }
 
 function Companion({ name, color, offset }: { name: string; color: string; offset: [number, number] }) {
@@ -71,7 +92,7 @@ function AnimationVignette() {
 
 export function FinalMasterWorld() {
   const zone = useFinalMasterStore((state) => state.heistStatus);
-  return <group><MissLeslie /><HeistBoard /><AnimationVignette />{zone === 'active' && <><Companion name="Mia" color="#54b9bd" offset={[-1.2, 1.1]} /><Companion name="Noah" color="#7654bd" offset={[1.2, 1.35]} /></>}</group>;
+  return <group><TutorialMovementValidator /><MissLeslie /><HeistBoard /><AnimationVignette />{zone === 'active' && <><Companion name="Mia" color="#54b9bd" offset={[-1.2, 1.1]} /><Companion name="Noah" color="#7654bd" offset={[1.2, 1.35]} /></>}</group>;
 }
 
 export function StarterHomeInterior() {

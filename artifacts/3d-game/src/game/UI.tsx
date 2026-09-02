@@ -19,7 +19,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { TouchControls } from './TouchControls';
-import { HUB_ROUTES, isRouteUnlocked, requirementLabel, requirementProgressLabel } from './progression';
+import { HUB_ROUTES, isRouteUnlocked, rankFromLifetimeXp, requirementLabel, requirementProgressLabel } from './progression';
 import { getActiveQuest, getCurrentObjective, objectiveIsActive } from './quests';
 import { playGameSound, unlockGameAudio } from './audio';
 import { dialogueDismissLabel } from './dialogueActions';
@@ -39,7 +39,7 @@ import type { CollectibleId } from './gameplayExpansion';
 import { setTouchCrouch, setTouchJump, setTouchMove, setTouchRun } from './touchInput';
 import { mapStandardGamepad } from './gamepadInput';
 import { useFinalMasterStore } from './finalMasterStore';
-import { STARTER_HOME_PRICE } from './finalMaster';
+import { STARTER_HOME_PRICE, TUTORIAL_CHAPTERS } from './finalMaster';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -124,7 +124,6 @@ export function UI() {
     collectLostFoundItem,
     turnInLostFoundJob,
     advanceTechHeist,
-    ambientMessage,
     activeInstruction,
     showInstruction,
     dismissInstruction,
@@ -147,6 +146,8 @@ export function UI() {
   } = useGameStore();
   const tidyTutorialSeen = useGameStore((state) => state.tidyTutorialSeen);
   const markTidyTutorialSeen = useGameStore((state) => state.markTidyTutorialSeen);
+  const recordTutorialEvent = useFinalMasterStore((state) => state.recordTutorialEvent);
+  const rankProgress = rankFromLifetimeXp(progression.experience ?? 0);
   const rainyNow = useIsRainy();
 
   useEffect(() => {
@@ -215,7 +216,10 @@ export function UI() {
         const interact = actions.interact;
         const journal = actions.journal;
         if (interact && !previousInteract) interactRef.current();
-        if (journal && !previousJournal) toggleJournal();
+        if (journal && !previousJournal) {
+          recordTutorialEvent('open-backpack');
+          toggleJournal();
+        }
         previousInteract = interact;
         previousJournal = journal;
       } else if (connected) {
@@ -314,7 +318,10 @@ export function UI() {
     return subscribe(
       (state) => state.journal,
       (pressed) => {
-        if (pressed && !activeDialogue && !zoneTransitioning && !frontEndBlocked) toggleJournal();
+        if (pressed && !activeDialogue && !zoneTransitioning && !frontEndBlocked) {
+          if (!journalOpen) recordTutorialEvent('open-backpack');
+          toggleJournal();
+        }
       }
     );
   }, [subscribe, toggleJournal, activeDialogue, zoneTransitioning, frontEndBlocked]);
@@ -424,6 +431,7 @@ export function UI() {
                       if (juiceStock > 0 && crackerStock > 0) {
                         if (juiceClubCustomerPhase === 'ordering') {
                           serveCustomer();
+                          recordTutorialEvent('complete-snack-sale');
                           playGameSound('juice-service', 'interaction');
                            setActiveDialogue(null);
                         } else {
@@ -616,7 +624,7 @@ export function UI() {
           const selectedCrop = bed === 0 ? gummyCrop : gummyCrop2;
           const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
           if (selectedCrop.plantedAt === null) {
-            plantGummyDrops(bed);
+            if (plantGummyDrops(bed)) recordTutorialEvent('plant-three-seeds');
             playGameSound('garden-plant', 'interaction');
             setActiveDialogue({ name: `Gummy Drop Garden ${bed + 1}`, text: 'Seeds planted! They need five in-game hours to grow a full crop of ten Gummy Drops.' });
           } else if (cropIsReady(selectedCrop, now)) {
@@ -651,6 +659,9 @@ export function UI() {
             playGameSound('pickup', 'interaction');
             setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. It is safely stored in Backpack Items.' });
           }
+        } else if (activeInteractable === 'garden-fishing-shop') {
+          recordTutorialEvent('fishing-shop-visited');
+          setActiveDialogue({ name: 'Ripple Pond Tackle Kiosk', text: 'Hooks are pretend, lines stay clear of friends, and every Swedish Fish catch goes safely into your Backpack.' });
         } else if (activeInteractable === 'seed-inspection') {
           const canPlant = expansion.seedPackets >= 3;
           const lucky = (dayNumber + expansion.seedPackets) % 4 === 0;
@@ -667,11 +678,11 @@ export function UI() {
             setActiveDialogue({ name: 'Lost & Found Job Board', text: 'The board is clear. A new lost-item notice rotates in about every ten in-game minutes.' });
           } else if (job.status === 'available') {
             setActiveDialogue({ name: 'Lost & Found Job Board', text: `LOST ITEM: ${job.label}. Search the ${job.zone === 'garden' ? 'Garden District' : 'main daycare'}.`, options: [
-              { label: 'Accept job', action: () => { acceptLostFoundJob(); setActiveDialogue({ name: 'Job Accepted', text: `Find ${job.label}, then bring it back to this desk.` }); } },
+              { label: 'Accept job', action: () => { if (acceptLostFoundJob()) recordTutorialEvent('lost-found-accepted'); setActiveDialogue({ name: 'Job Accepted', text: `Find ${job.label}, then bring it back to this desk.` }); } },
               { label: 'Later', action: () => setActiveDialogue(null) },
             ] });
           } else if (job.status === 'found') {
-            turnInLostFoundJob();
+            if (turnInLostFoundJob()) recordTutorialEvent('lost-found-returned');
             playGameSound('reward', 'interaction');
             setActiveDialogue({ name: 'Lost & Found', text: `${job.label} returned! Your RNG reward is shown in the notification.` });
           } else {
@@ -679,17 +690,19 @@ export function UI() {
           }
         } else if (activeInteractable === 'lost-found-item') {
           if (collectLostFoundItem()) {
+            recordTutorialEvent('lost-found-found');
             playGameSound('pickup', 'interaction');
             setActiveDialogue({ name: 'Found it!', text: `The ${expansion.lostFoundJob?.label ?? 'lost item'} is in your quest backpack. Return it to the Lost & Found Desk.` });
           }
         } else if (activeInteractable === 'art-mini-activity') {
+          recordTutorialEvent('visit-art-table');
           if (schedule !== 'art-time') {
             setActiveDialogue({ name: 'Art Center', text: 'The pattern table opens during Art Time at 10:30 AM.' });
           } else if (expansion.artCompletedDays.includes(dayNumber)) {
             setActiveDialogue({ name: 'Art Center', text: 'Today’s art pattern is complete. You can still explore the art room.' });
           } else {
             setActiveDialogue({ name: 'Color Pattern', text: 'Finish the pattern: red, blue, red, blue…', options: [
-              { label: 'Choose red', action: () => { completeArtActivity(); playGameSound('reward', 'interaction'); setActiveDialogue({ name: 'Art Center', text: 'Perfect pattern! +20 XP and +$20.' }); } },
+              { label: 'Choose red', action: () => { if (completeArtActivity()) recordTutorialEvent('complete-art'); playGameSound('reward', 'interaction'); setActiveDialogue({ name: 'Art Center', text: 'Perfect pattern! +20 XP and +$20.' }); } },
               { label: 'Choose green', action: () => setActiveDialogue({ name: 'Art Center', text: 'Almost! Look at the alternating colors and try again.' }) },
               { label: 'Leave', action: () => setActiveDialogue(null) },
             ] });
@@ -723,7 +736,7 @@ export function UI() {
             name: 'Afternoon Snack Window',
             text: open ? `Juice + Crackers are available now (4:30–5:00 PM). Stock: ${juiceStock} juice and ${crackerStock} crackers.` : 'Juice + Crackers are served here from 4:30–5:00 PM.',
             options: open && !alreadyHadSnack ? [
-              { label: 'Take Juice + Crackers', action: () => { takeAfternoonSnack(); playGameSound('juice-service', 'interaction'); setActiveDialogue(null); } },
+              { label: 'Take Juice + Crackers', action: () => { if (takeAfternoonSnack()) recordTutorialEvent('complete-snack-sale'); playGameSound('juice-service', 'interaction'); setActiveDialogue(null); } },
               { label: 'Leave', action: () => setActiveDialogue(null) },
             ] : undefined,
           });
@@ -857,8 +870,10 @@ export function UI() {
           const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
           if (route) {
             const unlocked = isRouteUnlocked(route, progression);
-            if (route.id === 'garden-district' && unlocked) {
-              enterGarden();
+            const tutorial = useFinalMasterStore.getState();
+            const tutorialGardenAccess = tutorial.tutorialStarted && TUTORIAL_CHAPTERS[tutorial.tutorialChapter]?.id === 'garden';
+            if (route.id === 'garden-district' && (unlocked || tutorialGardenAccess)) {
+              enterGarden(tutorialGardenAccess);
             } else if (route.id === 'storybook-lane' && unlocked && storybookIsOpen(useGameStore.getState().clock.minute)) {
               if (enterStorybookLane()) playStorybookSound('arrival');
             } else {
@@ -954,6 +969,8 @@ export function UI() {
   };
 
   const handleKidInteraction = (name: string) => {
+    if (name === 'Mia') recordTutorialEvent('talk-mia');
+    if (name === 'Noah') recordTutorialEvent('talk-noah');
     if (name === 'Mae') {
       if (rivalStory.beat === 'meet-mae') {
         const respond = (choice: 'kind' | 'bold' | 'curious', text: string) => {
@@ -1110,6 +1127,7 @@ export function UI() {
       return crop.plantedAt === null ? `Plant Gummy Bed ${bed + 1}` : `Check Candy Plants · ${Math.floor(cropProgress(crop, now) * 100)}%`;
     }
     if (activeInteractable === 'garden-fishing-spot') return expansion.fishingCastReady ? 'Reel Swedish Fish' : `Fish with ${expansion.equippedRod} rod`;
+    if (activeInteractable === 'garden-fishing-shop') return 'Visit Tackle Kiosk';
     if (activeInteractable === 'seed-inspection') return 'Inspect Held Seeds';
     if (activeInteractable.startsWith('expansion-collectible-')) return 'Collect Item';
     if (activeInteractable === 'lost-found-desk') return expansion.lostFoundJob?.status === 'found' ? 'Return Lost Item' : 'Check Job Board';
@@ -1137,7 +1155,9 @@ export function UI() {
     if (activeInteractable.startsWith('route-')) {
       const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
       if (!route) return 'Check Route';
-      const canEnter = isRouteUnlocked(route, progression)
+      const tutorial = useFinalMasterStore.getState();
+      const tutorialGardenAccess = route.id === 'garden-district' && tutorial.tutorialStarted && TUTORIAL_CHAPTERS[tutorial.tutorialChapter]?.id === 'garden';
+      const canEnter = (isRouteUnlocked(route, progression) || tutorialGardenAccess)
         && (route.id === 'garden-district' || (route.id === 'storybook-lane' && storybookIsOpen(useGameStore.getState().clock.minute)));
       return `${canEnter ? 'Enter' : 'Check'} ${route.label}`;
     }
@@ -1159,6 +1179,7 @@ export function UI() {
     if (activeInteractable.startsWith('garden-activity-host-')) return '3 seeds · +12 XP once per planting set';
     if (activeInteractable.startsWith('gummy-drop-bed-')) return 'Five-hour crop · $30 per full basket · REP from sharing';
     if (activeInteractable === 'garden-fishing-spot') return 'Catch +1 XP · sell for $5 +2 XP';
+    if (activeInteractable === 'garden-fishing-shop') return 'Fishing safety and supplies';
     if (activeInteractable === 'seed-inspection') return `${expansion.seedPackets} seed packets · crop and yield report`;
     if (activeInteractable.startsWith('expansion-collectible-')) return 'Rotating daycare and Garden hunt';
     if (activeInteractable === 'lost-found-desk' || activeInteractable === 'lost-found-item') return '10-minute rotating job · RNG reward';
@@ -1298,7 +1319,7 @@ export function UI() {
           <span className="text-[10px] font-black text-violet-700">{careGems} G</span>
         </button>
         <button 
-          onClick={toggleJournal}
+          onClick={() => { if (!journalOpen) recordTutorialEvent('open-backpack'); toggleJournal(); }}
           disabled={Boolean(activeDialogue) || zoneTransitioning}
           className="bg-card/90 backdrop-blur border-2 border-primary/20 p-3 rounded-xl shadow-lg flex items-center gap-3 hover:scale-105 transition-transform"
         >
@@ -1307,7 +1328,7 @@ export function UI() {
         </button>
 
         <div className="daykare-progress-chip daykare-hud-progress bg-card/90 backdrop-blur border-2 border-amber-400/25 px-3 py-2 rounded-xl shadow flex items-center gap-3 text-card-foreground">
-          <div className="flex items-center gap-1 font-bold text-amber-700 relative">{progression.experience ?? 0} XP<RewardPulse value={progression.experience ?? 0} suffix=" XP" /></div>
+          <div className="daykare-rank-readout relative"><strong>Rank {rankProgress.rank}</strong><small>{rankProgress.xpIntoRank}/{rankProgress.xpForNextRank} XP</small><i><b style={{ width: `${Math.min(100, (rankProgress.xpIntoRank / rankProgress.xpForNextRank) * 100)}%` }} /></i><RewardPulse value={progression.experience ?? 0} suffix=" XP" /></div>
           <div className="w-px h-4 bg-amber-300/50" />
           <div className="text-xs font-bold text-muted-foreground relative">
             {progression.reputation} REP
@@ -1400,11 +1421,6 @@ export function UI() {
         {storageWarning && (
           <div className="daykare-save-warning max-w-md rounded-xl bg-amber-50/95 border-2 border-amber-500/55 px-4 py-2 text-sm font-bold text-amber-950 shadow-xl" role="status">
             Saving is unavailable in this browser. Your game will continue, but progress will not be saved.
-          </div>
-        )}
-        {ambientMessage && !activeDialogue && !journalOpen && !zoneTransitioning && (
-          <div className="daykare-ambient-message max-w-md rounded-full bg-[#fff8e8]/94 border-2 border-[#e6ae2f]/45 px-5 py-3 text-sm font-bold text-[#5c3a21] shadow-xl">
-            {ambientMessage}
           </div>
         )}
         {recoverySeconds > 0 && (

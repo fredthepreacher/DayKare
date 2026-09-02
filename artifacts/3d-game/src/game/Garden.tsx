@@ -141,6 +141,7 @@ export function Garden() {
       <GummyDropBed bed={0} position={[10.8, 0, 9.8]} />
       <GummyDropBed bed={1} position={[10.8, 0, 5.7]} />
       <FishingSpot />
+      <FishingShop />
       <SeedInspectionStation />
       <GardenReturnGate />
     </group>
@@ -936,6 +937,19 @@ function FishingSpot() {
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]}><torusGeometry args={[0.78, 0.045, 8, 28]} /><meshBasicMaterial color="#61d9ef" transparent opacity={active ? 0.92 : 0.28} /></mesh>
     </group>
   );
+}
+
+function FishingShop() {
+  const active = useGameStore((state) => state.activeInteractable === 'garden-fishing-shop');
+  const position = useMemo(() => new THREE.Vector3(8.15, 0, -2.2), []);
+  const candidate = useMemo(() => ({ id: 'garden-fishing-shop', position, range: 2.4, priority: 80, valid: true }), [position]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  return <group position={[8.15, 0, -2.2]}>
+    <mesh position={[0, .55, 0]} castShadow><boxGeometry args={[1.7, 1.05, .8]} /><meshStandardMaterial color="#4c82d4" roughness={.8} /></mesh>
+    <mesh position={[0, 1.25, 0]} castShadow><boxGeometry args={[2.05, .38, 1.05]} /><meshStandardMaterial color="#ffd166" /></mesh>
+    <mesh position={[0, 1.22, -.55]}><boxGeometry args={[1.7, .55, .08]} /><meshStandardMaterial color="#fff0c7" /></mesh>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, .035, 0]}><torusGeometry args={[1.15, .045, 8, 28]} /><meshBasicMaterial color="#61d9ef" transparent opacity={active ? .92 : .25} /></mesh>
+  </group>;
 }
 
 function SeedInspectionStation() {

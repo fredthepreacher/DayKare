@@ -3,11 +3,11 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import * as THREE from 'three';
 import {
   ACTIVITY_DEFINITIONS,
+  addLifetimeXp,
   HUB_UPGRADE_IDS,
   createInitialProgression,
   getUnlockedRoutes,
   MAX_ACTIVITY_RUNS,
-  MAX_EXPERIENCE,
   MAX_TOKENS,
   MAX_REPUTATION,
   normalizeProgression,
@@ -333,7 +333,7 @@ export interface GameState {
   buyHubUpgrade: (id: string, cost: number) => boolean;
   setTrustedHelperPass: () => void;
   setPlayerPosition: (position: [number, number, number]) => void;
-  enterGarden: () => boolean;
+  enterGarden: (tutorialAccess?: boolean) => boolean;
   enterStorybookLane: () => boolean;
   leaveStorybookLane: () => boolean;
   finishDay: () => boolean;
@@ -369,7 +369,7 @@ const withQualifiedRoutes = (progression: ProgressionState): ProgressionState =>
 
 const withExperience = (progression: ProgressionState, amount: number): ProgressionState => ({
   ...progression,
-  experience: Math.min(MAX_EXPERIENCE, Math.max(0, (progression.experience ?? 0) + Math.trunc(amount))),
+  experience: addLifetimeXp(progression.experience, amount).experience,
 });
 
 function closeExpansionDay(state: GameState) {
@@ -2288,13 +2288,13 @@ export const useGameStore = create<GameState>()(
             }
           : {}),
       })),
-      enterGarden: () => {
+      enterGarden: (tutorialAccess = false) => {
         let changed = false;
         set((state) => {
           if (
             state.zone !== 'hub'
             || state.zoneTransitioning
-            || (!getUnlockedRoutes(state.progression).includes('garden-district') && state.schedule !== 'recess')
+            || (!getUnlockedRoutes(state.progression).includes('garden-district') && state.schedule !== 'recess' && !tutorialAccess)
           ) return state;
           changed = true;
           const position = currentPosition(state);

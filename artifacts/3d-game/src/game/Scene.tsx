@@ -27,6 +27,7 @@ import { startCloudSync } from './cloudSync';
 import { MultiplayerWorld } from './MultiplayerWorld';
 import { FinalMasterWorld, StarterHomeInterior } from './FinalMasterWorld';
 import { FinalMasterOverlay } from './FinalMasterUI';
+import { ToastViewport } from './ToastViewport';
 import { useFinalMasterStore } from './finalMasterStore';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
@@ -191,6 +192,7 @@ export function DayKareApp() {
         <AudioWorldDirector />
         <GameplayExpansionDirector />
         <FinalMasterOverlay />
+        <ToastViewport />
         {/* The canvas stays mounted so the browser can restore the context. */}
         {contextLost && <GraphicsUnavailable variant="lost" />}
       </div>

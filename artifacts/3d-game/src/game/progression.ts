@@ -52,6 +52,34 @@ export const MAX_TOKENS = 999_999;
 export const MAX_EXPERIENCE = 9_999_999;
 export const MAX_ACTIVITY_RUNS = 99_999;
 
+export interface RankProgress {
+  rank: number;
+  xpIntoRank: number;
+  xpForNextRank: number;
+}
+
+export function xpRequiredForNextRank(currentRank: number) {
+  if (currentRank < 10) return 100;
+  if (currentRank < 30) return 120;
+  return 140;
+}
+
+/** Lifetime XP is persisted; Rank and overflow are derived deterministically. */
+export function rankFromLifetimeXp(lifetimeXp: number): RankProgress {
+  let remaining = Math.max(0, Math.min(MAX_EXPERIENCE, Math.floor(Number.isFinite(lifetimeXp) ? lifetimeXp : 0)));
+  let rank = 1;
+  while (remaining >= xpRequiredForNextRank(rank)) {
+    remaining -= xpRequiredForNextRank(rank);
+    rank += 1;
+  }
+  return { rank, xpIntoRank: remaining, xpForNextRank: xpRequiredForNextRank(rank) };
+}
+
+export function addLifetimeXp(current: number | undefined, amount: number) {
+  const experience = Math.min(MAX_EXPERIENCE, Math.max(0, (current ?? 0) + Math.trunc(Number.isFinite(amount) ? amount : 0)));
+  return { experience, ...rankFromLifetimeXp(experience) };
+}
+
 export const ACTIVITY_DEFINITIONS = {
   'rainbow-tidy-up': { tokenReward: 2, reputationReward: 2 },
   'juice-club-service': { tokenReward: 1, reputationReward: 1 },
