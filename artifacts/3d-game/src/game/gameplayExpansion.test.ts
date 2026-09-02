@@ -9,11 +9,14 @@ import {
   FISHING_RODS,
   MISSED_ACTIVITY_REP,
   PLANTING_XP,
+  SEED_QUALITY_TIERS,
   collectibleRotation,
   createGameplayExpansion,
   heistForDay,
   lostFoundReward,
   normalizeGameplayExpansion,
+  nextSeedQuality,
+  seedValueMultiplier,
 } from "./gameplayExpansion";
 import { createInitialProgression } from "./progression";
 import { softActivityGuidance } from "./schedulePolicy";
@@ -28,6 +31,10 @@ assert.equal(ART_XP, 20);
 assert.equal(ART_CASH, 20);
 assert.equal(MISSED_ACTIVITY_REP, 5);
 assert.deepEqual(FISHING_RODS, ["red", "white", "blue", "green", "purple"]);
+assert.deepEqual(SEED_QUALITY_TIERS.map((tier) => tier.multiplier), [1, 1.15, 1.3, 1.5]);
+assert.equal(nextSeedQuality("premium"), "golden");
+assert.equal(nextSeedQuality("golden"), "golden");
+assert.equal(seedValueMultiplier("premium"), 1.3);
 const buttons = Array.from({ length: 12 }, () => ({ pressed: false, value: 0 }));
 buttons[0] = { pressed: true, value: 1 };
 buttons[7] = { pressed: false, value: 0.8 };
@@ -41,6 +48,7 @@ const normalized = normalizeGameplayExpansion({ ownedRods: ["purple", "hacked"],
 assert.deepEqual(normalized.ownedRods, ["purple"]);
 assert.equal(normalized.swedishFish, 999);
 assert.equal(normalized.seedPackets, 0);
+assert.equal(normalizeGameplayExpansion({ seedQuality: "premium", seedInspectionDay: 8 }, 9).seedQuality, "premium", "seed quality persists without rerolling");
 
 const tug = softActivityGuidance("art-time", "hub", [0, 0, 0]);
 assert.ok(Math.hypot(...tug) > 0 && Math.hypot(...tug) <= 0.451, "guidance is present but far weaker than player speed");
@@ -95,8 +103,11 @@ assert.equal(useGameStore.getState().gummyCrop.gummyDrops, 10);
 assert.equal(useGameStore.getState().gummyCrop2.gummyDrops, 10);
 
 assert.equal(useGameStore.getState().castFishingLine(), true);
+const catchSerial = useGameStore.getState().expansion.fishingCatchSerial;
 assert.equal(useGameStore.getState().catchSwedishFish(), true);
+assert.equal(useGameStore.getState().expansion.fishingCatchSerial, catchSerial + 1, "successful catch starts one visual sequence");
 assert.equal(useGameStore.getState().catchSwedishFish(), false, "a cast cannot be caught twice");
+assert.equal(useGameStore.getState().expansion.fishingCatchSerial, catchSerial + 1, "failed duplicate catch cannot replay the visual");
 const beforeFishSaleXp = useGameStore.getState().progression.experience ?? 0;
 const beforeFishSaleCash = useGameStore.getState().juiceClubCash;
 assert.equal(useGameStore.getState().sellSwedishFish(), true);
@@ -109,6 +120,17 @@ assert.equal(useGameStore.getState().purchaseFishingRod("purple"), true);
 assert.equal(useGameStore.getState().purchaseFishingRod("purple"), false);
 assert.equal(useGameStore.getState().equipFishingRod("purple"), true);
 assert.equal(useGameStore.getState().expansion.equippedRod, "purple");
+
+useGameStore.setState((state) => ({ dayNumber: 4, expansion: { ...state.expansion, seedQuality: "basic", seedInspectionDay: null } }));
+assert.equal(useGameStore.getState().inspectSeed(false), "failed");
+assert.equal(useGameStore.getState().expansion.seedQuality, "basic", "failure never downgrades seed quality");
+assert.equal(useGameStore.getState().inspectSeed(true), "already-inspected", "reload/retry cannot reroll the same daily attempt");
+useGameStore.setState((state) => ({ dayNumber: 5, expansion: { ...state.expansion, seedInspectionDay: null } }));
+assert.equal(useGameStore.getState().inspectSeed(true), "upgraded");
+assert.equal(useGameStore.getState().expansion.seedQuality, "good");
+useGameStore.setState((state) => ({ juiceClubCash: 0, gummyCrop: { ...state.gummyCrop, gummyDrops: 10 } }));
+assert.equal(useGameStore.getState().sellGummyCrop(0), true);
+assert.equal(useGameStore.getState().juiceClubCash, 35, "Good Seed applies the centralized 1.15x full-crop value");
 
 useGameStore.getState().setTimeOfDay(10.5);
 const beforeArtXp = useGameStore.getState().progression.experience ?? 0;

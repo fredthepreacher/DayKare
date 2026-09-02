@@ -9,6 +9,17 @@ export const ART_CASH = 20;
 export const MISSED_ACTIVITY_REP = 5;
 export const LOST_FOUND_INTERVAL_MINUTES = 10;
 
+export const SEED_QUALITY_TIERS = [
+  { id: "basic", label: "Basic Seed", multiplier: 1 },
+  { id: "good", label: "Good Seed", multiplier: 1.15 },
+  { id: "premium", label: "Premium Seed", multiplier: 1.3 },
+  { id: "golden", label: "Golden Seed", multiplier: 1.5 },
+] as const;
+export type SeedQuality = typeof SEED_QUALITY_TIERS[number]["id"];
+export function seedQualityIndex(quality: SeedQuality) { return SEED_QUALITY_TIERS.findIndex((tier) => tier.id === quality); }
+export function nextSeedQuality(quality: SeedQuality) { return SEED_QUALITY_TIERS[Math.min(SEED_QUALITY_TIERS.length - 1, seedQualityIndex(quality) + 1)].id; }
+export function seedValueMultiplier(quality: SeedQuality) { return SEED_QUALITY_TIERS[seedQualityIndex(quality)]?.multiplier ?? 1; }
+
 export const FISHING_RODS = ["red", "white", "blue", "green", "purple"] as const;
 export type FishingRodColor = (typeof FISHING_RODS)[number];
 
@@ -58,8 +69,11 @@ export interface GameplayExpansionState {
   version: 1;
   secondPlantingStep: number;
   seedPackets: number;
+  seedQuality: SeedQuality;
+  seedInspectionDay: number | null;
   swedishFish: number;
   fishingCastReady: boolean;
+  fishingCatchSerial: number;
   ownedRods: FishingRodColor[];
   equippedRod: FishingRodColor;
   artCompletedDays: number[];
@@ -107,8 +121,11 @@ export function createGameplayExpansion(day = 1): GameplayExpansionState {
     version: 1,
     secondPlantingStep: 0,
     seedPackets: 12,
+    seedQuality: "basic",
+    seedInspectionDay: null,
     swedishFish: 0,
     fishingCastReady: false,
+    fishingCatchSerial: 0,
     ownedRods: ["red"],
     equippedRod: "red",
     artCompletedDays: [],
@@ -172,8 +189,11 @@ export function normalizeGameplayExpansion(value: unknown, day = 1): GameplayExp
     ...initial,
     secondPlantingStep: count(raw.secondPlantingStep, 0, 4),
     seedPackets: count(raw.seedPackets, initial.seedPackets, 999),
+    seedQuality: SEED_QUALITY_TIERS.some((tier) => tier.id === raw.seedQuality) ? raw.seedQuality as SeedQuality : "basic",
+    seedInspectionDay: typeof raw.seedInspectionDay === "number" && Number.isInteger(raw.seedInspectionDay) ? Math.max(1, raw.seedInspectionDay) : null,
     swedishFish: count(raw.swedishFish, 0, 999),
     fishingCastReady: raw.fishingCastReady === true,
+    fishingCatchSerial: count(raw.fishingCatchSerial, 0, 999_999),
     ownedRods,
     equippedRod: ownedRods.includes(raw.equippedRod as FishingRodColor) ? raw.equippedRod as FishingRodColor : ownedRods[0],
     artCompletedDays: validDays(raw.artCompletedDays),

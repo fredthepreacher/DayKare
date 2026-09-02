@@ -123,6 +123,8 @@ import {
   heistForDay,
   lostFoundReward,
   normalizeGameplayExpansion,
+  nextSeedQuality,
+  seedValueMultiplier,
   type CollectibleId,
   type FishingRodColor,
   type GameplayExpansionState,
@@ -303,6 +305,7 @@ export interface GameState {
   sellSwedishFish: () => boolean;
   purchaseFishingRod: (color: FishingRodColor) => boolean;
   equipFishingRod: (color: FishingRodColor) => boolean;
+  inspectSeed: (success: boolean) => 'upgraded' | 'failed' | 'already-inspected' | 'max-tier';
   completeArtActivity: () => boolean;
   completeShowAndTell: () => boolean;
   takeAfternoonSnack: () => boolean;
@@ -1857,7 +1860,8 @@ export const useGameStore = create<GameState>()(
           if (crop.gummyDrops < GUMMY_HARVEST_SIZE) return state;
           changed = true;
           const next = { ...crop, gummyDrops: crop.gummyDrops - GUMMY_HARVEST_SIZE };
-          return { ...(bed === 0 ? { gummyCrop: next } : { gummyCrop2: next }), juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + GUMMY_FULL_CROP_CASH), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(5)) }) };
+          const sale = Math.round(GUMMY_FULL_CROP_CASH * seedValueMultiplier(state.expansion.seedQuality));
+          return { ...(bed === 0 ? { gummyCrop: next } : { gummyCrop2: next }), juiceClubCash: Math.min(MAX_CASH, state.juiceClubCash + sale), progression: withQualifiedRoutes({ ...state.progression, reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(5)) }) };
         });
         return changed;
       },
@@ -1877,7 +1881,7 @@ export const useGameStore = create<GameState>()(
           changed = true;
           return {
             progression: withExperience(state.progression, FISH_CATCH_XP),
-            expansion: { ...state.expansion, fishingCastReady: false, swedishFish: Math.min(999, state.expansion.swedishFish + 1) },
+            expansion: { ...state.expansion, fishingCastReady: false, fishingCatchSerial: state.expansion.fishingCatchSerial + 1, swedishFish: Math.min(999, state.expansion.swedishFish + 1) },
             rewardEvents: appendRewardEvent(state.rewardEvents, { id: `fish-catch-${state.dayNumber}-${state.clock.minute}-${state.expansion.swedishFish}`, title: 'Swedish Fish caught! +1 XP', detail: 'Added to Backpack Items', tokens: 0, reputation: 0 }),
           };
         });
@@ -1914,6 +1918,17 @@ export const useGameStore = create<GameState>()(
           return { expansion: { ...state.expansion, equippedRod: color } };
         });
         return changed;
+      },
+      inspectSeed: (success) => {
+        let result: 'upgraded' | 'failed' | 'already-inspected' | 'max-tier' = 'failed';
+        set((state) => {
+          if (state.expansion.seedInspectionDay === state.dayNumber) { result = 'already-inspected'; return state; }
+          const next = nextSeedQuality(state.expansion.seedQuality);
+          if (next === state.expansion.seedQuality) { result = 'max-tier'; return { expansion: { ...state.expansion, seedInspectionDay: state.dayNumber } }; }
+          result = success ? 'upgraded' : 'failed';
+          return { expansion: { ...state.expansion, seedInspectionDay: state.dayNumber, seedQuality: success ? next : state.expansion.seedQuality } };
+        });
+        return result;
       },
       completeArtActivity: () => {
         let changed = false;

@@ -35,11 +35,13 @@ import { useStorybookLaneStore } from './storybookLaneStore';
 import { STORYBOOK_OPEN_MINUTE, STORYBOOK_PRICES, storybookIsOpen, type StorybookItemId } from './storybookLaneConfig';
 import { playStorybookSound } from './storybookLaneAudio';
 import { purchaseMultiplayerStorybookItem, useMultiplayerStore } from './multiplayer';
-import type { CollectibleId } from './gameplayExpansion';
+import { SEED_QUALITY_TIERS, seedValueMultiplier, type CollectibleId } from './gameplayExpansion';
 import { setTouchCrouch, setTouchJump, setTouchMove, setTouchRun } from './touchInput';
 import { mapStandardGamepad } from './gamepadInput';
 import { useFinalMasterStore } from './finalMasterStore';
 import { STARTER_HOME_PRICE, TUTORIAL_CHAPTERS } from './finalMaster';
+import { interactWithHeistTarget, interactWithMissLeslie } from './missLeslieInteraction';
+import { useToastStore } from './toastStore';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -115,6 +117,7 @@ export function UI() {
     castFishingLine,
     catchSwedishFish,
     sellSwedishFish,
+    inspectSeed,
     completeArtActivity,
     completeShowAndTell,
     takeAfternoonSnack,
@@ -171,6 +174,9 @@ export function UI() {
     && schedule === 'storybook-lane'
     && Boolean(storybookRoute && isRouteUnlocked(storybookRoute, progression));
   const [recoverySeconds, setRecoverySeconds] = useState(0);
+  const [questTrackerMode, setQuestTrackerMode] = useState<'expanded' | 'collapsed' | 'hidden'>('collapsed');
+  const [seedInspectionOpen, setSeedInspectionOpen] = useState(false);
+  const [seedMeter, setSeedMeter] = useState(0);
   const reconcileGameplayRewards = useMonetizationStore((state) => state.reconcileGameplayRewards);
 
   useEffect(() => {
@@ -191,6 +197,25 @@ export function UI() {
     const timer = window.setInterval(update, 250);
     return () => window.clearInterval(timer);
   }, [storybook.recoveringUntil]);
+
+  useEffect(() => {
+    if (!seedInspectionOpen) return undefined;
+    let frame = 0;
+    const started = performance.now();
+    const tick = (now: number) => {
+      setSeedMeter((Math.sin((now - started) / 520) + 1) * 50);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [seedInspectionOpen]);
+
+  const finishSeedInspection = () => {
+    const result = inspectSeed(Math.abs(seedMeter - 50) <= 18);
+    const tier = SEED_QUALITY_TIERS.find((entry) => entry.id === useGameStore.getState().expansion.seedQuality)!;
+    useToastStore.getState().enqueue({ title: result === 'upgraded' ? `${tier.label} created!` : result === 'failed' ? 'Inspection complete' : result === 'max-tier' ? 'Golden quality maintained' : 'Already inspected today', detail: result === 'upgraded' ? `Garden sale value is now +${Math.round((tier.multiplier - 1) * 100)}%.` : result === 'failed' ? 'No downgrade—try again tomorrow.' : undefined, kind: result === 'upgraded' ? 'success' : 'ordinary' });
+    setSeedInspectionOpen(false);
+  };
 
   const [subscribe] = useKeyboardControls<Controls>();
   const interactRef = useRef<() => void>(() => undefined);
@@ -379,7 +404,11 @@ export function UI() {
       }
 
       if (activeInteractable) {
-        if (activeInteractable === 'binky') {
+        if (activeInteractable === 'final-miss-leslie') {
+          interactWithMissLeslie();
+        } else if (activeInteractable.startsWith('final-heist-')) {
+          interactWithHeistTarget(activeInteractable);
+        } else if (activeInteractable === 'binky') {
           pickUp('binky');
           playGameSound('pickup', 'interaction');
           if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
@@ -637,7 +666,7 @@ export function UI() {
           if (selectedCrop.gummyDrops > 0) setActiveDialogue({
             name: 'Gummy Drop Basket', text: `${selectedCrop.gummyDrops} Gummy Drops ready. Sharing earns respect; a full basket sells for $30.`,
             options: [
-              ...(selectedCrop.gummyDrops >= GUMMY_HARVEST_SIZE ? [{ label: 'Sell 10 for $30 + 5 REP', action: () => { sellGummyCrop(bed); setActiveDialogue(null); } }] : []),
+              ...(selectedCrop.gummyDrops >= GUMMY_HARVEST_SIZE ? [{ label: `Sell 10 for $${Math.round(30 * seedValueMultiplier(expansion.seedQuality))} + 5 REP`, action: () => { sellGummyCrop(bed); setActiveDialogue(null); } }] : []),
               { label: 'Share 1 · $3 + 2 REP', action: () => { feedGummyDrop(bed); setActiveDialogue(null); } },
               { label: 'Eat 1 · +1 REP', action: () => { eatGummyDrop(bed); setActiveDialogue(null); } },
               { label: 'Leave', action: () => setActiveDialogue(null) },
@@ -650,24 +679,30 @@ export function UI() {
               name: 'Ripple Pond Fishing',
               text: `You cast the ${expansion.equippedRod} rod. Watch the bobber… now reel when it splashes!`,
               options: [
-                { label: 'Reel now!', action: () => { catchSwedishFish(); playGameSound('pickup', 'interaction'); setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. It is safely stored in Backpack Items.' }); } },
+                { label: 'Reel now!', action: () => { if (catchSwedishFish()) { playGameSound('pickup', 'interaction'); setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. Watch it splash up beside the rod.' }); } } },
                 { label: 'Cancel cast', action: () => setActiveDialogue(null) },
               ],
             });
           } else {
-            catchSwedishFish();
-            playGameSound('pickup', 'interaction');
-            setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. It is safely stored in Backpack Items.' });
+            if (catchSwedishFish()) {
+              playGameSound('pickup', 'interaction');
+              setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. Watch it splash up beside the rod.' });
+            }
           }
         } else if (activeInteractable === 'garden-fishing-shop') {
           recordTutorialEvent('fishing-shop-visited');
           setActiveDialogue({ name: 'Ripple Pond Tackle Kiosk', text: 'Hooks are pretend, lines stay clear of friends, and every Swedish Fish catch goes safely into your Backpack.' });
         } else if (activeInteractable === 'seed-inspection') {
           const canPlant = expansion.seedPackets >= 3;
-          const lucky = (dayNumber + expansion.seedPackets) % 4 === 0;
+          const tier = SEED_QUALITY_TIERS.find((entry) => entry.id === expansion.seedQuality)!;
+          const inspectedToday = expansion.seedInspectionDay === dayNumber;
           setActiveDialogue({
             name: 'Seed Discovery Station',
-            text: `${expansion.seedPackets} seed packets held. Crop: cheerful mixed seedlings. Growth: immediate three-step planting activity. Expected yield: 3 seedlings and +12 XP. ${canPlant ? 'Plantable now.' : 'You need 3 packets for a set.'} Quality: ${lucky ? 'Lucky Seed!' : 'Good Seed.'}`,
+            text: `${tier.label} · expected Garden sale value +${Math.round((tier.multiplier - 1) * 100)}%. ${expansion.seedPackets} packets held. ${canPlant ? 'Plantable now.' : 'You need 3 packets.'} ${inspectedToday ? 'Today’s inspection is complete.' : 'Stop the timing meter in the green zone to upgrade without downgrade risk.'}`,
+            options: inspectedToday ? [{ label: 'Done', action: () => setActiveDialogue(null) }] : [
+              { label: 'Start Seed Inspection', action: () => { setActiveDialogue(null); setSeedInspectionOpen(true); } },
+              { label: 'Later', action: () => setActiveDialogue(null) },
+            ],
           });
         } else if (activeInteractable.startsWith('expansion-collectible-')) {
           const id = activeInteractable.replace('expansion-collectible-', '') as CollectibleId;
@@ -1129,6 +1164,8 @@ export function UI() {
     if (activeInteractable === 'garden-fishing-spot') return expansion.fishingCastReady ? 'Reel Swedish Fish' : `Fish with ${expansion.equippedRod} rod`;
     if (activeInteractable === 'garden-fishing-shop') return 'Visit Tackle Kiosk';
     if (activeInteractable === 'seed-inspection') return 'Inspect Held Seeds';
+    if (activeInteractable === 'final-miss-leslie') return 'Talk to Miss Leslie';
+    if (activeInteractable.startsWith('final-heist-')) return `Scope ${activeInteractable.replace('final-heist-', '').replaceAll('-', ' ')}`;
     if (activeInteractable.startsWith('expansion-collectible-')) return 'Collect Item';
     if (activeInteractable === 'lost-found-desk') return expansion.lostFoundJob?.status === 'found' ? 'Return Lost Item' : 'Check Job Board';
     if (activeInteractable === 'lost-found-item') return 'Pick Up Lost Item';
@@ -1181,6 +1218,8 @@ export function UI() {
     if (activeInteractable === 'garden-fishing-spot') return 'Catch +1 XP · sell for $5 +2 XP';
     if (activeInteractable === 'garden-fishing-shop') return 'Fishing safety and supplies';
     if (activeInteractable === 'seed-inspection') return `${expansion.seedPackets} seed packets · crop and yield report`;
+    if (activeInteractable === 'final-miss-leslie') return 'Story heist · shared across keyboard, touch, and controller';
+    if (activeInteractable.startsWith('final-heist-')) return 'Active story objective · generous interaction range';
     if (activeInteractable.startsWith('expansion-collectible-')) return 'Rotating daycare and Garden hunt';
     if (activeInteractable === 'lost-found-desk' || activeInteractable === 'lost-found-item') return '10-minute rotating job · RNG reward';
     if (activeInteractable === 'art-mini-activity') return 'Art Time · +20 XP and +$20 once per day';
@@ -1212,6 +1251,15 @@ export function UI() {
   const interactionDetail = getInteractionDetail();
   const activeQuest = getActiveQuest(quests);
   const activeObjective = getCurrentObjective(quests);
+  useEffect(() => {
+    if (activeQuest?.id !== 'rainbow-tidy-up' || typeof window === 'undefined') return;
+    const key = 'daykare-rainbow-tidy-discovered';
+    try {
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, '1');
+    } catch { /* local save warning already explains unavailable storage */ }
+    useToastStore.getState().enqueue({ title: 'Optional Job Discovered', detail: 'Rainbow Tidy-Up earns XP and money whenever you want to play.' });
+  }, [activeQuest?.id]);
   const gameplayBlocked = journalOpen || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked || Boolean(expansion.lastDayReport);
 
   return (
@@ -1271,18 +1319,12 @@ export function UI() {
             {useGameStore.getState().quality === 'high' ? 'HQ' : 'LQ'}
           </button>
         </div>
-        {activeQuest && activeObjective && (
-          <div className="daykare-quest-card max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-3 rounded-xl shadow-lg flex gap-3 items-start">
-            <img
-              src={`${import.meta.env.BASE_URL}daykare-assets/13_ui_quest_icons.png`}
-              alt=""
-              className="w-12 h-12 rounded-lg object-cover border border-amber-300/50"
-            />
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.18em] font-black text-amber-700">{activeQuest.title}</div>
-              <div className="font-bold text-card-foreground mt-1">{activeObjective.label}</div>
-              <div className="text-xs text-muted-foreground mt-1">{activeObjective.guidance}</div>
-            </div>
+        {activeQuest && activeObjective && questTrackerMode === 'hidden' && <button className="daykare-quest-reopen" onClick={() => setQuestTrackerMode('collapsed')} aria-label="Reopen Jobs tracker">⭐</button>}
+        {activeQuest && activeObjective && questTrackerMode !== 'hidden' && (
+          <div className={`daykare-quest-card ${questTrackerMode === 'expanded' ? 'is-expanded' : ''} max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-2 rounded-xl shadow-lg`} data-testid="optional-job-tracker">
+            <button className="daykare-quest-toggle" onClick={() => setQuestTrackerMode(questTrackerMode === 'expanded' ? 'collapsed' : 'expanded')}><img src={`${import.meta.env.BASE_URL}daykare-assets/13_ui_quest_icons.png`} alt="" /><span><small>{activeQuest.id === 'rainbow-tidy-up' ? 'Optional XP job' : 'Active quest'}</small><strong>{activeQuest.title}</strong></span><b>{questTrackerMode === 'expanded' ? '−' : '+'}</b></button>
+            <button className="daykare-quest-hide" onClick={() => setQuestTrackerMode('hidden')} aria-label="Hide Jobs tracker">×</button>
+            {questTrackerMode === 'expanded' && <div className="daykare-quest-detail"><strong>{activeObjective.label}</strong><span>{activeObjective.guidance}</span></div>}
           </div>
         )}
       </div>
@@ -1429,6 +1471,8 @@ export function UI() {
           </div>
         )}
       </div>
+
+      {seedInspectionOpen && <div className="seed-inspection-backdrop"><section className="seed-inspection-game" role="dialog" aria-modal="true" aria-label="Seed inspection timing game"><small>Seed Inspection</small><h2>Stop inside the green zone</h2><div className="seed-meter"><i /><b style={{ left: `${seedMeter}%` }} /></div><p>One attempt per in-game day. Failure never downgrades your seed.</p><button onClick={finishSeedInspection}>Inspect now</button><button className="seed-cancel" onClick={() => setSeedInspectionOpen(false)}>Cancel</button></section></div>}
 
       {activeReward && (
         <div className="daykare-reward-burst" role="status" aria-live="polite">

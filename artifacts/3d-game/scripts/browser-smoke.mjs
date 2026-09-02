@@ -263,6 +263,13 @@ try {
   await waitFor(client, 'Boolean(document.querySelector("[data-testid=final-avatar-creator]"))', 'first-launch character creator');
   await evaluate(client, 'document.querySelector("[data-testid=final-avatar-creator] .final-primary")?.click()');
   await waitFor(client, '!document.querySelector("[data-testid=final-avatar-creator]")', 'character creation completion');
+  await evaluate(client, 'document.querySelector("[data-testid=final-tutorial] .final-objective-toggle")?.click()');
+  await waitFor(client, 'document.querySelector("[data-testid=final-tutorial]")?.classList.contains("is-expanded")', 'Orientation expands');
+  await evaluate(client, 'document.querySelector("[data-testid=final-tutorial] .final-objective-hide")?.click()');
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=final-objective-reopen]"))', 'Orientation hides to a reopen tab');
+  assert.equal(await evaluate(client, `document.body.textContent.includes('complete!')`), false, 'hiding Orientation does not complete it');
+  await evaluate(client, 'document.querySelector("[data-testid=final-objective-reopen]")?.click()');
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=final-tutorial]"))', 'Orientation reopens collapsed');
 
   const productionSmoke = process.env.DAYKARE_PRODUCTION_SMOKE === '1';
   let performanceSample;
@@ -731,6 +738,11 @@ try {
       && document.querySelector('.daykare-touch-interact strong')?.textContent === 'Pick up Toy'`,
     'mobile player can target the blue block',
   );
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=optional-job-tracker]"))', 'optional job tracker appears compactly');
+  await evaluate(client, 'document.querySelector(".daykare-quest-hide")?.click()');
+  await waitFor(client, 'Boolean(document.querySelector(".daykare-quest-reopen"))', 'optional job tracker can hide');
+  await evaluate(client, 'document.querySelector(".daykare-quest-reopen")?.click()');
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=optional-job-tracker]"))', 'optional job tracker reopens');
   await evaluate(client, `document.querySelector('.daykare-touch-interact').click()`);
   await waitFor(
     client,

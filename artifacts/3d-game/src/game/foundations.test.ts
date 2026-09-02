@@ -1346,8 +1346,8 @@ const artPairB = kidDestination('Mia', 'art-time', false, [0, 0, 0], 1, 0, []);
 assert.ok(Math.abs(artPairA.distanceTo(artPairB) - 0.76) < 1e-6, 'paired children keep personal space within one art-session area');
 assert.deepEqual(
   artPairA.clone().add(artPairB).multiplyScalar(0.5).toArray(),
-  [-14.1, 0, -11.5],
-  'pair offsets preserve the authored social anchor',
+  [-15, 0, -11.5],
+  'pair offsets preserve the reserved-player Art anchor spacing',
 );
 
 const crowdTeachers = [

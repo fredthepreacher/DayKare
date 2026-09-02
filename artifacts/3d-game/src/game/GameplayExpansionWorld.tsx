@@ -8,16 +8,16 @@ import { registerInteractionCandidate, updateInteractionCandidate } from "./inte
 import { playerFollowsSchedule } from "./schedulePolicy";
 import { useGameStore } from "./store";
 
-function useStaticCandidate(id: string, position: [number, number, number], valid: boolean, priority = 60, range = 2.15) {
+function useStaticCandidate(id: string, position: [number, number, number], valid: boolean, priority = 60, range = 2.15, forcePriority = false) {
   const vector = useMemo(() => new THREE.Vector3(...position), [position]);
-  const candidate = useMemo(() => ({ id, position: vector, valid, priority, range }), [id, priority, range, valid, vector]);
+  const candidate = useMemo(() => ({ id, position: vector, valid, priority, range, questPriority: forcePriority, forcePriority }), [forcePriority, id, priority, range, valid, vector]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   useFrame(() => updateInteractionCandidate(id, { position: vector, valid, priority, range }));
 }
 
-function Marker({ id, position, color, label, valid = true }: { id: string; position: [number, number, number]; color: string; label: string; valid?: boolean }) {
+function Marker({ id, position, color, label, valid = true, priority = 60, range = 2.15, forcePriority = false }: { id: string; position: [number, number, number]; color: string; label: string; valid?: boolean; priority?: number; range?: number; forcePriority?: boolean }) {
   const active = useGameStore((state) => state.activeInteractable === id);
-  useStaticCandidate(id, position, valid);
+  useStaticCandidate(id, position, valid, priority, range, forcePriority);
   if (!valid) return null;
   return (
     <group position={position}>
@@ -72,7 +72,7 @@ export function GameplayExpansionWorld() {
       {zone === "hub" && (
         <>
           <Marker id="lost-found-desk" position={[-6.8, 0, -4.7]} color="#e88b57" label="Lost & Found Job Board" />
-          <Marker id="art-mini-activity" position={[-12.2, 0, -11.7]} color="#e76f8c" label="Art Activity" />
+          <Marker id="art-mini-activity" position={[-12.2, 0, -11.7]} color="#e76f8c" label="Art Activity" priority={96} range={3.2} forcePriority />
           <Marker id="show-and-tell-spot" position={[0, 0, 2.3]} color="#8a63c7" label="Show & Tell" />
           <Marker id="tech-market" position={[11.8, 0, 11.7]} color="#38b6c8" label="Tech Market" />
           <Marker id="snack-window" position={[4.8, 0, -3]} color="#f2b85b" label="Juice & Crackers" />

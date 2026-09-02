@@ -15,16 +15,16 @@ const HEIST_EVENT_POSITIONS: Record<string, [number, number, number]> = {
   'grabber-collected': [-13, 0, 11.5], 'finale-regroup': [10.2, 0, 11.2],
 };
 
-function useCandidate(id: string, position: [number, number, number], valid: boolean, priority = 80) {
+function useCandidate(id: string, position: [number, number, number], valid: boolean, priority = 80, range = 2.65, forcePriority = false) {
   const vector = useMemo(() => new THREE.Vector3(...position), [position]);
-  const candidate = useMemo(() => ({ id, position: vector, range: 2.65, priority, valid, questPriority: valid }), [id, vector, priority, valid]);
+  const candidate = useMemo(() => ({ id, position: vector, range, priority, valid, questPriority: valid && forcePriority, forcePriority }), [forcePriority, id, vector, priority, range, valid]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
   useFrame(() => updateInteractionCandidate(id, { position: vector, valid, questPriority: valid }));
 }
 
 function MissLeslie() {
   const active = useFinalMasterStore((state) => state.heistStatus === 'active');
-  useCandidate('final-miss-leslie', [8.2, 0, 11.3], true, 92);
+  useCandidate('final-miss-leslie', [8.2, 0, 11.3], true, 96, 3.6);
   return <group position={[8.2, 0, 11.3]} rotation={[0, -0.7, 0]} scale={1.12}>
     <CharacterModel bodyColor="#f2c94c" accentColor="#fff2a8" bottomColor="#3973b8" hairColor="#4a2d25" hairStyle="pigtails" skinColor="#9a5d3c" eyeColor="#3b241f" isTeacher glasses cane isTalking={active} activityMode={active ? 'conversation' : 'standing'} idleVariant="look-around" motionSeed={12} />
     <Text position={[0, 2.25, 0]} fontSize={0.25} color="#4a2d25" anchorX="center">MISS LESLIE</Text>
@@ -38,8 +38,9 @@ function HeistBoard() {
   const tutorialComplete = useFinalMasterStore((state) => state.tutorialComplete);
   const activeStep = HEIST_STEPS[Math.min(step, HEIST_STEPS.length - 1)];
   const event = activeStep?.events.find((candidate) => !completed.includes(candidate)) ?? activeStep?.events[0];
+  const worldTarget = event !== 'miss-leslie-intro';
   const position = event ? HEIST_EVENT_POSITIONS[event] : STEP_POSITIONS[Math.min(step, STEP_POSITIONS.length - 1)];
-  useCandidate(`final-heist-${event ?? 'none'}`, position, tutorialComplete && status === 'active' && Boolean(event), 100);
+  useCandidate(`final-heist-${event ?? 'none'}`, position, tutorialComplete && status === 'active' && Boolean(event) && worldTarget, 100, 4.5, true);
   return <>
     <group position={[10.2, 0, 11.4]}>
       <mesh position={[0, 1, 0]} castShadow><boxGeometry args={[2.1, 1.65, 0.16]} /><meshStandardMaterial color="#6e4935" /></mesh>
@@ -47,7 +48,7 @@ function HeistBoard() {
       <Text position={[0, 1.35, -0.14]} rotation={[0, Math.PI, 0]} fontSize={0.2} color="#4b3023" anchorX="center">HEIST BOARD</Text>
       <Text position={[0, 0.93, -0.14]} rotation={[0, Math.PI, 0]} maxWidth={1.45} fontSize={0.115} color="#4b3023" anchorX="center">Mia + Noah · teamwork only</Text>
     </group>
-    {status === 'active' && <group position={position}><mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.65, 0.83, 28]} /><meshBasicMaterial color="#ffd84d" transparent opacity={0.82} /></mesh><Text position={[0, 1.15, 0]} fontSize={0.22} color="#5b351f" anchorX="center">{HEIST_STEPS[Math.min(step, HEIST_STEPS.length - 1)].title}</Text></group>}
+    {status === 'active' && worldTarget && <group position={position}><mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.8, 1.08, 28]} /><meshBasicMaterial color="#ffd84d" transparent opacity={0.82} /></mesh><Text position={[0, 1.15, 0]} fontSize={0.22} color="#5b351f" anchorX="center">{HEIST_STEPS[Math.min(step, HEIST_STEPS.length - 1)].title}</Text></group>}
   </>;
 }
 

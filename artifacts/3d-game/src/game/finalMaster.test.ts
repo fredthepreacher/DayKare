@@ -8,6 +8,7 @@ import { useGameStore } from './store';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { rankFromLifetimeXp, xpRequiredForNextRank } from './progression';
 import { TOAST_DEDUPE_MS, TOAST_FADE_MS, TOAST_VISIBLE_MS, useToastStore } from './toastStore';
+import { interactWithMissLeslie } from './missLeslieInteraction';
 
 assert.equal(TUTORIAL_CHAPTERS.length, 7, 'orientation has exactly seven chapters');
 assert.equal(tutorialXpTotal(), 385, 'orientation XP total matches the authored progression curve');
@@ -53,9 +54,17 @@ useGameStore.setState({ zone: 'hub', zoneTransitioning: false, pendingZone: null
 useStorybookLaneStore.setState({ ribbonBucks: 0, ownedItems: [], cribTier: 0 });
 useGameStore.setState((state) => ({ juiceClubCash: 0, dayNumber: 3, progression: { ...state.progression, experience: 0 } }));
 useFinalMasterStore.setState({ tutorialComplete: true, tutorialChapter: 7, heistStatus: 'available', heistStep: 0, firstHeistComplete: false, firstRewardChoice: null, lastReplayDay: null, ownedStarterHome: false, homeVoucher: false });
-assert.equal(useFinalMasterStore.getState().startHeist(), true);
+assert.equal(interactWithMissLeslie(), 'available', 'the guaranteed first story is always offered');
+assert.equal(useGameStore.getState().activeDialogue?.options?.[0]?.label, 'Start Sticker Parade Heist');
+useGameStore.getState().activeDialogue?.options?.[0]?.action();
+assert.equal(useFinalMasterStore.getState().heistStatus, 'active');
+assert.equal(useFinalMasterStore.getState().heistStep, 1, 'Miss Leslie introduction advances into the real scope phase');
+assert.equal(interactWithMissLeslie(), 'resume', 'active story always returns a deterministic resume state');
+useGameStore.setState({ dayNumber: 4 });
+assert.deepEqual([useFinalMasterStore.getState().heistStatus, useFinalMasterStore.getState().heistStep], ['active', 1], 'day rollover preserves active story progress');
+useGameStore.setState({ dayNumber: 3 });
 assert.equal(useFinalMasterStore.getState().recordHeistEvent('finale-regroup'), false, 'future heist interaction is rejected');
-for (const step of HEIST_STEPS) for (const event of step.events) assert.equal(useFinalMasterStore.getState().recordHeistEvent(event), true);
+for (const step of HEIST_STEPS.slice(1)) for (const event of step.events) assert.equal(useFinalMasterStore.getState().recordHeistEvent(event), true);
 assert.equal(useGameStore.getState().juiceClubCash, 1_000);
 assert.equal(useGameStore.getState().progression.experience, 250);
 assert.equal(useFinalMasterStore.getState().chooseFirstReward('rb'), true);

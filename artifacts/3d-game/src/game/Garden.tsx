@@ -924,16 +924,40 @@ function GummyDropBed({ bed, position: authoredPosition }: { bed: 0 | 1; positio
 function FishingSpot() {
   const active = useGameStore((state) => state.activeInteractable === 'garden-fishing-spot');
   const rod = useGameStore((state) => state.expansion.equippedRod);
+  const catchSerial = useGameStore((state) => state.expansion.fishingCatchSerial);
+  const previousCatch = useRef(catchSerial);
+  const elapsed = useRef(0);
+  const rodGroup = useRef<THREE.Group>(null);
+  const catchGroup = useRef<THREE.Group>(null);
+  const splash = useRef<THREE.Mesh>(null);
+  const [catching, setCatching] = useState(false);
   const position = useMemo(() => new THREE.Vector3(6.35, 0, -0.2), []);
-  const candidate = useMemo(() => ({ id: 'garden-fishing-spot', position, range: 2.4, priority: 82, valid: true }), [position]);
+  const candidate = useMemo(() => ({ id: 'garden-fishing-spot', position, range: 3.1, priority: 82, valid: true }), [position]);
   useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  useEffect(() => {
+    if (catchSerial <= previousCatch.current) return;
+    previousCatch.current = catchSerial;
+    elapsed.current = 0;
+    setCatching(true);
+  }, [catchSerial]);
+  useFrame((_, delta) => {
+    if (!catching) return;
+    elapsed.current += delta;
+    const t = Math.min(1, elapsed.current / 2.8);
+    if (rodGroup.current) rodGroup.current.rotation.z = -0.34 - Math.sin(Math.min(1, t * 2.2) * Math.PI) * 0.22;
+    if (catchGroup.current) {
+      catchGroup.current.position.y = .12 + Math.min(1, t * 1.7) * 1.65;
+      catchGroup.current.position.x = .9 - Math.min(1, t * 1.7) * .55;
+      catchGroup.current.rotation.z = t * Math.PI * 2;
+    }
+    if (splash.current) splash.current.scale.setScalar(1 + Math.min(1, t * 4) * 1.8);
+    if (t >= 1) { setCatching(false); if (rodGroup.current) rodGroup.current.rotation.z = -.34; }
+  });
   return (
     <group position={[6.35, 0, -0.2]}>
-      <mesh position={[0, 0.62, 0]} rotation={[0, 0, -0.34]} castShadow>
-        <cylinderGeometry args={[0.035, 0.05, 1.35, 8]} />
-        <meshStandardMaterial color={rod} roughness={0.66} />
-      </mesh>
+      <group ref={rodGroup} rotation={[0, 0, -0.34]}><mesh position={[0, 0.62, 0]} castShadow><cylinderGeometry args={[0.035, 0.05, 1.35, 8]} /><meshStandardMaterial color={rod} roughness={0.66} /></mesh></group>
       <mesh position={[0.22, 0.7, 0]}><torusGeometry args={[0.13, 0.025, 8, 18]} /><meshStandardMaterial color="#d7dce2" metalness={0.45} /></mesh>
+      {catching && <><mesh ref={splash} position={[.9, .04, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[.12, .2, 18]} /><meshBasicMaterial color="#baf3ff" transparent opacity={.82} /></mesh><group ref={catchGroup} position={[.9, .12, 0]}><mesh scale={[1.5, .62, .35]}><sphereGeometry args={[.18, 12, 8]} /><meshStandardMaterial color="#e53935" emissive="#781714" emissiveIntensity={.25} /></mesh><mesh position={[-.28, 0, 0]} rotation={[0, 0, Math.PI / 2]}><coneGeometry args={[.16, .24, 3]} /><meshStandardMaterial color="#ef5350" /></mesh></group></>}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]}><torusGeometry args={[0.78, 0.045, 8, 28]} /><meshBasicMaterial color="#61d9ef" transparent opacity={active ? 0.92 : 0.28} /></mesh>
     </group>
   );
