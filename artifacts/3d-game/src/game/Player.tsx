@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useEquippedAppearance } from './useEquippedAppearance';
+import { useFinalMasterStore } from './finalMasterStore';
 import { Controls } from './Controls';
 import { useGameStore } from './store';
 import { getTouchInput } from './touchInput';
@@ -377,19 +378,26 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   });
 
   const appearance = useEquippedAppearance();
+  const avatar = useFinalMasterStore((state) => state.avatar);
+  const buildScale = avatar.bodyBuild === 'slim' ? 0.88 : avatar.bodyBuild === 'broad' ? 1.12 : avatar.bodyBuild === 'chubby' ? 1.18 : 1;
 
   return (
     <group ref={localRef} position={playerPosition}>
-      <group position={[0, isRiding ? 0.3 : 0, 0]}>
+      <group position={[0, isRiding ? 0.3 : 0, 0]} scale={[buildScale, avatar.height, buildScale]}>
         {/* Equipped Drip tints the player. Buying a hoodie and seeing nothing
             change would make the whole economy abstract, so the cosmetic slots
             drive the rig's colours directly; unequipped slots fall back to the
             original palette rather than to grey. */}
         <CharacterModel
-          bodyColor={recoveringUntil > Date.now() ? '#78b86d' : appearance.top ?? '#f47b43'}
+          bodyColor={recoveringUntil > Date.now() ? '#78b86d' : appearance.top ?? avatar.topColor}
           accentColor={recoveringUntil > Date.now() ? '#b8d98a' : appearance.accent ?? '#ffc857'}
-          hairColor="#713f32"
-          hairStyle={appearance.hat ? 'cap' : 'cap'}
+          bottomColor={avatar.bottomColor}
+          skinColor={avatar.skinColor}
+          eyeColor={avatar.eyeColor}
+          eyeShape={avatar.eyeShape}
+          earShape={avatar.earShape}
+          hairColor={avatar.hairColor}
+          hairStyle={appearance.hat ? 'cap' : avatar.hairStyle}
           mood="excited"
           isCrouching={isCrouching && !isRiding}
           imaginationMode={isImaginationMode}

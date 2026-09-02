@@ -5,6 +5,7 @@ import type { GameZone } from './world';
 import { ONLINE_MAX_PLAYERS } from './modeStore';
 import type { StorybookItemId } from './storybookLaneConfig';
 import { useStorybookLaneStore } from './storybookLaneStore';
+import type { AvatarProfile } from './finalMaster';
 
 export const MULTIPLAYER_NETWORK_HZ = 10;
 
@@ -18,6 +19,7 @@ export interface NetworkTransform {
   animation: 'idle' | 'walking' | 'running' | 'flopped';
   hasDog: boolean;
   vehicle: 'none' | 'tricycle' | 'mini-ride-on';
+  avatar?: Pick<AvatarProfile, 'skinColor' | 'eyeColor' | 'hairColor' | 'hairStyle' | 'bodyBuild' | 'height' | 'topColor' | 'bottomColor'>;
   updatedAt: number;
 }
 
@@ -57,6 +59,13 @@ export function validateNetworkTransform(value: unknown): NetworkTransform | nul
   const animation = ['idle', 'walking', 'running', 'flopped'].includes(candidate.animation ?? '')
     ? candidate.animation as NetworkTransform['animation']
     : 'idle';
+  const rawAvatar = candidate.avatar && typeof candidate.avatar === 'object' ? candidate.avatar : null;
+  const validColor = (color: unknown) => typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color);
+  const validHair = ['bob', 'curls', 'ponytail', 'pigtails', 'cap', 'sprout'].includes(rawAvatar?.hairStyle ?? '');
+  const validBuild = ['slim', 'average', 'broad', 'chubby'].includes(rawAvatar?.bodyBuild ?? '');
+  const avatar = rawAvatar && validColor(rawAvatar.skinColor) && validColor(rawAvatar.eyeColor) && validColor(rawAvatar.hairColor) && validColor(rawAvatar.topColor) && validColor(rawAvatar.bottomColor) && validHair && validBuild && typeof rawAvatar.height === 'number'
+    ? { ...rawAvatar, height: Math.max(.88, Math.min(1.12, rawAvatar.height)) } as NetworkTransform['avatar']
+    : undefined;
   return {
     id: candidate.id,
     name: safeText(candidate.name, 'New Kid'),
@@ -67,6 +76,7 @@ export function validateNetworkTransform(value: unknown): NetworkTransform | nul
     animation,
     hasDog: candidate.hasDog === true,
     vehicle: candidate.vehicle === 'tricycle' || candidate.vehicle === 'mini-ride-on' ? candidate.vehicle : 'none',
+    avatar,
     updatedAt: typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt) ? candidate.updatedAt : Date.now(),
   };
 }

@@ -3,7 +3,7 @@ import { useRef } from 'react';
 import * as THREE from 'three';
 import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 
-type HairStyle = 'bob' | 'curls' | 'ponytail' | 'cap' | 'sprout';
+type HairStyle = 'bob' | 'curls' | 'ponytail' | 'pigtails' | 'cap' | 'sprout';
 type Mood = 'happy' | 'sad' | 'curious' | 'grumpy' | 'excited';
 type Accessory = 'none' | 'backpack' | 'badge';
 type ActivityMode = 'standing' | 'walking' | 'sitting' | 'playing' | 'gathering' | 'coloring' | 'toy-play' | 'conversation' | 'reading' | 'singing' | 'dancing' | 'pretend-play' | 'circle-time' | 'snacking' | 'napping' | 'following' | 'reacting' | 'intervening';
@@ -18,6 +18,10 @@ export interface CharacterModelProps {
   accentColor: string;
   hairColor: string;
   skinColor?: string;
+  eyeColor?: string;
+  eyeShape?: 'round' | 'soft' | 'wide';
+  earShape?: 'small' | 'round' | 'wide';
+  bottomColor?: string;
   hairStyle?: HairStyle;
   mood?: Mood;
   isTeacher?: boolean;
@@ -31,6 +35,8 @@ export interface CharacterModelProps {
   activitySignal?: string;
   socialReaction?: SocialReaction;
   idleVariant?: IdleVariant;
+  glasses?: boolean;
+  cane?: boolean;
 }
 
 const moodBrowRotation: Record<Mood, number> = {
@@ -46,6 +52,10 @@ export function CharacterModel({
   accentColor,
   hairColor,
   skinColor = '#f6c6a8',
+  eyeColor: requestedEyeColor,
+  eyeShape = 'round',
+  earShape = 'round',
+  bottomColor,
   hairStyle = 'bob',
   mood = 'happy',
   isTeacher = false,
@@ -59,6 +69,8 @@ export function CharacterModel({
   activitySignal,
   socialReaction,
   idleVariant = 'sway',
+  glasses = false,
+  cane = false,
 }: CharacterModelProps) {
   const rig = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
@@ -270,7 +282,9 @@ export function CharacterModel({
   const mainColor = imaginationMode ? '#ff4da6' : bodyColor;
   const trimColor = imaginationMode ? '#52e7ff' : accentColor;
   const expressionRotation = moodBrowRotation[mood];
-  const eyeColor = imaginationMode ? '#21123d' : '#302331';
+  const eyeColor = imaginationMode ? '#21123d' : requestedEyeColor ?? '#302331';
+  const eyeScale = eyeShape === 'wide' ? [1.08, 0.9, 0.3] as const : eyeShape === 'soft' ? [0.9, 0.82, 0.3] as const : [0.8, 1.1, 0.3] as const;
+  const legColor = bottomColor ?? (isTeacher ? '#314a6e' : '#4a5672');
 
   return (
     <group ref={rig}>
@@ -326,7 +340,7 @@ export function CharacterModel({
         <group ref={leftLeg} position={[-0.16, 0.32, 0]}>
           <mesh position={[0, -0.22, 0]} castShadow>
             <capsuleGeometry args={[0.11, 0.32, 4, 8]} />
-            <meshStandardMaterial color={isTeacher ? '#314a6e' : '#4a5672'} roughness={0.82} />
+            <meshStandardMaterial color={legColor} roughness={0.82} />
           </mesh>
           <mesh position={[0, -0.45, -0.07]} scale={[1.05, 0.55, 1.35]} castShadow>
             <sphereGeometry args={[0.13, 10, 8]} />
@@ -336,7 +350,7 @@ export function CharacterModel({
         <group ref={rightLeg} position={[0.16, 0.32, 0]}>
           <mesh position={[0, -0.22, 0]} castShadow>
             <capsuleGeometry args={[0.11, 0.32, 4, 8]} />
-            <meshStandardMaterial color={isTeacher ? '#314a6e' : '#4a5672'} roughness={0.82} />
+            <meshStandardMaterial color={legColor} roughness={0.82} />
           </mesh>
           <mesh position={[0, -0.45, -0.07]} scale={[1.05, 0.55, 1.35]} castShadow>
             <sphereGeometry args={[0.13, 10, 8]} />
@@ -398,6 +412,14 @@ export function CharacterModel({
               </mesh>
             </>
           )}
+          {hairStyle === 'pigtails' && (
+            <>
+              <mesh position={[0, 0.02, 0]} scale={[1, 0.62, 0.96]} castShadow>
+                <sphereGeometry args={[0.43, 14, 10]} /><meshStandardMaterial color={hairColor} roughness={0.82} />
+              </mesh>
+              {[-0.48, 0.48].map((x) => <mesh key={x} position={[x, -0.02, 0.06]} castShadow><sphereGeometry args={[0.22, 12, 10]} /><meshStandardMaterial color={hairColor} roughness={0.82} /></mesh>)}
+            </>
+          )}
           {hairStyle === 'cap' && (
             <mesh position={[0, 0.02, -0.02]} scale={[1.03, 0.42, 1.02]} castShadow>
               <sphereGeometry args={[0.44, 14, 10]} />
@@ -418,11 +440,11 @@ export function CharacterModel({
           )}
         </group>
 
-        <mesh ref={leftEye} position={[-0.15, -0.02, -0.39]} scale={[0.8, 1.1, 0.3]}>
+        <mesh ref={leftEye} position={[-0.15, -0.02, -0.39]} scale={eyeScale}>
           <sphereGeometry args={[0.065, 10, 8]} />
           <meshStandardMaterial color={eyeColor} roughness={0.55} />
         </mesh>
-        <mesh ref={rightEye} position={[0.15, -0.02, -0.39]} scale={[0.8, 1.1, 0.3]}>
+        <mesh ref={rightEye} position={[0.15, -0.02, -0.39]} scale={eyeScale}>
           <sphereGeometry args={[0.065, 10, 8]} />
           <meshStandardMaterial color={eyeColor} roughness={0.55} />
         </mesh>
@@ -446,6 +468,8 @@ export function CharacterModel({
           <sphereGeometry args={[0.06, 8, 6]} />
           <meshBasicMaterial color={imaginationMode ? '#ff9fca' : '#ef9b91'} transparent opacity={0.7} />
         </mesh>
+        {[-1, 1].map((side) => <mesh key={side} position={[side * 0.4, -0.02, -0.01]} scale={earShape === 'wide' ? [0.8, 1.15, 0.55] : earShape === 'small' ? [0.5, 0.65, 0.45] : [0.65, 0.9, 0.5]}><sphereGeometry args={[0.12, 9, 7]} /><meshStandardMaterial color={skinColor} roughness={0.75} /></mesh>)}
+        {glasses && <group position={[0, -0.01, -0.425]}>{[-0.15, 0.15].map((x) => <mesh key={x} position={[x, 0, 0]}><torusGeometry args={[0.115, 0.018, 7, 16]} /><meshStandardMaterial color="#4a332d" /></mesh>)}<mesh><boxGeometry args={[0.09, 0.018, 0.018]} /><meshStandardMaterial color="#4a332d" /></mesh></group>}
       </group>
 
       {isTeacher && (
@@ -472,6 +496,7 @@ export function CharacterModel({
           <meshStandardMaterial color={trimColor} roughness={0.65} />
         </mesh>
       )}
+      {cane && <group position={[0.52, 0.42, -0.03]} rotation={[0, 0, -0.06]}><mesh><cylinderGeometry args={[0.026, 0.026, 1.05, 8]} /><meshStandardMaterial color="#76513b" /></mesh><mesh position={[0.08, 0.52, 0]} rotation={[0, 0, Math.PI / 2]}><torusGeometry args={[0.1, 0.027, 7, 12, Math.PI]} /><meshStandardMaterial color="#76513b" /></mesh></group>}
     </group>
   );
 }

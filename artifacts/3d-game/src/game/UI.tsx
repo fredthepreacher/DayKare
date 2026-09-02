@@ -15,7 +15,6 @@ import {
   DollarSign,
   AlertTriangle,
   MapPinned,
-  Star,
   Menu,
   ShoppingBag,
 } from 'lucide-react';
@@ -39,6 +38,8 @@ import { purchaseMultiplayerStorybookItem, useMultiplayerStore } from './multipl
 import type { CollectibleId } from './gameplayExpansion';
 import { setTouchCrouch, setTouchJump, setTouchMove, setTouchRun } from './touchInput';
 import { mapStandardGamepad } from './gamepadInput';
+import { useFinalMasterStore } from './finalMasterStore';
+import { STARTER_HOME_PRICE } from './finalMaster';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -522,6 +523,24 @@ export function UI() {
           if (homeId !== 'my-home') {
             setActiveDialogue({ name: `${homeId.charAt(0).toUpperCase()}${homeId.slice(1)} House`, text: 'The front room is open for a quiet neighborhood visit. The furniture is intentionally simple in this MVP.' });
           } else {
+            const finalMaster = useFinalMasterStore.getState();
+            if (!finalMaster.ownedStarterHome) {
+              const hadVoucher = finalMaster.homeVoucher;
+              const result = finalMaster.buyStarterHome();
+              setActiveDialogue({
+                name: 'Storybook Property Office',
+                text: result === 'purchased'
+                  ? `Welcome home! Your starter house is yours${hadVoucher ? ' with your finale voucher' : ` for ${STARTER_HOME_PRICE.toLocaleString()} RB`}.`
+                  : result === 'owned'
+                    ? 'This starter home already belongs to you.'
+                    : `The starter home costs ${STARTER_HOME_PRICE.toLocaleString()} RB. Your ${storybook.ribbonBucks.toLocaleString()} RB balance was not changed.`,
+                options: result === 'purchased' || result === 'owned' ? [
+                  { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); useGameStore.getState().setPlayerPosition([0, 0, 2]); useGameStore.getState().triggerTeleport(); setActiveDialogue(null); } },
+                  { label: 'Not now', action: () => setActiveDialogue(null) },
+                ] : [{ label: 'Keep earning through heists', action: () => setActiveDialogue(null) }],
+              });
+              return;
+            }
             const buyItem = async (item: StorybookItemId, label: string) => {
               let result: 'purchased' | 'owned' | 'insufficient';
               if (useModeStore.getState().activeMode === 'multiplayer') {
@@ -540,8 +559,9 @@ export function UI() {
             const owned = storybook.ownedItems;
             setActiveDialogue({
               name: 'My Home & Garage',
-              text: `Starter home access is free. Balance: ${storybook.ribbonBucks} RB. Crib tier ${storybook.cribTier} is saved; additional crib upgrades are coming soon. Owned items are marked below.`,
+              text: `Owned property. Balance: ${storybook.ribbonBucks} RB. Crib tier ${storybook.cribTier} is saved. Enter the furnished interior or manage the garage.`,
               options: [
+                { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); useGameStore.getState().setPlayerPosition([0, 0, 2]); useGameStore.getState().triggerTeleport(); setActiveDialogue(null); } },
                 { label: owned.includes('tricycle') ? 'Tricycle · Owned' : `Tricycle · ${STORYBOOK_PRICES.tricycle} RB`, action: () => { void buyItem('tricycle', 'Tricycle'); } },
                 { label: owned.includes('dog') ? 'Dog · Owned' : `Dog · ${STORYBOOK_PRICES.dog} RB`, action: () => { void buyItem('dog', 'Dog companion'); } },
                 { label: owned.includes('crib') ? 'Personal Crib · Owned' : `Personal Crib · ${STORYBOOK_PRICES.crib} RB`, action: () => { void buyItem('crib', 'Personal Crib'); } },
@@ -1287,11 +1307,7 @@ export function UI() {
         </button>
 
         <div className="daykare-progress-chip daykare-hud-progress bg-card/90 backdrop-blur border-2 border-amber-400/25 px-3 py-2 rounded-xl shadow flex items-center gap-3 text-card-foreground">
-          <div className="flex items-center gap-1 font-bold text-amber-700 relative">
-            <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
-            {progression.tokens}
-            <RewardPulse value={progression.tokens} />
-          </div>
+          <div className="flex items-center gap-1 font-bold text-amber-700 relative">{progression.experience ?? 0} XP<RewardPulse value={progression.experience ?? 0} suffix=" XP" /></div>
           <div className="w-px h-4 bg-amber-300/50" />
           <div className="text-xs font-bold text-muted-foreground relative">
             {progression.reputation} REP

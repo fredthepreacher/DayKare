@@ -242,6 +242,9 @@ try {
   await waitFor(client, 'Boolean(document.querySelector("[data-testid=button-story]"))', 'return to front-end menu');
   await evaluate(client, 'document.querySelector("[data-testid=button-story]")?.click()');
   await waitFor(client, '!document.querySelector("[data-testid=overlay-game-menu]")', 'Story Mode resume');
+  await waitFor(client, 'Boolean(document.querySelector("[data-testid=final-avatar-creator]"))', 'first-launch character creator');
+  await evaluate(client, 'document.querySelector("[data-testid=final-avatar-creator] .final-primary")?.click()');
+  await waitFor(client, '!document.querySelector("[data-testid=final-avatar-creator]")', 'character creation completion');
 
   const modulePath = JSON.stringify(new URL('src/game/store.ts', targetUrl).href);
   await evaluate(client, `(async () => {

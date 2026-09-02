@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useGameStore } from "./store";
 import { useModeStore } from "./modeStore";
 import { useSettingsStore } from "./settingsStore";
+import { useFinalMasterStore } from "./finalMasterStore";
 import { playGameSound } from "./audio";
 import {
   configureRichGameAudio,
@@ -48,8 +49,9 @@ export function AudioWorldDirector() {
     state.expansion.techHeistStep === "diversion" ||
     state.expansion.techHeistStep === "retrieve",
   );
+  const finalHeistActive = useFinalMasterStore((state) => state.heistStatus === "active");
   const device = useSettingsStore((state) => state.device);
-  const currentScene = sceneFor(menuOpen, zone, schedule, heistActive);
+  const currentScene = sceneFor(menuOpen, zone, schedule, heistActive || finalHeistActive);
 
   useEffect(() => {
     configureRichGameAudio({
@@ -110,7 +112,7 @@ export function AudioWorldDirector() {
         state.zone,
         state.schedule,
         state.expansion.techHeistStep === "diversion" ||
-          state.expansion.techHeistStep === "retrieve",
+          state.expansion.techHeistStep === "retrieve" || useFinalMasterStore.getState().heistStatus === "active",
       );
       if (liveScene === "nap") return;
       playVoice(voiceGroupForAmbientContext(state.schedule, liveScene), {
@@ -129,7 +131,7 @@ export function AudioWorldDirector() {
       window.clearTimeout(first);
       window.clearInterval(interval);
     };
-  }, [menuOpen, zone, zoneTransitioning, activeDialogue]);
+  }, [menuOpen, zone, zoneTransitioning, activeDialogue, finalHeistActive]);
 
   useEffect(() => {
     if (menuOpen || zoneTransitioning) return;

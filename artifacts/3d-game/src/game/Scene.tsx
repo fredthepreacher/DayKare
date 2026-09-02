@@ -25,6 +25,9 @@ import { GraphicsUnavailable } from './GraphicsUnavailable';
 import { probeWebGL, watchContextLoss, type WebGLStatus } from './webglSupport';
 import { startCloudSync } from './cloudSync';
 import { MultiplayerWorld } from './MultiplayerWorld';
+import { FinalMasterWorld, StarterHomeInterior } from './FinalMasterWorld';
+import { FinalMasterOverlay } from './FinalMasterUI';
+import { useFinalMasterStore } from './finalMasterStore';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
 const StorybookLane = lazy(() => import('./StorybookLane').then(({ StorybookLane }) => ({ default: StorybookLane })));
@@ -62,6 +65,7 @@ function GameScene() {
   const zone = useGameStore(s => s.zone);
   const zoneTransitioning = useGameStore(s => s.zoneTransitioning);
   const completeZoneTransition = useGameStore(s => s.completeZoneTransition);
+  const insideHome = useFinalMasterStore(s => s.insideHome);
 
   useEffect(() => {
     if (!zoneTransitioning) return;
@@ -87,13 +91,14 @@ function GameScene() {
       <WeatherEffects />
       <PerformanceTelemetry />
       
-      {zone === 'hub' ? (
+      {insideHome ? <StarterHomeInterior /> : zone === 'hub' ? (
         <>
           <Environment />
           <HubDetails />
           <HubProgression playerRef={playerRef} />
           <Interactables playerRef={playerRef} />
           <NPCs playerRef={playerRef} />
+          <FinalMasterWorld />
         </>
       ) : zone === 'garden' ? (
         <Suspense fallback={null}>
@@ -185,6 +190,7 @@ export function DayKareApp() {
         <GameFrontEnd />
         <AudioWorldDirector />
         <GameplayExpansionDirector />
+        <FinalMasterOverlay />
         {/* The canvas stays mounted so the browser can restore the context. */}
         {contextLost && <GraphicsUnavailable variant="lost" />}
       </div>

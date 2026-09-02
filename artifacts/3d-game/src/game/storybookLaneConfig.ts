@@ -15,7 +15,9 @@ export const STORYBOOK_PRICES = {
 
 export const ICE_CREAM_SICK_THRESHOLD = 8;
 export const ICE_CREAM_RECOVERY_SECONDS = 60;
-export const STORYBOOK_STARTER_RB = 2_500;
+// Existing saves keep their balance; new players earn Rascal Bucks through the
+// Miss Leslie heist instead of receiving an unexplained starter grant.
+export const STORYBOOK_STARTER_RB = 0;
 
 export const STORYBOOK_ITEM_IDS = ['tricycle', 'dog', 'crib', 'mini-ride-on'] as const;
 export type StorybookItemId = typeof STORYBOOK_ITEM_IDS[number];

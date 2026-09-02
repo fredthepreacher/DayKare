@@ -19,6 +19,7 @@ import { formatRelativeTime } from '@workspace/cloud-sync';
 import { setGameAudioEnabled } from './audio';
 import { unlockRichGameAudio } from './audioDirector';
 import { MonetizationShop } from './MonetizationShop';
+import { AvatarCreator } from './FinalMasterUI';
 
 const panelCopy: Record<Exclude<FrontEndPanel, 'menu'>, { title: string; eyebrow: string }> = {
   shop: { eyebrow: 'Play first · extras optional', title: 'Kare Shop' },
@@ -45,30 +46,8 @@ function PanelHeader({ panel }: { panel: Exclude<FrontEndPanel, 'menu'> }) {
 }
 
 function CustomizePanel() {
-  const tricycleColorIndex = useGameStore((state) => state.tricycleColorIndex);
-  const cycleTricycleColor = useGameStore((state) => state.cycleTricycleColor);
-  const colors = ['Sunset red', 'Sky blue', 'Berry pink', 'Mint green'];
-  return (
-    <div className="daykare-front-panel-content">
-      <div className="daykare-feature-card daykare-feature-card-pink">
-        <Sparkles aria-hidden="true" />
-        <div>
-          <p className="daykare-eyebrow">Story wardrobe</p>
-          <h2>Small details, big adventures.</h2>
-          <p>Outfit styling is ready for the next story wardrobe update. Your tricycle color is live now.</p>
-        </div>
-      </div>
-      <button type="button" className="daykare-front-action" onClick={cycleTricycleColor} data-testid="button-cycle-tricycle-color">
-        <span className="daykare-color-swatch" style={{ backgroundColor: colors[tricycleColorIndex] === 'Sunset red' ? '#d62828' : colors[tricycleColorIndex] === 'Sky blue' ? '#3a86ff' : colors[tricycleColorIndex] === 'Berry pink' ? '#ff006e' : '#06d6a0' }} aria-hidden="true" />
-        <span><strong>Tricycle color</strong><small>{colors[tricycleColorIndex]}</small></span>
-        <span aria-hidden="true">Next</span>
-      </button>
-      <div className="daykare-lockup-card" data-testid="status-customize-outfit-hook">
-        <Check aria-hidden="true" />
-        <div><strong>Outfit hooks connected</strong><p>Story and Online will keep their profiles separate.</p></div>
-      </div>
-    </div>
-  );
+  const backToMenu = useModeStore((state) => state.backToMenu);
+  return <AvatarCreator paid onDone={backToMenu} />;
 }
 
 function ProgressPanel() {
@@ -81,7 +60,7 @@ function ProgressPanel() {
       <div className="daykare-progress-hero">
         <div><p className="daykare-eyebrow">Story Mode save</p><h2>Everything you discover stays yours.</h2></div>
         <div className="daykare-stat-row">
-          <span><strong>{progression.tokens}</strong><small>Star Tokens</small></span>
+          <span><strong>{progression.experience ?? 0}</strong><small>XP</small></span>
           <span><strong>{progression.reputation}</strong><small>REP</small></span>
         </div>
       </div>

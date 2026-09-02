@@ -7,6 +7,7 @@ import { useModeStore } from './modeStore';
 import { connectMultiplayer, disconnectMultiplayer, MULTIPLAYER_NETWORK_HZ, sendPlayerTransform, useMultiplayerStore, type NetworkTransform } from './multiplayer';
 import { useGameStore } from './store';
 import { useStorybookLaneStore } from './storybookLaneStore';
+import { useFinalMasterStore } from './finalMasterStore';
 
 function RemotePlayer({ player }: { player: NetworkTransform }) {
   const ref = useRef<THREE.Group>(null);
@@ -18,8 +19,8 @@ function RemotePlayer({ player }: { player: NetworkTransform }) {
     ref.current.rotation.y = THREE.MathUtils.lerp(ref.current.rotation.y, player.rotationY, 1 - Math.exp(-10 * delta));
   });
   return (
-    <group ref={ref} position={player.position} rotation={[0, player.rotationY, 0]}>
-      <CharacterModel bodyColor={player.color} accentColor="#ffd166" hairColor="#5b3a2e" hairStyle="cap" activityMode={player.animation === 'flopped' ? 'napping' : 'standing'} motionSeed={player.id.length} />
+    <group ref={ref} position={player.position} rotation={[0, player.rotationY, 0]} scale={player.avatar ? [player.avatar.bodyBuild === 'slim' ? .88 : player.avatar.bodyBuild === 'broad' ? 1.12 : player.avatar.bodyBuild === 'chubby' ? 1.18 : 1, player.avatar.height, player.avatar.bodyBuild === 'slim' ? .88 : player.avatar.bodyBuild === 'broad' ? 1.12 : player.avatar.bodyBuild === 'chubby' ? 1.18 : 1] : 1}>
+      <CharacterModel bodyColor={player.avatar?.topColor ?? player.color} bottomColor={player.avatar?.bottomColor} accentColor="#ffd166" skinColor={player.avatar?.skinColor} eyeColor={player.avatar?.eyeColor} hairColor={player.avatar?.hairColor ?? '#5b3a2e'} hairStyle={player.avatar?.hairStyle ?? 'cap'} activityMode={player.animation === 'flopped' ? 'napping' : 'standing'} motionSeed={player.id.length} />
       {player.hasDog && (
         <group position={[-0.9, 0.28, 0.55]}>
           <mesh castShadow><boxGeometry args={[0.65, 0.48, 0.9]} /><meshStandardMaterial color="#b9783f" /></mesh>
@@ -62,6 +63,7 @@ export function MultiplayerWorld({ playerRef }: { playerRef: React.RefObject<THR
     lastSent.current = state.clock.elapsedTime;
     const recovering = useStorybookLaneStore.getState().recoveringUntil > Date.now();
     const ownedItems = useStorybookLaneStore.getState().ownedItems;
+    const avatar = useFinalMasterStore.getState().avatar;
     void sendPlayerTransform({
       name: online.displayName,
       color: ['#ffad33', '#33cccc', '#ff66b3', '#8ed081'][online.selectedOutfit] ?? '#ffad33',
@@ -71,6 +73,7 @@ export function MultiplayerWorld({ playerRef }: { playerRef: React.RefObject<THR
       animation: recovering ? 'flopped' : speed > 6 ? 'running' : speed > 0.25 ? 'walking' : 'idle',
       hasDog: ownedItems.includes('dog'),
       vehicle: ownedItems.includes('mini-ride-on') ? 'mini-ride-on' : ownedItems.includes('tricycle') ? 'tricycle' : 'none',
+      avatar: { skinColor: avatar.skinColor, eyeColor: avatar.eyeColor, hairColor: avatar.hairColor, hairStyle: avatar.hairStyle, bodyBuild: avatar.bodyBuild, height: avatar.height, topColor: avatar.topColor, bottomColor: avatar.bottomColor },
     });
   });
 
