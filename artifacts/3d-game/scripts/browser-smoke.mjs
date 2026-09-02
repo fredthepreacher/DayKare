@@ -264,6 +264,17 @@ try {
   await evaluate(client, 'document.querySelector("[data-testid=final-avatar-creator] .final-primary")?.click()');
   await waitFor(client, '!document.querySelector("[data-testid=final-avatar-creator]")', 'character creation completion');
 
+  const productionSmoke = process.env.DAYKARE_PRODUCTION_SMOKE === '1';
+  let performanceSample;
+  if (productionSmoke) {
+    await waitFor(client, 'Boolean(document.querySelector(".daykare-rank-readout"))', 'production Rank HUD');
+    await waitFor(client, 'Boolean(document.querySelector("[data-testid=final-tutorial]"))', 'production tutorial tracker');
+    assert.equal(await evaluate(client, `document.body.textContent.includes('Complete Chapter')`), false, 'production has no generic tutorial completion button');
+    await dispatchKey(client, 'keyDown', 'KeyW', 'w');
+    await sleep(900);
+    await dispatchKey(client, 'keyUp', 'KeyW', 'w');
+    assert.equal(await evaluate(client, 'Boolean(document.querySelector("canvas"))'), true, 'production canvas remains mounted after movement');
+  } else {
   const modulePath = JSON.stringify(new URL('src/game/store.ts', targetUrl).href);
   await evaluate(client, `(async () => {
     const { useGameStore } = await import(${modulePath});
@@ -1684,7 +1695,7 @@ try {
     'globalThis.__daykarePerformanceProbe?.sampleCount >= 20',
     'in-scene performance telemetry sample',
   );
-  const performanceSample = await evaluate(client, 'structuredClone(globalThis.__daykarePerformanceProbe)');
+  performanceSample = await evaluate(client, 'structuredClone(globalThis.__daykarePerformanceProbe)');
   assert.ok(performanceSample.p95FrameMs >= performanceSample.p50FrameMs, 'performance probe reports ordered frame-time percentiles');
   assert.ok(Number.isFinite(performanceSample.droppedFrames), 'performance probe reports dropped frame budgets');
   assert.equal(performanceSample.devicePixelRatio, 1, 'low quality renders at the optimized 1x DPR');
@@ -1738,12 +1749,16 @@ try {
   await evaluate(client, 'globalThis.__daykareStore.getState().setActiveDialogue(null)');
   await evaluate(client, 'globalThis.__daykareStore.setState({ zone: "hub" })');
 
+  }
+
   assert.equal(
     exceptions.filter((message) => !message.includes('WebGL')).length,
     0,
     `unexpected browser exceptions: ${exceptions.join('\n')}`,
   );
-  console.log(`DayKare browser checks passed (${performanceSample.fps.toFixed(1)}fps, p95 ${performanceSample.p95FrameMs.toFixed(1)}ms, ${performanceSample.renderer})`);
+  console.log(productionSmoke
+    ? 'DayKare production smoke passed (fresh start, canvas, movement, Rank HUD, event-driven tutorial)'
+    : `DayKare browser checks passed (${performanceSample.fps.toFixed(1)}fps, p95 ${performanceSample.p95FrameMs.toFixed(1)}ms, ${performanceSample.renderer})`);
 } finally {
   client?.close();
   chromium.kill('SIGTERM');
