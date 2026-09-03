@@ -24,63 +24,152 @@ export interface MusicCue {
  * excluded after a release-content transcription audit.
  */
 const calm: MusicCue = {
-    id: "menu-calm",
-    file: "daycare-calm-loop.mp3",
-    label: "DayKare Calm",
-    defaultVolume: 0.75,
+  id: "menu-calm",
+  file: "daycare-calm-loop.mp3",
+  label: "DayKare Calm",
+  defaultVolume: 0.75,
 };
 const daycare: MusicCue = {
-    id: "daycare-calm",
-    file: "daycare-calm-loop.mp3",
-    label: "Daycare Day",
-    defaultVolume: 0.78,
+  id: "daycare-calm",
+  file: "daycare-calm-loop.mp3",
+  label: "Daycare Day",
+  defaultVolume: 0.78,
 };
 const garden: MusicCue = {
-    id: "garden-sunshine",
-    file: "garden-sunshine-loop.mp3",
-    label: "Garden Sunshine",
-    defaultVolume: 0.82,
+  id: "garden-sunshine",
+  file: "garden-sunshine-loop.mp3",
+  label: "Garden Sunshine",
+  defaultVolume: 0.82,
 };
 const juice: MusicCue = {
-    id: "juice-club-bounce",
-    file: "juice-club-bounce-loop.mp3",
-    label: "Juice Club Bounce",
-    defaultVolume: 0.88,
+  id: "juice-club-bounce",
+  file: "juice-club-bounce-loop.mp3",
+  label: "Juice Club Bounce",
+  defaultVolume: 0.88,
 };
 const storybook: MusicCue = {
-    id: "storybook-dream",
-    file: "storybook-dream-loop.mp3",
-    label: "Storybook Dream",
-    defaultVolume: 0.7,
+  id: "storybook-dream",
+  file: "storybook-dream-loop.mp3",
+  label: "Storybook Dream",
+  defaultVolume: 0.7,
 };
 const nap: MusicCue = {
-    id: "nap-dream",
-    file: "storybook-dream-loop.mp3",
-    label: "Quiet-Time Dream",
-    defaultVolume: 0.38,
+  id: "nap-dream",
+  file: "storybook-dream-loop.mp3",
+  label: "Quiet-Time Dream",
+  defaultVolume: 0.38,
 };
 
-const variation = (id: string, file: string, label: string, defaultVolume: number): MusicCue => ({
-  id, file, label, defaultVolume,
+const variation = (
+  id: string,
+  file: string,
+  label: string,
+  defaultVolume: number,
+): MusicCue => ({
+  id,
+  file,
+  label,
+  defaultVolume,
 });
 
 /** Existing loops remain first-class; supplied alternatives expand each context pool. */
 export const MUSIC_BY_SCENE: Record<AudioScene, readonly MusicCue[]> = {
-  menu: [calm, variation("menu-alt-01", "music_menu_alt_01.ogg", "Playroom Welcome", 0.68)],
-  daycare: [daycare, variation("daycare-alt-01", "music_daycare_alt_01.ogg", "Daycare Friends", 0.72)],
-  art: [daycare, variation("daycare-art-alt-01", "music_daycare_alt_01.ogg", "Creative Corner", 0.7)],
-  "show-and-tell": [calm, variation("show-and-tell-alt-01", "music_daycare_alt_01.ogg", "Sharing Circle", 0.68)],
-  garden: [garden, variation("garden-alt-01", "music_garden_alt_01.ogg", "Garden Adventure", 0.76)],
-  recess: [garden, variation("recess-alt-01", "music_recess_alt_01.ogg", "Recess Rush", 0.78)],
-  fishing: [garden, variation("fishing-alt-01", "music_garden_alt_01.ogg", "Pond Day", 0.7)],
+  menu: [
+    calm,
+    variation("menu-alt-01", "music_menu_alt_01.ogg", "Playroom Welcome", 0.68),
+  ],
+  daycare: [
+    daycare,
+    variation(
+      "daycare-alt-01",
+      "music_daycare_alt_01.ogg",
+      "Daycare Friends",
+      0.72,
+    ),
+  ],
+  art: [
+    daycare,
+    variation(
+      "daycare-art-alt-01",
+      "music_daycare_alt_01.ogg",
+      "Creative Corner",
+      0.7,
+    ),
+  ],
+  "show-and-tell": [
+    calm,
+    variation(
+      "show-and-tell-alt-01",
+      "music_daycare_alt_01.ogg",
+      "Sharing Circle",
+      0.68,
+    ),
+  ],
+  garden: [
+    garden,
+    variation(
+      "garden-alt-01",
+      "music_garden_alt_01.ogg",
+      "Garden Adventure",
+      0.76,
+    ),
+  ],
+  recess: [
+    garden,
+    variation("recess-alt-01", "music_recess_alt_01.ogg", "Recess Rush", 0.78),
+  ],
+  fishing: [
+    garden,
+    variation("fishing-alt-01", "music_garden_alt_01.ogg", "Pond Day", 0.7),
+  ],
   "juice-club": [juice],
-  heist: [variation("heist-tech-alt-01", "music_heist_tech_alt_01.ogg", "Sneaky Tech", 0.76)],
-  storybook: [storybook, variation("storybook-alt-01", "music_storybook_alt_01.ogg", "Storybook Stroll", 0.66)],
+  heist: [
+    variation(
+      "heist-tech-alt-01",
+      "music_heist_tech_alt_01.ogg",
+      "Sneaky Tech",
+      0.76,
+    ),
+  ],
+  storybook: [
+    storybook,
+    variation(
+      "storybook-alt-01",
+      "music_storybook_alt_01.ogg",
+      "Storybook Stroll",
+      0.66,
+    ),
+  ],
   nap: [nap],
 };
 
-export function chooseMusicCue(scene: AudioScene, previousId?: string, random = Math.random) {
+const audioMime = (file: string) =>
+  file.toLowerCase().endsWith(".ogg")
+    ? "audio/ogg"
+    : file.toLowerCase().endsWith(".wav")
+      ? "audio/wav"
+      : "audio/mpeg";
+
+/** Filters a scene pool before choosing, so iOS is never handed an OGG-only cue. */
+export function compatibleMusicCues(
+  scene: AudioScene,
+  canPlayType?: (mime: string) => string,
+) {
   const pool = MUSIC_BY_SCENE[scene];
+  if (!canPlayType) return pool;
+  const playable = pool.filter((cue) =>
+    Boolean(canPlayType(audioMime(cue.file))),
+  );
+  return playable.length ? playable : pool;
+}
+
+export function chooseMusicCue(
+  scene: AudioScene,
+  previousId?: string,
+  random = Math.random,
+  canPlayType?: (mime: string) => string,
+) {
+  const pool = compatibleMusicCues(scene, canPlayType);
   const fresh = pool.filter((cue) => cue.id !== previousId);
   const choices = fresh.length ? fresh : pool;
   return choices[Math.floor(random() * choices.length)] ?? pool[0];
@@ -126,11 +215,19 @@ export const VOICES_BY_GROUP: Record<VoiceGroup, readonly string[]> = {
     // Supplied learning/counting clips: alphabet and "one, two, three."
     "new_voice_variant_01.wav",
     "new_voice_variant_02.wav",
+    // Owner-supplied child counting reaction: "six-seven."
+    "child_count_six_seven_01.wav",
   ],
   // The owner-supplied "Wavy!" clips. The slide plays these directly
   // rather than through child-social, so the shout on the way down is
   // always the line the ride is named for.
-  "child-wavy": ["child_wavy_01.wav", "child_wavy_02.wav"],
+  "child-wavy": [
+    "child_wavy_01.wav",
+    "child_wavy_02.wav",
+    // Auditioned owner recordings: a slide "Weeee!" and "Wavy!".
+    "child_slide_whee_01.wav",
+    "child_wavy_slide_03.wav",
+  ],
   "teacher-class": [
     "teacher_get_back_to_class_01.wav",
     "teacher_get_back_to_class_02.wav",
@@ -149,7 +246,9 @@ export const VOICES_BY_GROUP: Record<VoiceGroup, readonly string[]> = {
   ],
 };
 
-export function teacherVoiceGroupForSchedule(schedule: string): VoiceGroup | null {
+export function teacherVoiceGroupForSchedule(
+  schedule: string,
+): VoiceGroup | null {
   if (schedule === "show-and-tell") return "teacher-show";
   if (schedule === "art-time") return "teacher-art";
   if (schedule === "recess") return "teacher-recess";

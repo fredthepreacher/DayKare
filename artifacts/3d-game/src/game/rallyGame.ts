@@ -1,161 +1,198 @@
-/**
- * A rally: the shared model behind ping pong and tennis.
- *
- * Both are the same game — a ball crosses a court, the player slides their
- * paddle to line up with it, and a rally builds — so they share one pure
- * model with two configurations rather than two near-identical
- * implementations. No physics engine: the ball is a position and a velocity,
- * which is all the feel needs and all a test can assert.
- */
-
-export type RallyId = 'ping-pong' | 'tennis';
-
+/** Shared deterministic character-Pong model for tennis and ping-pong. */
+export type RallyId = "ping-pong" | "tennis";
 export interface RallyConfig {
   id: RallyId;
   label: string;
-  /** Half-width of the court in model units; the ball moves in -1..1. */
   paddleHalfWidth: number;
-  /** Seconds for the ball to cross from one end to the other at rally 0. */
+  npcPaddleHalfWidth: number;
   baseCrossSeconds: number;
-  /** How much faster each successful return makes the next one, as a factor. */
   speedUpPerRally: number;
-  /** The fastest a crossing may get, in seconds. */
   minCrossSeconds: number;
-  /** Rally length that banks the reward. */
   targetRally: number;
-  /** XP for reaching the target, paid once per session. */
-  xpReward: number;
+  pointsToWin: number;
+  rbReward: number;
 }
-
+export const RALLY_WIN_RB = 250;
+export const RALLY_POINTS_TO_WIN = 5;
 export const RALLY_CONFIGS: Record<RallyId, RallyConfig> = {
-  'ping-pong': {
-    id: 'ping-pong',
-    label: 'Basement Ping Pong',
-    paddleHalfWidth: 0.26,
-    baseCrossSeconds: 1.15,
-    speedUpPerRally: 0.955,
-    minCrossSeconds: 0.42,
+  "ping-pong": {
+    id: "ping-pong",
+    label: "Basement Ping-Pong",
+    paddleHalfWidth: 0.25,
+    npcPaddleHalfWidth: 0.23,
+    baseCrossSeconds: 1.08,
+    speedUpPerRally: 0.96,
+    minCrossSeconds: 0.43,
     targetRally: 8,
-    xpReward: 30,
+    pointsToWin: 5,
+    rbReward: 250,
   },
   tennis: {
-    id: 'tennis',
-    label: 'Stony Brook Tennis',
-    paddleHalfWidth: 0.3,
-    baseCrossSeconds: 1.45,
-    speedUpPerRally: 0.94,
+    id: "tennis",
+    label: "Stony Brook Tennis",
+    paddleHalfWidth: 0.29,
+    npcPaddleHalfWidth: 0.27,
+    baseCrossSeconds: 1.4,
+    speedUpPerRally: 0.95,
     minCrossSeconds: 0.55,
     targetRally: 6,
-    xpReward: 40,
+    pointsToWin: 5,
+    rbReward: 250,
   },
 };
-
 export interface RallyState {
-  /** Ball position across the court, -1 (player's left) to 1. */
   ballX: number;
-  /** Ball position along the court: 0 at the player's end, 1 at the far end. */
   ballY: number;
-  /** +1 travelling away from the player, -1 travelling towards them. */
   direction: 1 | -1;
-  /** Where the player's paddle sits, -1 to 1. */
   paddleX: number;
+  npcPaddleX: number;
+  npcReactionTimer: number;
+  npcReturnCount: number;
   rally: number;
   bestRally: number;
-  misses: number;
-  /** Set on the single step where a return happened, for a sound cue. */
+  playerScore: number;
+  npcScore: number;
   returnedThisStep: boolean;
-  /** Set on the single step where the ball got past the player. */
   missedThisStep: boolean;
+  npcMissedThisStep: boolean;
   over: boolean;
+  winner: "player" | "npc" | null;
 }
-
-export const RALLY_MAX_MISSES = 3;
-
-export function createRally(): RallyState {
+const clamp = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, v));
+export const createRally = (): RallyState => ({
+  ballX: 0,
+  ballY: 1,
+  direction: -1,
+  paddleX: 0,
+  npcPaddleX: 0,
+  npcReactionTimer: 0.14,
+  npcReturnCount: 0,
+  rally: 0,
+  bestRally: 0,
+  playerScore: 0,
+  npcScore: 0,
+  returnedThisStep: false,
+  missedThisStep: false,
+  npcMissedThisStep: false,
+  over: false,
+  winner: null,
+});
+export const createRallyMatchId = (
+  id: RallyId,
+  now = Date.now(),
+  random = Math.random,
+) => `${id}-${Math.floor(now)}-${Math.floor(random() * 1e9)}`;
+export function moveRallyPaddle(
+  s: RallyState,
+  axis: number,
+  dt: number,
+): RallyState {
+  if (s.over) return s;
+  const step =
+    Number.isFinite(axis) && Number.isFinite(dt) ? axis * dt * 1.9 : 0;
+  return { ...s, paddleX: clamp(s.paddleX + step, -1, 1) };
+}
+function nextAim(r: number) {
+  const w = ((r + 1) * 0.618) % 2;
+  return w > 1 ? 1 - (w - 1) : w - 0.5;
+}
+function point(
+  s: RallyState,
+  c: RallyConfig,
+  who: "player" | "npc",
+): RallyState {
+  const playerScore = s.playerScore + (who === "player" ? 1 : 0),
+    npcScore = s.npcScore + (who === "npc" ? 1 : 0);
+  const winner =
+    playerScore >= c.pointsToWin
+      ? "player"
+      : npcScore >= c.pointsToWin
+        ? "npc"
+        : null;
   return {
-    ballX: 0,
-    ballY: 1,
-    direction: -1,
-    paddleX: 0,
+    ...s,
+    ballX: who === "player" ? 0.72 : -0.72,
+    ballY: who === "player" ? 1 : 0,
+    direction: who === "player" ? -1 : 1,
+    npcReactionTimer: 0.14,
     rally: 0,
-    bestRally: 0,
-    misses: 0,
+    playerScore,
+    npcScore,
+    missedThisStep: who === "npc",
+    npcMissedThisStep: who === "player",
+    over: winner !== null,
+    winner,
+  };
+}
+export function stepRally(
+  s: RallyState,
+  c: RallyConfig,
+  delta: number,
+): RallyState {
+  if (s.over || !Number.isFinite(delta) || delta <= 0)
+    return s.returnedThisStep || s.missedThisStep || s.npcMissedThisStep
+      ? {
+          ...s,
+          returnedThisStep: false,
+          missedThisStep: false,
+          npcMissedThisStep: false,
+        }
+      : s;
+  const dt = Math.min(delta, 0.25),
+    cross = Math.max(
+      c.minCrossSeconds,
+      c.baseCrossSeconds * c.speedUpPerRally ** s.rally,
+    );
+  let n = {
+    ...s,
+    ballY: s.ballY + (s.direction * dt) / cross,
     returnedThisStep: false,
     missedThisStep: false,
-    over: false,
+    npcMissedThisStep: false,
+    npcReactionTimer: Math.max(0, s.npcReactionTimer - dt),
   };
-}
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-/** Moves the paddle. Input is a -1..1 axis, so a key and a stick feel the same. */
-export function moveRallyPaddle(state: RallyState, axis: number, delta: number): RallyState {
-  if (state.over) return state;
-  const step = Number.isFinite(axis) && Number.isFinite(delta) ? axis * delta * 1.9 : 0;
-  return { ...state, paddleX: clamp(state.paddleX + step, -1, 1) };
-}
-
-/**
- * Where the ball will cross the player's baseline. Authored rather than
- * random so a rally is reproducible in a test: the target walks across the
- * court by an irrational-ish step, which reads as unpredictable without
- * being unfair.
- */
-function nextAim(rally: number) {
-  const walk = ((rally + 1) * 0.618) % 2;
-  return walk > 1 ? 2 - walk - 1 : walk - 0.5;
-}
-
-export function stepRally(state: RallyState, config: RallyConfig, delta: number): RallyState {
-  if (state.over || !Number.isFinite(delta) || delta <= 0) {
-    return state.returnedThisStep || state.missedThisStep
-      ? { ...state, returnedThisStep: false, missedThisStep: false }
-      : state;
+  if (n.direction === 1 && n.npcReactionTimer <= 0) {
+    const d = n.ballX - n.npcPaddleX;
+    n.npcPaddleX = clamp(
+      n.npcPaddleX + Math.sign(d) * Math.min(Math.abs(d), dt * 1.45),
+      -1,
+      1,
+    );
   }
-  const cross = Math.max(
-    config.minCrossSeconds,
-    config.baseCrossSeconds * config.speedUpPerRally ** state.rally,
-  );
-  let ballY = state.ballY + (state.direction * Math.min(delta, 0.25)) / cross;
-  let { direction, rally, misses, ballX } = state;
-  let returnedThisStep = false;
-  let missedThisStep = false;
-
-  if (direction === 1 && ballY >= 1) {
-    // The far side always returns it, aiming somewhere new.
-    ballY = 1;
-    direction = -1;
-    ballX = clamp(nextAim(rally), -0.95, 0.95);
-  } else if (direction === -1 && ballY <= 0) {
-    ballY = 0;
-    if (Math.abs(state.paddleX - ballX) <= config.paddleHalfWidth) {
-      direction = 1;
-      rally += 1;
-      returnedThisStep = true;
-    } else {
-      misses += 1;
-      missedThisStep = true;
-      rally = 0;
-      ballY = 1;
-      direction = -1;
-      ballX = 0;
-    }
+  if (n.direction === 1 && n.ballY >= 1) {
+    const miss = (n.npcReturnCount + 1) % 3 === 0,
+      hit = Math.abs(n.npcPaddleX - n.ballX) <= c.npcPaddleHalfWidth;
+    if (!hit || miss)
+      return point({ ...n, npcReturnCount: n.npcReturnCount + 1 }, c, "player");
+    const r = n.rally + 1;
+    n = {
+      ...n,
+      ballY: 1,
+      direction: -1,
+      ballX: clamp(nextAim(r), -0.95, 0.95),
+      npcReturnCount: n.npcReturnCount + 1,
+      npcReactionTimer: 0.14,
+      rally: r,
+      bestRally: Math.max(n.bestRally, r),
+      returnedThisStep: true,
+    };
+  } else if (n.direction === -1 && n.ballY <= 0) {
+    if (Math.abs(n.paddleX - n.ballX) > c.paddleHalfWidth)
+      return point(n, c, "npc");
+    const r = n.rally + 1;
+    n = {
+      ...n,
+      ballY: 0,
+      direction: 1,
+      ballX: clamp(n.ballX + (n.paddleX - n.ballX) * 0.55, -0.95, 0.95),
+      npcReactionTimer: 0.14,
+      rally: r,
+      bestRally: Math.max(n.bestRally, r),
+      returnedThisStep: true,
+    };
   }
-
-  return {
-    ...state,
-    ballX,
-    ballY: clamp(ballY, 0, 1),
-    direction,
-    rally,
-    bestRally: Math.max(state.bestRally, rally),
-    misses,
-    returnedThisStep,
-    missedThisStep,
-    over: misses >= RALLY_MAX_MISSES,
-  };
+  return { ...n, ballY: clamp(n.ballY, 0, 1) };
 }
-
-export function rallyCleared(state: RallyState, config: RallyConfig) {
-  return state.bestRally >= config.targetRally;
-}
+export const rallyCleared = (s: RallyState, _c: RallyConfig) =>
+  s.winner === "player";

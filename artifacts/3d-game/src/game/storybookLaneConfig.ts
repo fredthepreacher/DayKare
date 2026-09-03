@@ -16,9 +16,11 @@ export const AFTER_HOURS_START_MINUTE = STORYBOOK_OPEN_MINUTE;
 export const AFTER_HOURS_END_MINUTE = STORYBOOK_CLOSE_MINUTE;
 
 export function isAfterHours(minute: number) {
-  return Number.isFinite(minute)
-    && minute >= AFTER_HOURS_START_MINUTE
-    && minute < AFTER_HOURS_END_MINUTE;
+  return (
+    Number.isFinite(minute) &&
+    minute >= AFTER_HOURS_START_MINUTE &&
+    minute < AFTER_HOURS_END_MINUTE
+  );
 }
 /**
  * How long the end-of-day card sits on screen after closing time before the
@@ -33,6 +35,7 @@ export const STORYBOOK_PRICES = {
   dog: 5_000,
   crib: 10_000,
   miniRideOn: 15_000,
+  pingPongTable: 30_000,
   cribTier1: 2_500,
   cribTier2: 5_000,
   cribTier3: 10_000,
@@ -44,16 +47,22 @@ export const ICE_CREAM_RECOVERY_SECONDS = 60;
 // Miss Leslie heist instead of receiving an unexplained starter grant.
 export const STORYBOOK_STARTER_RB = 0;
 
-export const STORYBOOK_ITEM_IDS = ['tricycle', 'dog', 'crib', 'mini-ride-on'] as const;
-export type StorybookItemId = typeof STORYBOOK_ITEM_IDS[number];
+export const STORYBOOK_ITEM_IDS = [
+  "tricycle",
+  "dog",
+  "crib",
+  "mini-ride-on",
+  "ping-pong-table",
+] as const;
+export type StorybookItemId = (typeof STORYBOOK_ITEM_IDS)[number];
 
 export const STORYBOOK_FLAVORS = [
-  'Bubblegum Blast',
-  'Cookie Comet',
-  'Strawberry Swirl',
-  'Blue Moon',
-  'Birthday Cake',
-  'Chocolate Mountain',
+  "Bubblegum Blast",
+  "Cookie Comet",
+  "Strawberry Swirl",
+  "Blue Moon",
+  "Birthday Cake",
+  "Chocolate Mountain",
 ] as const;
 
 export function storybookIsOpen(minute: number) {
@@ -61,5 +70,11 @@ export function storybookIsOpen(minute: number) {
 }
 
 export function storybookItemPrice(item: StorybookItemId) {
-  return STORYBOOK_PRICES[item === 'mini-ride-on' ? 'miniRideOn' : item];
+  return STORYBOOK_PRICES[
+    item === "mini-ride-on"
+      ? "miniRideOn"
+      : item === "ping-pong-table"
+        ? "pingPongTable"
+        : item
+  ];
 }

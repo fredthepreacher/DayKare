@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useGameStore } from "./store";
 import { useModeStore } from "./modeStore";
 import { useSettingsStore } from "./settingsStore";
@@ -45,13 +45,21 @@ export function AudioWorldDirector() {
   const schedule = useGameStore((state) => state.schedule);
   const activeDialogue = useGameStore((state) => state.activeDialogue);
   const zoneTransitioning = useGameStore((state) => state.zoneTransitioning);
-  const heistActive = useGameStore((state) =>
-    state.expansion.techHeistStep === "diversion" ||
-    state.expansion.techHeistStep === "retrieve",
+  const heistActive = useGameStore(
+    (state) =>
+      state.expansion.techHeistStep === "diversion" ||
+      state.expansion.techHeistStep === "retrieve",
   );
-  const finalHeistActive = useFinalMasterStore((state) => state.heistStatus === "active");
+  const finalHeistActive = useFinalMasterStore(
+    (state) => state.heistStatus === "active",
+  );
   const device = useSettingsStore((state) => state.device);
-  const currentScene = sceneFor(menuOpen, zone, schedule, heistActive || finalHeistActive);
+  const currentScene = sceneFor(
+    menuOpen,
+    zone,
+    schedule,
+    heistActive || finalHeistActive,
+  );
 
   useEffect(() => {
     configureRichGameAudio({
@@ -88,7 +96,8 @@ export function AudioWorldDirector() {
         sfxVolume: device.sfxVolume,
         voiceVolume: device.voiceVolume,
       });
-      if (visible && getAudioDebugSnapshot().unlocked) unlockRichGameAudio(currentScene);
+      if (visible && getAudioDebugSnapshot().unlocked)
+        unlockRichGameAudio(currentScene);
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () =>
@@ -112,7 +121,8 @@ export function AudioWorldDirector() {
         state.zone,
         state.schedule,
         state.expansion.techHeistStep === "diversion" ||
-          state.expansion.techHeistStep === "retrieve" || useFinalMasterStore.getState().heistStatus === "active",
+          state.expansion.techHeistStep === "retrieve" ||
+          useFinalMasterStore.getState().heistStatus === "active",
       );
       if (liveScene === "nap") return;
       playVoice(voiceGroupForAmbientContext(state.schedule, liveScene), {
@@ -167,5 +177,40 @@ export function AudioWorldDirector() {
     playGameSound("door", "interaction");
   }, [zoneTransitioning]);
 
-  return null;
+  return <AudioDebugPanel />;
+}
+
+function AudioDebugPanel() {
+  const enabled =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("audioDebug") === "1";
+  const [snapshot, setSnapshot] = useState(() => getAudioDebugSnapshot());
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const timer = window.setInterval(
+      () => setSnapshot(getAudioDebugSnapshot()),
+      500,
+    );
+    return () => window.clearInterval(timer);
+  }, [enabled]);
+  if (!enabled) return null;
+  return (
+    <aside className="daykare-audio-debug" aria-label="Audio diagnostics">
+      <strong>Audio diagnostics</strong>
+      <span>Unlocked: {snapshot.unlocked ? "yes" : "no"}</span>
+      <span>Scene: {snapshot.scene}</span>
+      <span>
+        Music: {snapshot.musicPlaying ? "playing" : "stopped"} ·{" "}
+        {snapshot.currentTrack ?? "none"} ·{" "}
+        {snapshot.musicCurrentTime.toFixed(1)}s
+      </span>
+      <span>
+        Voice: {snapshot.lastVoice ?? "none"} · {snapshot.voicesPlayed} played
+      </span>
+      <span>SFX: {snapshot.sfxPlayed} played</span>
+      <span>
+        Failures: {snapshot.failures.length ? snapshot.failures.at(-1) : "none"}
+      </span>
+    </aside>
+  );
 }

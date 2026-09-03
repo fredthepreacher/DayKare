@@ -1,19 +1,36 @@
-import { RewardPulse } from './RewardPulse';
-import { useIsRainy, useWeatherLabel } from './WeatherSystem';
-import { useGameStore } from './store';
-import { useSlideStore } from './slideStore';
-import { requestDogRecall } from './dogRecall';
-import { GARAGE_THEMES, HOME_THEMES } from './interiorThemes';
-import { activityProgress, activitySpots } from './neighborhood';
-import { RallyGameOverlay } from './RallyGameOverlay';
-import type { RallyId } from './rallyGame';
-import { homeTierName, ownershipSummary, ownershipWalletLine } from './ownership';
-import { REALTORS, STARTER_PROPERTY_ID, STONY_BROOK_PROPERTIES, propertyAction, type StonyBrookProperty } from './realEstate';
-import { zoneLabel } from './world';
-import { formatClock, timeOfDayToMinute } from './gameClock';
-import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { useKeyboardControls } from '@react-three/drei';
-import { Controls } from './Controls';
+import { RewardPulse } from "./RewardPulse";
+import { useIsRainy, useWeatherLabel } from "./WeatherSystem";
+import { useGameStore } from "./store";
+import { useSlideStore } from "./slideStore";
+import { requestDogRecall } from "./dogRecall";
+import { GARAGE_THEMES, HOME_THEMES } from "./interiorThemes";
+import { activityProgress, activitySpots } from "./neighborhood";
+import { RallyGameOverlay } from "./RallyGameOverlay";
+import type { RallyId } from "./rallyGame";
+import {
+  homeTierName,
+  ownershipSummary,
+  ownershipWalletLine,
+} from "./ownership";
+import {
+  REALTORS,
+  STARTER_PROPERTY_ID,
+  STONY_BROOK_PROPERTIES,
+  propertyAction,
+  type StonyBrookProperty,
+} from "./realEstate";
+import { zoneLabel } from "./world";
+import { formatClock, timeOfDayToMinute } from "./gameClock";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import { useKeyboardControls } from "@react-three/drei";
+import { Controls } from "./Controls";
 import {
   Clock,
   Book,
@@ -25,34 +42,74 @@ import {
   MapPinned,
   Menu,
   ShoppingBag,
-} from 'lucide-react';
-import { TouchControls } from './TouchControls';
-import { HUB_ROUTES, isRouteUnlocked, rankFromLifetimeXp, requirementLabel, requirementProgressLabel } from './progression';
-import { getActiveQuest, getCurrentObjective, objectiveIsActive } from './quests';
-import { playGameSound, unlockGameAudio } from './audio';
-import { dialogueDismissLabel } from './dialogueActions';
-import { useModeStore } from './modeStore';
+} from "lucide-react";
+import { TouchControls } from "./TouchControls";
+import {
+  HUB_ROUTES,
+  isRouteUnlocked,
+  rankFromLifetimeXp,
+  requirementLabel,
+  requirementProgressLabel,
+} from "./progression";
+import {
+  getActiveQuest,
+  getCurrentObjective,
+  objectiveIsActive,
+} from "./quests";
+import { playGameSound } from "./audio";
+import { unlockAllGameAudio } from "./audioDirector";
+import { dialogueDismissLabel } from "./dialogueActions";
+import { useModeStore } from "./modeStore";
 import {
   acknowledgeTeacherCall,
   getTeacherInterventionSnapshot,
   interventionIsActive,
-} from './teacherInterventions';
-import { useMonetizationStore } from './monetizationStore';
-import { absoluteGameMinute, cropIsReady, cropProgress, GUMMY_HARVEST_SIZE, GUMMY_SEEDS_PER_PLANTING, GUMMY_SEEDS_RETURNED_PER_HARVEST } from './gardenEconomy';
-import { useStorybookLaneStore } from './storybookLaneStore';
-import { STORYBOOK_OPEN_MINUTE, STORYBOOK_PRICES, storybookIsOpen, type StorybookItemId } from './storybookLaneConfig';
-import { playStorybookSound } from './storybookLaneAudio';
-import { purchaseMultiplayerStorybookItem, useMultiplayerStore } from './multiplayer';
-import { SEED_QUALITY_TIERS, seedValueMultiplier, type CollectibleId } from './gameplayExpansion';
-import { setTouchCrouch, setTouchJump, setTouchMove, setTouchRun } from './touchInput';
-import { mapStandardGamepad } from './gamepadInput';
-import { useFinalMasterStore } from './finalMasterStore';
-import { STARTER_HOME_PRICE, TUTORIAL_CHAPTERS } from './finalMaster';
-import { interactWithHeistTarget, interactWithMissLeslie } from './missLeslieInteraction';
-import { useToastStore } from './toastStore';
-import { PLAYER_NAP_POSITION, seatPositionForId } from './DaycareRoutineWorld';
+} from "./teacherInterventions";
+import { useMonetizationStore } from "./monetizationStore";
+import {
+  absoluteGameMinute,
+  cropIsReady,
+  cropProgress,
+  GUMMY_HARVEST_SIZE,
+  GUMMY_SEEDS_PER_PLANTING,
+  GUMMY_SEEDS_RETURNED_PER_HARVEST,
+} from "./gardenEconomy";
+import { useStorybookLaneStore } from "./storybookLaneStore";
+import {
+  STORYBOOK_OPEN_MINUTE,
+  STORYBOOK_PRICES,
+  storybookIsOpen,
+  type StorybookItemId,
+} from "./storybookLaneConfig";
+import { playStorybookSound } from "./storybookLaneAudio";
+import {
+  purchaseMultiplayerStorybookItem,
+  useMultiplayerStore,
+} from "./multiplayer";
+import {
+  SEED_QUALITY_TIERS,
+  seedValueMultiplier,
+  type CollectibleId,
+} from "./gameplayExpansion";
+import {
+  setTouchCrouch,
+  setTouchJump,
+  setTouchMove,
+  setTouchRun,
+} from "./touchInput";
+import { mapStandardGamepad } from "./gamepadInput";
+import { useFinalMasterStore } from "./finalMasterStore";
+import { STARTER_HOME_PRICE, TUTORIAL_CHAPTERS } from "./finalMaster";
+import {
+  interactWithHeistTarget,
+  interactWithMissLeslie,
+} from "./missLeslieInteraction";
+import { useToastStore } from "./toastStore";
+import { PLAYER_NAP_POSITION, seatPositionForId } from "./DaycareRoutineWorld";
 
-const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
+const Journal = lazy(() =>
+  import("./Journal").then(({ Journal }) => ({ default: Journal })),
+);
 
 export function UI() {
   const {
@@ -162,8 +219,12 @@ export function UI() {
     advanceDistrictPreview,
   } = useGameStore();
   const tidyTutorialSeen = useGameStore((state) => state.tidyTutorialSeen);
-  const markTidyTutorialSeen = useGameStore((state) => state.markTidyTutorialSeen);
-  const recordTutorialEvent = useFinalMasterStore((state) => state.recordTutorialEvent);
+  const markTidyTutorialSeen = useGameStore(
+    (state) => state.markTidyTutorialSeen,
+  );
+  const recordTutorialEvent = useFinalMasterStore(
+    (state) => state.recordTutorialEvent,
+  );
   const heistBoardOpen = useFinalMasterStore((state) => state.heistBoardOpen);
   const rankProgress = rankFromLifetimeXp(progression.experience ?? 0);
   const rainyNow = useIsRainy();
@@ -171,11 +232,16 @@ export function UI() {
   useEffect(() => {
     if (!activeInstruction) return;
     const elapsed = Date.now() - activeInstruction.shownAt;
-    const timer = window.setTimeout(dismissInstruction, Math.max(0, 2_500 - elapsed));
+    const timer = window.setTimeout(
+      dismissInstruction,
+      Math.max(0, 2_500 - elapsed),
+    );
     return () => window.clearTimeout(timer);
   }, [activeInstruction, dismissInstruction]);
   const weatherLabel = useWeatherLabel();
-  const frontEndBlocked = useModeStore((state) => state.menuOpen || state.activeMode === 'multiplayer-lobby');
+  const frontEndBlocked = useModeStore(
+    (state) => state.menuOpen || state.activeMode === "multiplayer-lobby",
+  );
   const openMenu = useModeStore((state) => state.openMenu);
   const openPanel = useModeStore((state) => state.openPanel);
   const activeMode = useModeStore((state) => state.activeMode);
@@ -183,30 +249,43 @@ export function UI() {
   const multiplayerOccupancy = useMultiplayerStore((state) => state.occupancy);
   const careGems = useMonetizationStore((state) => state.careGems);
   const storybook = useStorybookLaneStore();
-  const storybookRoute = HUB_ROUTES.find((route) => route.id === 'storybook-lane');
-  const canEnterStorybookNow = zone === 'hub'
-    && schedule === 'storybook-lane'
-    && Boolean(storybookRoute && isRouteUnlocked(storybookRoute, progression));
+  const storybookRoute = HUB_ROUTES.find(
+    (route) => route.id === "storybook-lane",
+  );
+  const canEnterStorybookNow =
+    zone === "hub" &&
+    schedule === "storybook-lane" &&
+    Boolean(storybookRoute && isRouteUnlocked(storybookRoute, progression));
   const [recoverySeconds, setRecoverySeconds] = useState(0);
-  const [questTrackerMode, setQuestTrackerMode] = useState<'expanded' | 'collapsed' | 'hidden'>('collapsed');
+  const [questTrackerMode, setQuestTrackerMode] = useState<
+    "expanded" | "collapsed" | "hidden"
+  >("collapsed");
   const [seedInspectionOpen, setSeedInspectionOpen] = useState(false);
   // Ping pong and tennis share one overlay; this is which, if either, is up.
   const [rallyGame, setRallyGame] = useState<RallyId | null>(null);
   const [seedMeter, setSeedMeter] = useState(0);
-  const reconcileGameplayRewards = useMonetizationStore((state) => state.reconcileGameplayRewards);
+  const reconcileGameplayRewards = useMonetizationStore(
+    (state) => state.reconcileGameplayRewards,
+  );
 
   useEffect(() => {
     reconcileGameplayRewards(progression.reputation);
   }, [progression.reputation, reconcileGameplayRewards]);
 
   useEffect(() => {
-    if (storybook.recoveringUntil <= 0) { setRecoverySeconds(0); return undefined; }
+    if (storybook.recoveringUntil <= 0) {
+      setRecoverySeconds(0);
+      return undefined;
+    }
     const update = () => {
-      const remaining = Math.max(0, Math.ceil((storybook.recoveringUntil - Date.now()) / 1000));
+      const remaining = Math.max(
+        0,
+        Math.ceil((storybook.recoveringUntil - Date.now()) / 1000),
+      );
       setRecoverySeconds(remaining);
       if (remaining === 0) {
         useStorybookLaneStore.getState().recover();
-        playStorybookSound('recovery');
+        playStorybookSound("recovery");
       }
     };
     update();
@@ -228,8 +307,28 @@ export function UI() {
 
   const finishSeedInspection = () => {
     const result = inspectSeed(Math.abs(seedMeter - 50) <= 18);
-    const tier = SEED_QUALITY_TIERS.find((entry) => entry.id === useGameStore.getState().expansion.seedQuality)!;
-    useToastStore.getState().enqueue({ title: result === 'upgraded' ? `${tier.label} created!` : result === 'failed' ? 'Inspection complete' : result === 'max-tier' ? 'Golden quality maintained' : 'Already inspected today', detail: result === 'upgraded' ? `Garden sale value is now +${Math.round((tier.multiplier - 1) * 100)}%.` : result === 'failed' ? 'No downgrade—try again tomorrow.' : undefined, kind: result === 'upgraded' ? 'success' : 'ordinary' });
+    const tier = SEED_QUALITY_TIERS.find(
+      (entry) => entry.id === useGameStore.getState().expansion.seedQuality,
+    )!;
+    useToastStore
+      .getState()
+      .enqueue({
+        title:
+          result === "upgraded"
+            ? `${tier.label} created!`
+            : result === "failed"
+              ? "Inspection complete"
+              : result === "max-tier"
+                ? "Golden quality maintained"
+                : "Already inspected today",
+        detail:
+          result === "upgraded"
+            ? `Garden sale value is now +${Math.round((tier.multiplier - 1) * 100)}%.`
+            : result === "failed"
+              ? "No downgrade—try again tomorrow."
+              : undefined,
+        kind: result === "upgraded" ? "success" : "ordinary",
+      });
     setSeedInspectionOpen(false);
   };
 
@@ -240,7 +339,7 @@ export function UI() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    if (typeof navigator === "undefined" || !navigator.getGamepads) return;
     let frame = 0;
     let connected = false;
     let previousInteract = false;
@@ -258,7 +357,7 @@ export function UI() {
         const journal = actions.journal;
         if (interact && !previousInteract) interactRef.current();
         if (journal && !previousJournal) {
-          recordTutorialEvent('open-backpack');
+          recordTutorialEvent("open-backpack");
           toggleJournal();
         }
         previousInteract = interact;
@@ -279,7 +378,10 @@ export function UI() {
 
   useEffect(() => {
     if (activeDialogue) {
-      if (!dialogueWasOpen.current && document.activeElement instanceof HTMLElement) {
+      if (
+        !dialogueWasOpen.current &&
+        document.activeElement instanceof HTMLElement
+      ) {
         previousFocusRef.current = document.activeElement;
       }
       dialogueWasOpen.current = true;
@@ -303,18 +405,20 @@ export function UI() {
   }, [activeDialogue]);
 
   const onDialogueKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
+    if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       setActiveDialogue(null);
       return;
     }
-    if (event.key !== 'Tab') return;
+    if (event.key !== "Tab") return;
     const dialogue = dialogueRef.current;
     if (!dialogue) return;
-    const controls = Array.from(dialogue.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    )).filter((element) => element.offsetParent !== null);
+    const controls = Array.from(
+      dialogue.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => element.offsetParent !== null);
     if (!controls.length) {
       event.preventDefault();
       dialogue.focus();
@@ -332,36 +436,53 @@ export function UI() {
   };
 
   useEffect(() => {
-    const handleAudioUnlock = () => unlockGameAudio();
-    window.addEventListener('pointerdown', handleAudioUnlock, { passive: true });
-    window.addEventListener('touchstart', handleAudioUnlock, { passive: true });
-    window.addEventListener('keydown', handleAudioUnlock);
-    return () => {
-      window.removeEventListener('pointerdown', handleAudioUnlock);
-      window.removeEventListener('touchstart', handleAudioUnlock);
-      window.removeEventListener('keydown', handleAudioUnlock);
+    const removeUnlockListeners = () => {
+      window.removeEventListener("pointerdown", handleAudioUnlock);
+      window.removeEventListener("touchstart", handleAudioUnlock);
+      window.removeEventListener("keydown", handleAudioUnlock);
     };
+    const handleAudioUnlock = () => {
+      // This runs synchronously inside the first real player gesture. It also
+      // covers persisted Story Mode sessions that skipped the front menu.
+      unlockAllGameAudio();
+      removeUnlockListeners();
+    };
+    window.addEventListener("pointerdown", handleAudioUnlock, {
+      passive: true,
+    });
+    window.addEventListener("touchstart", handleAudioUnlock, { passive: true });
+    window.addEventListener("keydown", handleAudioUnlock);
+    return removeUnlockListeners;
   }, []);
 
   useEffect(() => {
-    if (activeDialogue) playGameSound('dialogue', 'dialogue');
+    if (activeDialogue) playGameSound("dialogue", "dialogue");
   }, [activeDialogue?.name, activeDialogue?.text]);
 
   useEffect(() => {
     const cancelSeat = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape' || (!seatedSeatId && !isNapping) || activeDialogue || journalOpen) return;
+      if (
+        event.key !== "Escape" ||
+        (!seatedSeatId && !isNapping) ||
+        activeDialogue ||
+        journalOpen
+      )
+        return;
       event.preventDefault();
       standUp(isNapping);
     };
-    window.addEventListener('keydown', cancelSeat);
-    return () => window.removeEventListener('keydown', cancelSeat);
+    window.addEventListener("keydown", cancelSeat);
+    return () => window.removeEventListener("keydown", cancelSeat);
   }, [seatedSeatId, isNapping, activeDialogue, journalOpen, standUp]);
 
   const activeReward = rewardEvents[0] ?? null;
   useEffect(() => {
     if (!activeReward) return;
-    playGameSound('reward', 'interaction');
-    const timer = window.setTimeout(() => dismissRewardEvent(activeReward.id), 2500);
+    playGameSound("reward", "interaction");
+    const timer = window.setTimeout(
+      () => dismissRewardEvent(activeReward.id),
+      2500,
+    );
     return () => window.clearTimeout(timer);
   }, [activeReward?.id, dismissRewardEvent]);
 
@@ -369,26 +490,44 @@ export function UI() {
     return subscribe(
       (state) => state.journal,
       (pressed) => {
-        if (pressed && !activeDialogue && !zoneTransitioning && !frontEndBlocked && !rallyGame) {
-          if (!journalOpen) recordTutorialEvent('open-backpack');
+        if (
+          pressed &&
+          !activeDialogue &&
+          !zoneTransitioning &&
+          !frontEndBlocked &&
+          !rallyGame
+        ) {
+          if (!journalOpen) recordTutorialEvent("open-backpack");
           toggleJournal();
         }
-      }
+      },
     );
-  }, [subscribe, toggleJournal, activeDialogue, zoneTransitioning, frontEndBlocked, rallyGame]);
+  }, [
+    subscribe,
+    toggleJournal,
+    activeDialogue,
+    zoneTransitioning,
+    frontEndBlocked,
+    rallyGame,
+  ]);
 
   // Juice Club Customers Simulation
   useEffect(() => {
-    if (schedule !== 'juice-club' || zone !== 'hub') {
+    if (schedule !== "juice-club" || zone !== "hub") {
       resetJuiceClubCustomer();
       return;
     }
-    const potentialCustomers = ['Max', 'Noah', 'Zoe'];
+    const potentialCustomers = ["Max", "Noah", "Zoe"];
     const inviteNext = () => {
-      const name = potentialCustomers[queueCursor.current % potentialCustomers.length];
+      const name =
+        potentialCustomers[queueCursor.current % potentialCustomers.length];
       queueCursor.current += 1;
       const game = useGameStore.getState();
-      if (!game.waitingCustomers.includes(name) && !game.juiceClubServedCustomer) game.addWaitingCustomer(name);
+      if (
+        !game.waitingCustomers.includes(name) &&
+        !game.juiceClubServedCustomer
+      )
+        game.addWaitingCustomer(name);
     };
     const first = window.setTimeout(inviteNext, 1400);
     const interval = window.setInterval(inviteNext, 8000);
@@ -399,7 +538,12 @@ export function UI() {
   }, [schedule, zone, resetJuiceClubCustomer]);
 
   useEffect(() => {
-    if (schedule !== 'juice-club' || zone !== 'hub' || juiceClubCustomerPhase === 'idle') return;
+    if (
+      schedule !== "juice-club" ||
+      zone !== "hub" ||
+      juiceClubCustomerPhase === "idle"
+    )
+      return;
     const delays: Partial<Record<string, number>> = {
       drink: 1500,
       reaction: 1200,
@@ -408,14 +552,20 @@ export function UI() {
     if (!delay) return;
     const timer = window.setTimeout(advanceJuiceClubCustomer, delay);
     return () => window.clearTimeout(timer);
-  }, [schedule, zone, juiceClubCustomerPhase, juiceClubServedCustomer, advanceJuiceClubCustomer]);
+  }, [
+    schedule,
+    zone,
+    juiceClubCustomerPhase,
+    juiceClubServedCustomer,
+    advanceJuiceClubCustomer,
+  ]);
 
   useEffect(() => {
     const runInteraction = () => {
       if (zoneTransitioning || frontEndBlocked || rallyGame) return;
-      unlockGameAudio();
+      unlockAllGameAudio();
       if (activeDialogue || isRiding || activeInteractable) {
-        playGameSound('interaction', 'interaction');
+        playGameSound("interaction", "interaction");
       }
       if (activeDialogue) {
         if (!activeDialogue.options) {
@@ -426,7 +576,12 @@ export function UI() {
 
       if (isNapping) {
         standUp(true);
-        useToastStore.getState().enqueue({ title: 'Nap ended early', detail: 'Complete the full next Nap session to earn XP.' });
+        useToastStore
+          .getState()
+          .enqueue({
+            title: "Nap ended early",
+            detail: "Complete the full next Nap session to earn XP.",
+          });
         return;
       }
 
@@ -441,94 +596,111 @@ export function UI() {
       }
 
       if (activeInteractable) {
-          /**
-           * Everything the player owns, derived from the stores that already
-           * hold it. Rendered through the dialogue so it works on desktop,
-           * touch and controller without a third input path.
-           */
-          const showOwnershipSummary = () => {
-            const game = useGameStore.getState();
-            const lane = useStorybookLaneStore.getState();
-            const final = useFinalMasterStore.getState();
-            const categories = ownershipSummary({
-              ownedStarterHome: final.ownedStarterHome,
-              homeVoucher: final.homeVoucher,
-              cribTier: lane.cribTier,
-              laneItems: lane.ownedItems,
-              dripOwned: game.dripOwned,
-              dripEquipped: game.dripEquipped as Record<string, string | null | undefined>,
-              fishingRods: game.expansion.ownedRods,
-              tokens: game.progression.tokens,
-              gems: final.gems,
-              rascalBucks: lane.ribbonBucks,
-            });
-            const walletLine = ownershipWalletLine({
-              ownedStarterHome: final.ownedStarterHome,
-              homeVoucher: final.homeVoucher,
-              cribTier: lane.cribTier,
-              laneItems: lane.ownedItems,
-              dripOwned: game.dripOwned,
-              dripEquipped: game.dripEquipped as Record<string, string | null | undefined>,
-              fishingRods: game.expansion.ownedRods,
-              tokens: game.progression.tokens,
-              gems: final.gems,
-              rascalBucks: lane.ribbonBucks,
-            });
-            const body = categories
-              .map((category) => category.entries.length
-                ? `${category.title}: ${category.entries.map((item) => `${item.label} (${item.detail})`).join(', ')}`
-                : `${category.title}: ${category.emptyLabel}`)
-              .join('\n');
-            setActiveDialogue({
-              name: 'What I own',
-              text: `${walletLine}\n\n${body}`,
-              options: [{ label: 'Close', action: () => setActiveDialogue(null) }],
-            });
-          };
+        /**
+         * Everything the player owns, derived from the stores that already
+         * hold it. Rendered through the dialogue so it works on desktop,
+         * touch and controller without a third input path.
+         */
+        const showOwnershipSummary = () => {
+          const game = useGameStore.getState();
+          const lane = useStorybookLaneStore.getState();
+          const final = useFinalMasterStore.getState();
+          const categories = ownershipSummary({
+            ownedStarterHome: final.ownedStarterHome,
+            homeVoucher: final.homeVoucher,
+            cribTier: lane.cribTier,
+            laneItems: lane.ownedItems,
+            dripOwned: game.dripOwned,
+            dripEquipped: game.dripEquipped as Record<
+              string,
+              string | null | undefined
+            >,
+            fishingRods: game.expansion.ownedRods,
+            tokens: game.progression.tokens,
+            gems: final.gems,
+            rascalBucks: lane.ribbonBucks,
+          });
+          const walletLine = ownershipWalletLine({
+            ownedStarterHome: final.ownedStarterHome,
+            homeVoucher: final.homeVoucher,
+            cribTier: lane.cribTier,
+            laneItems: lane.ownedItems,
+            dripOwned: game.dripOwned,
+            dripEquipped: game.dripEquipped as Record<
+              string,
+              string | null | undefined
+            >,
+            fishingRods: game.expansion.ownedRods,
+            tokens: game.progression.tokens,
+            gems: final.gems,
+            rascalBucks: lane.ribbonBucks,
+          });
+          const body = categories
+            .map((category) =>
+              category.entries.length
+                ? `${category.title}: ${category.entries.map((item) => `${item.label} (${item.detail})`).join(", ")}`
+                : `${category.title}: ${category.emptyLabel}`,
+            )
+            .join("\n");
+          setActiveDialogue({
+            name: "What I own",
+            text: `${walletLine}\n\n${body}`,
+            options: [
+              { label: "Close", action: () => setActiveDialogue(null) },
+            ],
+          });
+        };
 
-        if (activeInteractable === 'final-home-exit') {
+        if (activeInteractable === "final-home-exit") {
           useFinalMasterStore.getState().leaveHome();
           useGameStore.getState().setPlayerPosition([-13, 0, -8.7]);
           useGameStore.getState().triggerTeleport();
-        } else if (activeInteractable.startsWith('cafeteria-seat-')) {
+        } else if (activeInteractable.startsWith("cafeteria-seat-")) {
           const position = seatPositionForId(activeInteractable);
           if (position && sitAtSeat(activeInteractable)) {
             useGameStore.getState().setPlayerPosition(position);
             useGameStore.getState().triggerTeleport();
           }
-        } else if (activeInteractable === 'player-nap-mat') {
+        } else if (activeInteractable === "player-nap-mat") {
           if (beginNap()) {
             useGameStore.getState().setPlayerPosition(PLAYER_NAP_POSITION);
             useGameStore.getState().triggerTeleport();
           }
-        } else if (activeInteractable === 'final-miss-leslie') {
+        } else if (activeInteractable === "final-miss-leslie") {
           interactWithMissLeslie();
-        } else if (activeInteractable === 'final-heist-board') {
+        } else if (activeInteractable === "final-heist-board") {
           useFinalMasterStore.getState().openHeistBoard();
-        } else if (activeInteractable.startsWith('final-heist-')) {
+        } else if (activeInteractable.startsWith("final-heist-")) {
           interactWithHeistTarget(activeInteractable);
-        } else if (activeInteractable === 'binky') {
-          pickUp('binky');
-          playGameSound('pickup', 'interaction');
-          if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
-            advanceQuestObjective('where-binky', 'search-storage');
+        } else if (activeInteractable === "binky") {
+          pickUp("binky");
+          playGameSound("pickup", "interaction");
+          if (objectiveIsActive(quests, "where-binky", "search-storage")) {
+            advanceQuestObjective("where-binky", "search-storage");
           }
           setActiveInteractable(null);
-          setActiveDialogue({ name: 'System', text: 'You found Binky! Return it to Leo.' });
-        } else if (activeInteractable === 'shiny-rock') {
+          setActiveDialogue({
+            name: "System",
+            text: "You found Binky! Return it to Leo.",
+          });
+        } else if (activeInteractable === "shiny-rock") {
           if (collectShinyRock()) {
-            playGameSound('pickup', 'interaction');
+            playGameSound("pickup", "interaction");
             setActiveInteractable(null);
             setActiveDialogue({
-              name: 'Shiny Rock',
-              text: 'A smooth blue rock sparkles in your hand. Sam might trade a clue for this.',
+              name: "Shiny Rock",
+              text: "A smooth blue rock sparkles in your hand. Sam might trade a clue for this.",
             });
           }
-        } else if (activeInteractable === 'blue-block' || activeInteractable === 'red-block' || activeInteractable === 'yellow-block') {
+        } else if (
+          activeInteractable === "blue-block" ||
+          activeInteractable === "red-block" ||
+          activeInteractable === "yellow-block"
+        ) {
           pickUp(activeInteractable);
-          playGameSound('pickup', 'interaction');
+          playGameSound("pickup", "interaction");
           const objectiveId = `collect-${activeInteractable}`;
-          advanceQuestObjective('rainbow-tidy-up', objectiveId);
+          advanceQuestObjective("rainbow-tidy-up", objectiveId);
           setActiveInteractable(null);
           // Only the FIRST block explains itself. This popup used to fire on
           // every block of every round - three modal interruptions per round,
@@ -538,137 +710,199 @@ export function UI() {
           if (!tidyTutorialSeen) {
             markTidyTutorialSeen();
             showInstruction({
-              id: 'tidy-first-placement',
-              text: 'Carry the block to the Rainbow Tidy-Up station, then place it in the matching spot.',
+              id: "tidy-first-placement",
+              text: "Carry the block to the Rainbow Tidy-Up station, then place it in the matching spot.",
             });
           }
-        } else if (activeInteractable === 'wavy-slide') {
+        } else if (activeInteractable === "wavy-slide") {
           useSlideStore.getState().startPlayerSlide();
-        } else if (activeInteractable === 'juice-stand') {
-          if (schedule === 'juice-club') {
+        } else if (activeInteractable === "juice-stand") {
+          if (schedule === "juice-club") {
             setActiveDialogue({
-              name: 'Juice Stand',
-              text: waitingCustomers.length > 0 ? `${waitingCustomers[0]} is waiting for juice!` : 'Waiting for customers...',
+              name: "Juice Stand",
+              text:
+                waitingCustomers.length > 0
+                  ? `${waitingCustomers[0]} is waiting for juice!`
+                  : "Waiting for customers...",
               options: [
-                ...(expansion.swedishFish > 0 ? [{
-                  label: `Sell 1 Swedish Fish · $5 + 2 XP (${expansion.swedishFish})`,
-                  action: () => { sellSwedishFish(); playGameSound('reward', 'interaction'); setActiveDialogue(null); },
-                }] : []),
+                ...(expansion.swedishFish > 0
+                  ? [
+                      {
+                        label: `Sell 1 Swedish Fish · $5 + 2 XP (${expansion.swedishFish})`,
+                        action: () => {
+                          sellSwedishFish();
+                          playGameSound("reward", "interaction");
+                          setActiveDialogue(null);
+                        },
+                      },
+                    ]
+                  : []),
                 {
-                  label: 'Serve Customer',
+                  label: "Serve Customer",
                   action: () => {
                     if (waitingCustomers.length > 0) {
                       if (juiceStock > 0 && crackerStock > 0) {
-                        if (juiceClubCustomerPhase === 'ordering') {
+                        if (juiceClubCustomerPhase === "ordering") {
                           serveCustomer();
-                          recordTutorialEvent('complete-snack-sale');
-                          playGameSound('juice-service', 'interaction');
-                           setActiveDialogue(null);
+                          recordTutorialEvent("complete-snack-sale");
+                          playGameSound("juice-service", "interaction");
+                          setActiveDialogue(null);
                         } else {
-                          setActiveDialogue({ name: 'System', text: `${juiceClubActiveCustomer ?? waitingCustomers[0]} is still walking up to order.` });
+                          setActiveDialogue({
+                            name: "System",
+                            text: `${juiceClubActiveCustomer ?? waitingCustomers[0]} is still walking up to order.`,
+                          });
                         }
                       } else {
-                        setActiveDialogue({ name: 'System', text: 'Out of stock! Buy more in the Journal Business tab.' });
+                        setActiveDialogue({
+                          name: "System",
+                          text: "Out of stock! Buy more in the Journal Business tab.",
+                        });
                       }
                     } else {
-                      setActiveDialogue({ name: 'System', text: 'No one is waiting right now.' });
+                      setActiveDialogue({
+                        name: "System",
+                        text: "No one is waiting right now.",
+                      });
                     }
                   },
                 },
-                { label: 'Leave', action: () => setActiveDialogue(null) },
+                { label: "Leave", action: () => setActiveDialogue(null) },
               ],
             });
           } else {
-            setActiveDialogue({ name: 'System', text: 'Juice Club is currently closed. Opens at 12:00 PM.' });
+            setActiveDialogue({
+              name: "System",
+              text: "Juice Club is currently closed. Opens at 12:00 PM.",
+            });
           }
-        } else if (activeInteractable === 'tricycle') {
+        } else if (activeInteractable === "tricycle") {
           setActiveDialogue({
-            name: 'Tricycle',
-            text: 'What do you want to do?',
+            name: "Tricycle",
+            text: "What do you want to do?",
             options: [
-              { label: 'Ride', action: () => { setIsRiding(true); setActiveDialogue(null); } },
-              { label: 'Paint', action: () => { cycleTricycleColor(); setActiveDialogue(null); } },
-              { label: 'Leave', action: () => setActiveDialogue(null) },
+              {
+                label: "Ride",
+                action: () => {
+                  setIsRiding(true);
+                  setActiveDialogue(null);
+                },
+              },
+              {
+                label: "Paint",
+                action: () => {
+                  cycleTricycleColor();
+                  setActiveDialogue(null);
+                },
+              },
+              { label: "Leave", action: () => setActiveDialogue(null) },
             ],
           });
-        } else if (activeInteractable === 'activity-rainbow-tidy-up') {
-          const objective = quests['rainbow-tidy-up']?.currentObjectiveId;
-          const item = objective?.replace('place-', '');
+        } else if (activeInteractable === "activity-rainbow-tidy-up") {
+          const objective = quests["rainbow-tidy-up"]?.currentObjectiveId;
+          const item = objective?.replace("place-", "");
           if (item && inventory.includes(item) && completeTidyToy(item)) {
-            const finishedRound = item === 'yellow-block';
-            if (finishedRound && rivalStory.beat === 'rainbow-challenge') {
+            const finishedRound = item === "yellow-block";
+            if (finishedRound && rivalStory.beat === "rainbow-challenge") {
               setActiveDialogue({
-                name: 'Mae',
-                text: 'You finished the whole sort without bossing anyone around. Maybe a good plan can leave room for other people. I wrote a new one for the Garden.',
+                name: "Mae",
+                text: "You finished the whole sort without bossing anyone around. Maybe a good plan can leave room for other people. I wrote a new one for the Garden.",
               });
             } else if (finishedRound) {
               setActiveDialogue(null);
             } else if (!tidyTutorialSeen) {
               showInstruction({
                 id: `tidy-next-${item}`,
-                text: 'Perfect fit! Check the Journal objective for the next highlighted block.',
+                text: "Perfect fit! Check the Journal objective for the next highlighted block.",
               });
             } else {
               setActiveDialogue(null);
             }
           } else {
-            setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
+            setActiveDialogue({
+              name: "Rainbow Tidy-Up",
+              text: "Bring the highlighted toy here before sorting the next one.",
+            });
           }
-        } else if (activeInteractable === 'home-ping-pong' || activeInteractable === 'storybook-tennis') {
-          setRallyGame(activeInteractable === 'home-ping-pong' ? 'ping-pong' : 'tennis');
+        } else if (
+          activeInteractable === "home-ping-pong" ||
+          activeInteractable === "storybook-tennis"
+        ) {
+          setRallyGame(
+            activeInteractable === "home-ping-pong" ? "ping-pong" : "tennis",
+          );
           setActiveDialogue(null);
-        } else if (activeInteractable === 'home-closet') {
+        } else if (activeInteractable === "home-closet") {
           // The closet opens the outfit drawer that already exists, rather
           // than a second wardrobe UI.
           if (!journalOpen) toggleJournal();
           setActiveDialogue({
-            name: 'Closet',
+            name: "Closet",
             text: useFinalMasterStore.getState().heroOutfitUnlocked
-              ? 'Your outfits are in the Drip tab — including the Rascal Ranger suit.'
-              : 'Your outfits are in the Drip tab.',
+              ? "Your outfits are in the Drip tab — including the Rascal Ranger suit."
+              : "Your outfits are in the Drip tab.",
           });
-        } else if (activeInteractable === 'home-theme-switch') {
+        } else if (activeInteractable === "home-theme-switch") {
           const next = useFinalMasterStore.getState().cycleHomeTheme();
-          setActiveDialogue({ name: 'Home Colours', text: `Switched to ${HOME_THEMES[next].label}.` });
-        } else if (activeInteractable === 'garage-theme-switch') {
+          setActiveDialogue({
+            name: "Home Colours",
+            text: `Switched to ${HOME_THEMES[next].label}.`,
+          });
+        } else if (activeInteractable === "garage-theme-switch") {
           const next = useFinalMasterStore.getState().cycleGarageTheme();
-          setActiveDialogue({ name: 'Garage Colours', text: `Switched to ${GARAGE_THEMES[next].label}.` });
-        } else if (activeInteractable.startsWith('storybook-spot-')) {
-          const spotId = activeInteractable.replace('storybook-spot-', '');
-          const found = activitySpots().find((entry) => entry.spot.id === spotId);
-          const result = useFinalMasterStore.getState().completeNeighborhoodSpot(spotId);
+          setActiveDialogue({
+            name: "Garage Colours",
+            text: `Switched to ${GARAGE_THEMES[next].label}.`,
+          });
+        } else if (activeInteractable.startsWith("storybook-spot-")) {
+          const spotId = activeInteractable.replace("storybook-spot-", "");
+          const found = activitySpots().find(
+            (entry) => entry.spot.id === spotId,
+          );
+          const result = useFinalMasterStore
+            .getState()
+            .completeNeighborhoodSpot(spotId);
           if (found) {
             const done = useFinalMasterStore.getState().neighborhoodDone;
             const progress = activityProgress(found.activity, done);
             setActiveDialogue({
               name: found.activity.label,
-              text: result === 'already'
-                ? `Already done here. ${progress.found}/${progress.total} finished.`
-                : progress.complete
-                  ? `${found.spot.hint} — that is the last one. ${found.activity.label} complete!`
-                  : `${found.spot.hint}. ${progress.found}/${progress.total} finished.`,
+              text:
+                result === "already"
+                  ? `Already done here. ${progress.found}/${progress.total} finished.`
+                  : progress.complete
+                    ? `${found.spot.hint} — that is the last one. ${found.activity.label} complete!`
+                    : `${found.spot.hint}. ${progress.found}/${progress.total} finished.`,
             });
           }
-        } else if (activeInteractable === 'storybook-garage-door') {
+        } else if (activeInteractable === "storybook-garage-door") {
           const owns = useFinalMasterStore.getState().ownedStarterHome;
           if (!owns) {
-            setActiveDialogue({ name: 'Garage', text: 'The garage belongs with the house. Talk to a Stony Brook realtor about Wavy Manor first.' });
+            setActiveDialogue({
+              name: "Garage",
+              text: "The garage belongs with the house. Talk to a Stony Brook realtor about Wavy Manor first.",
+            });
           } else {
             useGameStore.getState().enterGarage();
             setActiveDialogue(null);
           }
-        } else if (activeInteractable === 'garage-exit') {
+        } else if (activeInteractable === "garage-exit") {
           useGameStore.getState().leaveGarage();
           setActiveDialogue(null);
-        } else if (activeInteractable === 'storybook-whistle-dog') {
+        } else if (activeInteractable === "storybook-whistle-dog") {
           requestDogRecall();
-          playStorybookSound('pet');
+          playStorybookSound("pet");
           setActiveDialogue({
-            name: 'Whistle',
-            text: 'You whistle. Your dog comes bounding over from the dog house.',
-            options: [{ label: 'Good dog', action: () => setActiveDialogue(null) }],
+            name: "Whistle",
+            text: "You whistle. Your dog comes bounding over from the dog house.",
+            options: [
+              { label: "Good dog", action: () => setActiveDialogue(null) },
+            ],
           });
-        } else if (activeInteractable.startsWith('storybook-realtor-') || activeInteractable === 'storybook-ice-cream') {
+        } else if (
+          activeInteractable.startsWith("storybook-realtor-") ||
+          activeInteractable === "storybook-ice-cream"
+        ) {
           /**
            * The realtor desk. Built on the existing dialogue system so it
            * works unchanged on desktop, touch and controller rather than
@@ -679,146 +913,254 @@ export function UI() {
             homeVoucher: useFinalMasterStore.getState().homeVoucher,
             rascalBucks: useStorybookLaneStore.getState().ribbonBucks,
           });
-          const showProperty = (agent: string, property: StonyBrookProperty) => {
+          const showProperty = (
+            agent: string,
+            property: StonyBrookProperty,
+          ) => {
             const view = propertyView();
             const action = propertyAction(property, view);
             const options: { label: string; action: () => void }[] = [];
-            if (action.kind === 'enter') {
-              options.push({ label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } });
-            } else if (action.kind === 'claim' || action.kind === 'buy') {
+            if (action.kind === "enter") {
               options.push({
-                label: action.kind === 'claim' ? 'Claim with my voucher' : `Buy for ${property.price.toLocaleString()} RB`,
+                label: "Enter my home",
                 action: () => {
-                  const result = useFinalMasterStore.getState().buyStarterHome();
+                  useFinalMasterStore.getState().enterHome();
+                  setActiveDialogue(null);
+                },
+              });
+            } else if (action.kind === "claim" || action.kind === "buy") {
+              options.push({
+                label:
+                  action.kind === "claim"
+                    ? "Claim with my voucher"
+                    : `Buy for ${property.price.toLocaleString()} RB`,
+                action: () => {
+                  const result = useFinalMasterStore
+                    .getState()
+                    .buyStarterHome();
                   setActiveDialogue({
                     name: agent,
-                    text: result === 'purchased'
-                      ? `Congratulations — ${property.name} is yours. The keys are in the mailbox and the front door is unlocked.`
-                      : result === 'owned'
-                        ? `${property.name} already belongs to you.`
-                        : `You are short on Rascal Bucks and nothing was charged.`,
-                    options: result === 'purchased' || result === 'owned'
-                      ? [
-                        { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } },
-                        { label: 'Later', action: () => setActiveDialogue(null) },
-                      ]
-                      : [{ label: 'Back', action: () => openPropertyMenu(agent) }],
+                    text:
+                      result === "purchased"
+                        ? `Congratulations — ${property.name} is yours. The keys are in the mailbox and the front door is unlocked.`
+                        : result === "owned"
+                          ? `${property.name} already belongs to you.`
+                          : `You are short on Rascal Bucks and nothing was charged.`,
+                    options:
+                      result === "purchased" || result === "owned"
+                        ? [
+                            {
+                              label: "Enter my home",
+                              action: () => {
+                                useFinalMasterStore.getState().enterHome();
+                                setActiveDialogue(null);
+                              },
+                            },
+                            {
+                              label: "Later",
+                              action: () => setActiveDialogue(null),
+                            },
+                          ]
+                        : [
+                            {
+                              label: "Back",
+                              action: () => openPropertyMenu(agent),
+                            },
+                          ],
                   });
                 },
               });
             }
-            options.push({ label: 'Back', action: () => openPropertyMenu(agent) });
-            const status = action.kind === 'enter'
-              ? 'Owned by you.'
-              : action.kind === 'claim'
-                ? 'Your free-home voucher covers this in full.'
-                : action.kind === 'short'
-                  ? `${action.balance.toLocaleString()} RB of ${action.price.toLocaleString()} RB — ${action.shortfall.toLocaleString()} RB to go.`
-                  : action.kind === 'unavailable'
-                    ? 'Not on the market yet.'
-                    : `${property.price.toLocaleString()} RB · you have ${view.rascalBucks.toLocaleString()} RB.`;
-            setActiveDialogue({ name: `${property.name}`, text: `${property.blurb}\n\n${status}`, options });
-          };
-          const openPropertyMenu = (agent: string) => {
-            const view = propertyView();
-            const options: { label: string; action: () => void }[] = STONY_BROOK_PROPERTIES.map((property) => ({
-              label: `${property.name} · ${property.id === STARTER_PROPERTY_ID && view.ownedStarterHome ? 'Owned' : `${property.price.toLocaleString()} RB`}`,
-              action: () => showProperty(agent, property),
-            }));
-            if (view.ownedStarterHome) {
-              options.push({ label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } });
-            }
             options.push({
-              label: 'How do Rascal Bucks work?',
-              action: () => setActiveDialogue({
-                name: agent,
-                text: 'Rascal Bucks come from finishing heists with Miss Leslie, daily replays, and jobs around DayKare. They are never bought with real money, and a purchase here only ever spends what you already earned.',
-                options: [{ label: 'Back', action: () => openPropertyMenu(agent) }],
-              }),
+              label: "Back",
+              action: () => openPropertyMenu(agent),
             });
-            options.push({ label: 'Cancel', action: () => setActiveDialogue(null) });
+            const status =
+              action.kind === "enter"
+                ? "Owned by you."
+                : action.kind === "claim"
+                  ? "Your free-home voucher covers this in full."
+                  : action.kind === "short"
+                    ? `${action.balance.toLocaleString()} RB of ${action.price.toLocaleString()} RB — ${action.shortfall.toLocaleString()} RB to go.`
+                    : action.kind === "unavailable"
+                      ? "Not on the market yet."
+                      : `${property.price.toLocaleString()} RB · you have ${view.rascalBucks.toLocaleString()} RB.`;
             setActiveDialogue({
-              name: agent,
-              text: `Stony Brook Realty. You have ${view.rascalBucks.toLocaleString()} RB${view.homeVoucher ? ' and one free-home voucher' : ''}. What can I show you?`,
+              name: `${property.name}`,
+              text: `${property.blurb}\n\n${status}`,
               options,
             });
           };
-          if (activeInteractable.startsWith('storybook-realtor-')) {
-            const realtor = REALTORS.find((profile) => activeInteractable === `storybook-realtor-${profile.id}`);
-            openPropertyMenu(realtor?.name ?? 'Stony Brook Realty');
+          const openPropertyMenu = (agent: string) => {
+            const view = propertyView();
+            const options: { label: string; action: () => void }[] =
+              STONY_BROOK_PROPERTIES.map((property) => ({
+                label: `${property.name} · ${property.id === STARTER_PROPERTY_ID && view.ownedStarterHome ? "Owned" : `${property.price.toLocaleString()} RB`}`,
+                action: () => showProperty(agent, property),
+              }));
+            if (view.ownedStarterHome) {
+              options.push({
+                label: "Enter my home",
+                action: () => {
+                  useFinalMasterStore.getState().enterHome();
+                  setActiveDialogue(null);
+                },
+              });
+            }
+            options.push({
+              label: "How do Rascal Bucks work?",
+              action: () =>
+                setActiveDialogue({
+                  name: agent,
+                  text: "Rascal Bucks come from finishing heists with Miss Leslie, daily replays, and jobs around DayKare. They are never bought with real money, and a purchase here only ever spends what you already earned.",
+                  options: [
+                    { label: "Back", action: () => openPropertyMenu(agent) },
+                  ],
+                }),
+            });
+            options.push({
+              label: "Cancel",
+              action: () => setActiveDialogue(null),
+            });
+            setActiveDialogue({
+              name: agent,
+              text: `Stony Brook Realty. You have ${view.rascalBucks.toLocaleString()} RB${view.homeVoucher ? " and one free-home voucher" : ""}. What can I show you?`,
+              options,
+            });
+          };
+          if (activeInteractable.startsWith("storybook-realtor-")) {
+            const realtor = REALTORS.find(
+              (profile) =>
+                activeInteractable === `storybook-realtor-${profile.id}`,
+            );
+            openPropertyMenu(realtor?.name ?? "Stony Brook Realty");
             return;
           }
 
           const buyScoop = async () => {
-            let result: 'purchased' | 'insufficient' | 'recovering' | 'sick';
-            if (useModeStore.getState().activeMode === 'multiplayer') {
-              const purchase = await purchaseMultiplayerStorybookItem('ice-cream');
-              if (!purchase.accepted || !('save' in purchase)) {
-                setActiveDialogue({ name: 'Scoop Stop', text: purchase.reason === 'insufficient-rb' ? 'You need 25 RB for a scoop. Your balance stays unchanged.' : `The stand could not complete that purchase: ${purchase.reason}.` });
+            let result: "purchased" | "insufficient" | "recovering" | "sick";
+            if (useModeStore.getState().activeMode === "multiplayer") {
+              const purchase =
+                await purchaseMultiplayerStorybookItem("ice-cream");
+              if (!purchase.accepted || !("save" in purchase)) {
+                setActiveDialogue({
+                  name: "Scoop Stop",
+                  text:
+                    purchase.reason === "insufficient-rb"
+                      ? "You need 25 RB for a scoop. Your balance stays unchanged."
+                      : `The stand could not complete that purchase: ${purchase.reason}.`,
+                });
                 return;
               }
-              result = useStorybookLaneStore.getState().recordAuthorizedIceCream(purchase.save.ribbonBucks);
+              result = useStorybookLaneStore
+                .getState()
+                .recordAuthorizedIceCream(purchase.save.ribbonBucks);
             } else {
               result = useStorybookLaneStore.getState().buyIceCream();
             }
-            if (result === 'insufficient') {
-              setActiveDialogue({ name: 'Scoop Stop', text: 'You need 25 RB for a scoop. Your balance will never go below zero.' });
-            } else if (result === 'recovering') {
-              setActiveDialogue({ name: 'Scoop Stop', text: 'The stand keeper says your tummy needs a little recovery time first.' });
-            } else if (result === 'sick') {
-              playStorybookSound('warning');
-              window.setTimeout(() => playStorybookSound('flop'), 650);
-              setActiveDialogue({ name: 'You', text: 'Uh oh… I think that was one scoop too many. Worth it.' });
+            if (result === "insufficient") {
+              setActiveDialogue({
+                name: "Scoop Stop",
+                text: "You need 25 RB for a scoop. Your balance will never go below zero.",
+              });
+            } else if (result === "recovering") {
+              setActiveDialogue({
+                name: "Scoop Stop",
+                text: "The stand keeper says your tummy needs a little recovery time first.",
+              });
+            } else if (result === "sick") {
+              playStorybookSound("warning");
+              window.setTimeout(() => playStorybookSound("flop"), 650);
+              setActiveDialogue({
+                name: "You",
+                text: "Uh oh… I think that was one scoop too many. Worth it.",
+              });
             } else {
-              playStorybookSound('purchase');
+              playStorybookSound("purchase");
               const state = useStorybookLaneStore.getState();
               setActiveDialogue({
-                name: 'Scoop Stop',
-                text: `${state.lastFlavor}! Scoop ${state.sessionScoops} was delicious. ${7 - state.sessionScoops > 0 ? `${7 - state.sessionScoops} safe scoop${7 - state.sessionScoops === 1 ? '' : 's'} before things get wobbly.` : 'Maybe stop while you are ahead.'}`,
+                name: "Scoop Stop",
+                text: `${state.lastFlavor}! Scoop ${state.sessionScoops} was delicious. ${7 - state.sessionScoops > 0 ? `${7 - state.sessionScoops} safe scoop${7 - state.sessionScoops === 1 ? "" : "s"} before things get wobbly.` : "Maybe stop while you are ahead."}`,
                 options: [
-                  { label: 'Get another · 25 RB', action: () => { void buyScoop(); } },
-                  { label: 'All done', action: () => setActiveDialogue(null) },
+                  {
+                    label: "Get another · 25 RB",
+                    action: () => {
+                      void buyScoop();
+                    },
+                  },
+                  { label: "All done", action: () => setActiveDialogue(null) },
                 ],
               });
             }
           };
           setActiveDialogue({
-            name: 'Scoop Stop',
+            name: "Scoop Stop",
             text: `Get Ice Cream — 25 RB. Balance: ${storybook.ribbonBucks} RB. The first seven scoops each visit are safe.`,
             options: [
-              { label: 'Buy a scoop · 25 RB', action: () => { void buyScoop(); } },
-              { label: 'Leave', action: () => setActiveDialogue(null) },
+              {
+                label: "Buy a scoop · 25 RB",
+                action: () => {
+                  void buyScoop();
+                },
+              },
+              { label: "Leave", action: () => setActiveDialogue(null) },
             ],
           });
-        } else if (activeInteractable.startsWith('storybook-home-')) {
-          const homeId = activeInteractable.replace('storybook-home-', '');
-          if (homeId !== 'my-home') {
-            setActiveDialogue({ name: `${homeId.charAt(0).toUpperCase()}${homeId.slice(1)} House`, text: 'The front room is open for a quiet neighborhood visit. The furniture is intentionally simple in this MVP.' });
+        } else if (activeInteractable.startsWith("storybook-home-")) {
+          const homeId = activeInteractable.replace("storybook-home-", "");
+          if (homeId !== "my-home") {
+            setActiveDialogue({
+              name: `${homeId.charAt(0).toUpperCase()}${homeId.slice(1)} House`,
+              text: "The front room is open for a quiet neighborhood visit. The furniture is intentionally simple in this MVP.",
+            });
           } else {
             const finalMaster = useFinalMasterStore.getState();
             if (!finalMaster.ownedStarterHome) {
               // Nothing is bought by walking into a door. The realtors run
               // the purchase, with the price and the balance on screen first.
               setActiveDialogue({
-                name: 'Wavy Manor · For Sale',
-                text: `${STARTER_HOME_PRICE.toLocaleString()} RB. You have ${storybook.ribbonBucks.toLocaleString()} RB.${finalMaster.homeVoucher ? ' Your free-home voucher covers it in full.' : ''} Mr. Brooks or Ms. Hartwell can handle the paperwork — they walk the lane by the ice cream stand.`,
-                options: [{ label: 'Got it', action: () => setActiveDialogue(null) }],
+                name: "Wavy Manor · For Sale",
+                text: `${STARTER_HOME_PRICE.toLocaleString()} RB. You have ${storybook.ribbonBucks.toLocaleString()} RB.${finalMaster.homeVoucher ? " Your free-home voucher covers it in full." : ""} Mr. Brooks or Ms. Hartwell can handle the paperwork — they walk the lane by the ice cream stand.`,
+                options: [
+                  { label: "Got it", action: () => setActiveDialogue(null) },
+                ],
               });
               return;
             }
             const buyItem = async (item: StorybookItemId, label: string) => {
-              let result: 'purchased' | 'owned' | 'insufficient';
-              if (useModeStore.getState().activeMode === 'multiplayer') {
+              let result: "purchased" | "owned" | "insufficient";
+              if (useModeStore.getState().activeMode === "multiplayer") {
                 const purchase = await purchaseMultiplayerStorybookItem(item);
-                result = purchase.accepted ? 'purchased' : purchase.reason === 'already-owned' ? 'owned' : 'insufficient';
+                result = purchase.accepted
+                  ? "purchased"
+                  : purchase.reason === "already-owned"
+                    ? "owned"
+                    : "insufficient";
               } else {
                 result = useStorybookLaneStore.getState().purchaseItem(item);
               }
-              if (result === 'purchased') {
-                playStorybookSound(item === 'dog' ? 'pet' : item === 'tricycle' ? 'trike' : item === 'mini-ride-on' ? 'rideOn' : 'purchase');
-                setActiveDialogue({ name: 'My Home', text: `${label} purchased and saved. It is now displayed at your Storybook Lane home.` });
+              if (result === "purchased") {
+                playStorybookSound(
+                  item === "dog"
+                    ? "pet"
+                    : item === "tricycle"
+                      ? "trike"
+                      : item === "mini-ride-on"
+                        ? "rideOn"
+                        : "purchase",
+                );
+                setActiveDialogue({
+                  name: "My Home",
+                  text: `${label} purchased and saved. It is now displayed at your Storybook Lane home.`,
+                });
               } else {
-                setActiveDialogue({ name: 'My Home', text: result === 'owned' ? `${label} is already owned.` : `Not enough RB for ${label}. Your balance stays unchanged.` });
+                setActiveDialogue({
+                  name: "My Home",
+                  text:
+                    result === "owned"
+                      ? `${label} is already owned.`
+                      : `Not enough RB for ${label}. Your balance stays unchanged.`,
+                });
               }
             };
             const owned = storybook.ownedItems;
@@ -831,380 +1173,706 @@ export function UI() {
               price: number,
               ownedLabel: string,
               ownedAction?: () => void,
-            ) => (owned.includes(item)
-              ? { label: `${label} · ${ownedLabel}`, action: ownedAction ?? (() => setActiveDialogue(null)) }
-              : {
-                label: storybook.ribbonBucks >= price
-                  ? `${label} · Buy ${price.toLocaleString()} RB`
-                  : `${label} · ${price.toLocaleString()} RB (need ${(price - storybook.ribbonBucks).toLocaleString()} more)`,
-                action: () => { void buyItem(item, label); },
-              });
+            ) =>
+              owned.includes(item)
+                ? {
+                    label: `${label} · ${ownedLabel}`,
+                    action: ownedAction ?? (() => setActiveDialogue(null)),
+                  }
+                : {
+                    label:
+                      storybook.ribbonBucks >= price
+                        ? `${label} · Buy ${price.toLocaleString()} RB`
+                        : `${label} · ${price.toLocaleString()} RB (need ${(price - storybook.ribbonBucks).toLocaleString()} more)`,
+                    action: () => {
+                      void buyItem(item, label);
+                    },
+                  };
             setActiveDialogue({
               name: `${homeTierName(storybook.cribTier)} · Wavy Manor`,
               text: `Owned property. Balance: ${storybook.ribbonBucks.toLocaleString()} RB. Enter the furnished interior, or check what you own.`,
               options: [
-                { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } },
-                { label: 'What I own', action: () => showOwnershipSummary() },
-                entry('tricycle', 'Tricycle', STORYBOOK_PRICES.tricycle, 'Owned'),
-                entry('dog', 'Dog', STORYBOOK_PRICES.dog, 'Owned · whistle for it outside', () => {
-                  requestDogRecall();
-                  setActiveDialogue({ name: 'Whistle', text: 'Your dog comes running.', options: [{ label: 'Good dog', action: () => setActiveDialogue(null) }] });
-                }),
-                entry('crib', 'Personal Crib', STORYBOOK_PRICES.crib, 'Owned'),
-                entry('mini-ride-on', 'Mini Ride-On', STORYBOOK_PRICES.miniRideOn, 'Owned'),
-                { label: 'Close', action: () => setActiveDialogue(null) },
+                {
+                  label: "Enter my home",
+                  action: () => {
+                    useFinalMasterStore.getState().enterHome();
+                    setActiveDialogue(null);
+                  },
+                },
+                { label: "What I own", action: () => showOwnershipSummary() },
+                entry(
+                  "tricycle",
+                  "Tricycle",
+                  STORYBOOK_PRICES.tricycle,
+                  "Owned",
+                ),
+                entry(
+                  "dog",
+                  "Dog",
+                  STORYBOOK_PRICES.dog,
+                  "Owned · whistle for it outside",
+                  () => {
+                    requestDogRecall();
+                    setActiveDialogue({
+                      name: "Whistle",
+                      text: "Your dog comes running.",
+                      options: [
+                        {
+                          label: "Good dog",
+                          action: () => setActiveDialogue(null),
+                        },
+                      ],
+                    });
+                  },
+                ),
+                entry("crib", "Personal Crib", STORYBOOK_PRICES.crib, "Owned"),
+                entry(
+                  "mini-ride-on",
+                  "Mini Ride-On",
+                  STORYBOOK_PRICES.miniRideOn,
+                  "Owned",
+                ),
+                entry(
+                  "ping-pong-table",
+                  "Ping-Pong Table",
+                  STORYBOOK_PRICES.pingPongTable,
+                  "Owned · playable in the rec room",
+                ),
+                { label: "Close", action: () => setActiveDialogue(null) },
               ],
             });
           }
-        } else if (activeInteractable === 'storybook-exit') {
+        } else if (activeInteractable === "storybook-exit") {
           leaveStorybookLane();
-        } else if (activeInteractable === 'garden-return') {
+        } else if (activeInteractable === "garden-return") {
           returnToHub();
-        } else if (activeInteractable.startsWith('garden-activity-host-')) {
+        } else if (activeInteractable.startsWith("garden-activity-host-")) {
           const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
-          const plantingStep = bed === 0 ? gardenActivityStep : expansion.secondPlantingStep;
+          const plantingStep =
+            bed === 0 ? gardenActivityStep : expansion.secondPlantingStep;
           if (plantingStep === 0) {
             if (!startGardenActivity(bed)) {
-              setActiveDialogue({ name: 'Gardener Nia', text: 'Each bed needs three seed packets. Check the Seed Inspection station or your Backpack.' });
+              setActiveDialogue({
+                name: "Gardener Nia",
+                text: "Each bed needs three seed packets. Check the Seed Inspection station or your Backpack.",
+              });
               return;
             }
-            playGameSound('garden-plant', 'interaction');
+            playGameSound("garden-plant", "interaction");
             setActiveDialogue({
-              name: 'Gardener Nia',
+              name: "Gardener Nia",
               text: `Let’s wake up planting bed ${bed + 1}. First, loosen the soil for three seeds.`,
             });
           } else if (plantingStep < 3) {
             const nextStep = advanceGardenActivity(bed);
-            playGameSound(nextStep >= 3 ? 'garden-harvest' : 'garden-plant', 'interaction');
+            playGameSound(
+              nextStep >= 3 ? "garden-harvest" : "garden-plant",
+              "interaction",
+            );
             if (nextStep >= 3) {
-              completeActivity('garden-planting', 2, 1, bed);
-              setActiveDialogue(rivalStory.beat === 'garden-reversal'
-                ? {
-                    name: 'Mae',
-                    text: 'My map put the watering can on the wrong side, and you fixed it without making me feel silly. Meet me back in the Hub. I think our plans fit together.',
-                  }
-                : null);
+              completeActivity("garden-planting", 2, 1, bed);
+              setActiveDialogue(
+                rivalStory.beat === "garden-reversal"
+                  ? {
+                      name: "Mae",
+                      text: "My map put the watering can on the wrong side, and you fixed it without making me feel silly. Meet me back in the Hub. I think our plans fit together.",
+                    }
+                  : null,
+              );
             } else {
               setActiveDialogue({
-                name: 'Gardener Nia',
-                text: 'Great soil work. Now carry the little watering can along the row.',
+                name: "Gardener Nia",
+                text: "Great soil work. Now carry the little watering can along the row.",
               });
             }
           } else {
             resetGardenActivity(bed);
             setActiveDialogue({
-              name: 'Gardener Nia',
-              text: expansion.seedPackets >= 3
-                ? 'The bed is ready for another planting round whenever you are.'
-                : `A guided round needs three seed packets and you have ${expansion.seedPackets}. Harvest a ready Gummy Drop bed to get two back.`,
+              name: "Gardener Nia",
+              text:
+                expansion.seedPackets >= 3
+                  ? "The bed is ready for another planting round whenever you are."
+                  : `A guided round needs three seed packets and you have ${expansion.seedPackets}. Harvest a ready Gummy Drop bed to get two back.`,
             });
           }
-        } else if (activeInteractable.startsWith('gummy-drop-bed-')) {
+        } else if (activeInteractable.startsWith("gummy-drop-bed-")) {
           const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
           const selectedCrop = bed === 0 ? gummyCrop : gummyCrop2;
-          const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
+          const now = absoluteGameMinute(
+            dayNumber,
+            useGameStore.getState().clock.minute,
+          );
           if (selectedCrop.plantedAt === null) {
             // The dialogue used to say "Seeds planted!" whether or not
             // anything was planted, which is what made planting look broken
             // when the player had run out of seed packets.
             const planted = plantGummyDrops(bed);
-            if (planted === 'planted') {
-              recordTutorialEvent('plant-three-seeds');
-              playGameSound('garden-plant', 'interaction');
+            if (planted === "planted") {
+              recordTutorialEvent("plant-three-seeds");
+              playGameSound("garden-plant", "interaction");
               setActiveDialogue({
                 name: `Gummy Drop Garden ${bed + 1}`,
                 text: `Seeds planted — one packet used, ${expansion.seedPackets - GUMMY_SEEDS_PER_PLANTING} left. They need five in-game hours to grow a full crop of ten Gummy Drops.`,
               });
-            } else if (planted === 'needs-seeds') {
+            } else if (planted === "needs-seeds") {
               setActiveDialogue({
                 name: `Gummy Drop Garden ${bed + 1}`,
-                text: 'You are out of seed packets. Harvest a ready bed to get two back, or ask Gardener Nia about a planting round.',
+                text: "You are out of seed packets. Harvest a ready bed to get two back, or ask Gardener Nia about a planting round.",
               });
             } else {
-              setActiveDialogue({ name: `Gummy Drop Garden ${bed + 1}`, text: 'Nothing to plant here right now.' });
+              setActiveDialogue({
+                name: `Gummy Drop Garden ${bed + 1}`,
+                text: "Nothing to plant here right now.",
+              });
             }
           } else if (cropIsReady(selectedCrop, now)) {
             const harvested = harvestGummyDrops(bed);
-            if (harvested === 'harvested') {
-              playGameSound('garden-harvest', 'interaction');
+            if (harvested === "harvested") {
+              playGameSound("garden-harvest", "interaction");
               setActiveDialogue({
-                name: 'Gummy Drop Garden',
+                name: "Gummy Drop Garden",
                 text: `Ten Gummy Drops harvested, and ${GUMMY_SEEDS_RETURNED_PER_HARVEST} seed packets back. Plant again to grow another crop — the bed will not refill on its own.`,
               });
             }
           } else {
-            setActiveDialogue({ name: 'Gummy Drop Garden', text: `The candy plants are ${Math.floor(cropProgress(selectedCrop, now) * 100)}% grown. A full crop takes five in-game hours.` });
+            setActiveDialogue({
+              name: "Gummy Drop Garden",
+              text: `The candy plants are ${Math.floor(cropProgress(selectedCrop, now) * 100)}% grown. A full crop takes five in-game hours.`,
+            });
           }
-          if (selectedCrop.gummyDrops > 0) setActiveDialogue({
-            name: 'Gummy Drop Basket', text: `${selectedCrop.gummyDrops} Gummy Drops ready. Sharing earns respect; a full basket sells for $30.`,
-            options: [
-              ...(selectedCrop.gummyDrops >= GUMMY_HARVEST_SIZE ? [{ label: `Sell 10 for $${Math.round(30 * seedValueMultiplier(expansion.seedQuality))} + 5 REP`, action: () => { sellGummyCrop(bed); setActiveDialogue(null); } }] : []),
-              { label: 'Share 1 · $3 + 2 REP', action: () => { feedGummyDrop(bed); setActiveDialogue(null); } },
-              { label: 'Eat 1 · +1 REP', action: () => { eatGummyDrop(bed); setActiveDialogue(null); } },
-              { label: 'Leave', action: () => setActiveDialogue(null) },
-            ],
-          });
-        } else if (activeInteractable === 'garden-fishing-spot') {
+          if (selectedCrop.gummyDrops > 0)
+            setActiveDialogue({
+              name: "Gummy Drop Basket",
+              text: `${selectedCrop.gummyDrops} Gummy Drops ready. Sharing earns respect; a full basket sells for $30.`,
+              options: [
+                ...(selectedCrop.gummyDrops >= GUMMY_HARVEST_SIZE
+                  ? [
+                      {
+                        label: `Sell 10 for $${Math.round(30 * seedValueMultiplier(expansion.seedQuality))} + 5 REP`,
+                        action: () => {
+                          sellGummyCrop(bed);
+                          setActiveDialogue(null);
+                        },
+                      },
+                    ]
+                  : []),
+                {
+                  label: "Share 1 · $3 + 2 REP",
+                  action: () => {
+                    feedGummyDrop(bed);
+                    setActiveDialogue(null);
+                  },
+                },
+                {
+                  label: "Eat 1 · +1 REP",
+                  action: () => {
+                    eatGummyDrop(bed);
+                    setActiveDialogue(null);
+                  },
+                },
+                { label: "Leave", action: () => setActiveDialogue(null) },
+              ],
+            });
+        } else if (activeInteractable === "garden-fishing-spot") {
           if (!expansion.fishingCastReady) {
             castFishingLine();
             setActiveDialogue({
-              name: 'Ripple Pond Fishing',
+              name: "Ripple Pond Fishing",
               text: `You cast the ${expansion.equippedRod} rod. Watch the bobber… now reel when it splashes!`,
               options: [
-                { label: 'Reel now!', action: () => { if (catchSwedishFish()) { playGameSound('pickup', 'interaction'); setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. Watch it splash up beside the rod.' }); } } },
-                { label: 'Cancel cast', action: () => setActiveDialogue(null) },
+                {
+                  label: "Reel now!",
+                  action: () => {
+                    if (catchSwedishFish()) {
+                      playGameSound("pickup", "interaction");
+                      setActiveDialogue({
+                        name: "Catch!",
+                        text: "A Swedish Fish! +1 XP. Watch it splash up beside the rod.",
+                      });
+                    }
+                  },
+                },
+                { label: "Cancel cast", action: () => setActiveDialogue(null) },
               ],
             });
           } else {
             if (catchSwedishFish()) {
-              playGameSound('pickup', 'interaction');
-              setActiveDialogue({ name: 'Catch!', text: 'A Swedish Fish! +1 XP. Watch it splash up beside the rod.' });
+              playGameSound("pickup", "interaction");
+              setActiveDialogue({
+                name: "Catch!",
+                text: "A Swedish Fish! +1 XP. Watch it splash up beside the rod.",
+              });
             }
           }
-        } else if (activeInteractable === 'garden-fishing-shop') {
-          recordTutorialEvent('fishing-shop-visited');
-          setActiveDialogue({ name: 'Ripple Pond Tackle Kiosk', text: 'Hooks are pretend, lines stay clear of friends, and every Swedish Fish catch goes safely into your Backpack.' });
-        } else if (activeInteractable === 'seed-inspection') {
+        } else if (activeInteractable === "garden-fishing-shop") {
+          recordTutorialEvent("fishing-shop-visited");
+          setActiveDialogue({
+            name: "Ripple Pond Tackle Kiosk",
+            text: "Hooks are pretend, lines stay clear of friends, and every Swedish Fish catch goes safely into your Backpack.",
+          });
+        } else if (activeInteractable === "seed-inspection") {
           const canPlant = expansion.seedPackets >= 3;
-          const tier = SEED_QUALITY_TIERS.find((entry) => entry.id === expansion.seedQuality)!;
+          const tier = SEED_QUALITY_TIERS.find(
+            (entry) => entry.id === expansion.seedQuality,
+          )!;
           const inspectedToday = expansion.seedInspectionDay === dayNumber;
           setActiveDialogue({
-            name: 'Seed Discovery Station',
-            text: `${tier.label} · expected Garden sale value +${Math.round((tier.multiplier - 1) * 100)}%. ${expansion.seedPackets} packets held. ${canPlant ? 'Plantable now.' : 'You need 3 packets.'} ${inspectedToday ? 'Today’s inspection is complete.' : 'Stop the timing meter in the green zone to upgrade without downgrade risk.'}`,
-            options: inspectedToday ? [{ label: 'Done', action: () => setActiveDialogue(null) }] : [
-              { label: 'Start Seed Inspection', action: () => { setActiveDialogue(null); setSeedInspectionOpen(true); } },
-              { label: 'Later', action: () => setActiveDialogue(null) },
-            ],
+            name: "Seed Discovery Station",
+            text: `${tier.label} · expected Garden sale value +${Math.round((tier.multiplier - 1) * 100)}%. ${expansion.seedPackets} packets held. ${canPlant ? "Plantable now." : "You need 3 packets."} ${inspectedToday ? "Today’s inspection is complete." : "Stop the timing meter in the green zone to upgrade without downgrade risk."}`,
+            options: inspectedToday
+              ? [{ label: "Done", action: () => setActiveDialogue(null) }]
+              : [
+                  {
+                    label: "Start Seed Inspection",
+                    action: () => {
+                      setActiveDialogue(null);
+                      setSeedInspectionOpen(true);
+                    },
+                  },
+                  { label: "Later", action: () => setActiveDialogue(null) },
+                ],
           });
-        } else if (activeInteractable.startsWith('expansion-collectible-')) {
-          const id = activeInteractable.replace('expansion-collectible-', '') as CollectibleId;
-          if (collectExpansionCollectible(id)) playGameSound('pickup', 'interaction');
-        } else if (activeInteractable === 'lost-found-desk') {
+        } else if (activeInteractable.startsWith("expansion-collectible-")) {
+          const id = activeInteractable.replace(
+            "expansion-collectible-",
+            "",
+          ) as CollectibleId;
+          if (collectExpansionCollectible(id))
+            playGameSound("pickup", "interaction");
+        } else if (activeInteractable === "lost-found-desk") {
           const job = expansion.lostFoundJob;
           if (!job) {
-            setActiveDialogue({ name: 'Lost & Found Job Board', text: 'The board is clear. A new lost-item notice rotates in about every ten in-game minutes.' });
-          } else if (job.status === 'available') {
-            setActiveDialogue({ name: 'Lost & Found Job Board', text: `LOST ITEM: ${job.label}. Search the ${job.zone === 'garden' ? 'Garden District' : 'main daycare'}.`, options: [
-              { label: 'Accept job', action: () => { if (acceptLostFoundJob()) recordTutorialEvent('lost-found-accepted'); setActiveDialogue({ name: 'Job Accepted', text: `Find ${job.label}, then bring it back to this desk.` }); } },
-              { label: 'Later', action: () => setActiveDialogue(null) },
-            ] });
-          } else if (job.status === 'found') {
-            if (turnInLostFoundJob()) recordTutorialEvent('lost-found-returned');
-            playGameSound('reward', 'interaction');
-            setActiveDialogue({ name: 'Lost & Found', text: `${job.label} returned! Your RNG reward is shown in the notification.` });
+            setActiveDialogue({
+              name: "Lost & Found Job Board",
+              text: "The board is clear. A new lost-item notice rotates in about every ten in-game minutes.",
+            });
+          } else if (job.status === "available") {
+            setActiveDialogue({
+              name: "Lost & Found Job Board",
+              text: `LOST ITEM: ${job.label}. Search the ${job.zone === "garden" ? "Garden District" : "main daycare"}.`,
+              options: [
+                {
+                  label: "Accept job",
+                  action: () => {
+                    if (acceptLostFoundJob())
+                      recordTutorialEvent("lost-found-accepted");
+                    setActiveDialogue({
+                      name: "Job Accepted",
+                      text: `Find ${job.label}, then bring it back to this desk.`,
+                    });
+                  },
+                },
+                { label: "Later", action: () => setActiveDialogue(null) },
+              ],
+            });
+          } else if (job.status === "found") {
+            if (turnInLostFoundJob())
+              recordTutorialEvent("lost-found-returned");
+            playGameSound("reward", "interaction");
+            setActiveDialogue({
+              name: "Lost & Found",
+              text: `${job.label} returned! Your RNG reward is shown in the notification.`,
+            });
           } else {
-            setActiveDialogue({ name: 'Lost & Found Job Board', text: `Active job: find ${job.label} in the ${job.zone === 'garden' ? 'Garden District' : 'main daycare'}.` });
+            setActiveDialogue({
+              name: "Lost & Found Job Board",
+              text: `Active job: find ${job.label} in the ${job.zone === "garden" ? "Garden District" : "main daycare"}.`,
+            });
           }
-        } else if (activeInteractable === 'lost-found-item') {
+        } else if (activeInteractable === "lost-found-item") {
           if (collectLostFoundItem()) {
-            recordTutorialEvent('lost-found-found');
-            playGameSound('pickup', 'interaction');
-            setActiveDialogue({ name: 'Found it!', text: `The ${expansion.lostFoundJob?.label ?? 'lost item'} is in your quest backpack. Return it to the Lost & Found Desk.` });
+            recordTutorialEvent("lost-found-found");
+            playGameSound("pickup", "interaction");
+            setActiveDialogue({
+              name: "Found it!",
+              text: `The ${expansion.lostFoundJob?.label ?? "lost item"} is in your quest backpack. Return it to the Lost & Found Desk.`,
+            });
           }
-        } else if (activeInteractable === 'art-mini-activity') {
-          recordTutorialEvent('visit-art-table');
-          if (schedule !== 'art-time') {
-            setActiveDialogue({ name: 'Art Center', text: 'The pattern table opens during Art Time at 10:30 AM.' });
+        } else if (activeInteractable === "art-mini-activity") {
+          recordTutorialEvent("visit-art-table");
+          if (schedule !== "art-time") {
+            setActiveDialogue({
+              name: "Art Center",
+              text: "The pattern table opens during Art Time at 10:30 AM.",
+            });
           } else if (expansion.artCompletedDays.includes(dayNumber)) {
-            setActiveDialogue({ name: 'Art Center', text: 'Today’s art pattern is complete. You can still explore the art room.' });
+            setActiveDialogue({
+              name: "Art Center",
+              text: "Today’s art pattern is complete. You can still explore the art room.",
+            });
           } else {
-            setActiveDialogue({ name: 'Color Pattern', text: 'Finish the pattern: red, blue, red, blue…', options: [
-              { label: 'Choose red', action: () => { if (completeArtActivity()) recordTutorialEvent('complete-art'); playGameSound('reward', 'interaction'); setActiveDialogue({ name: 'Art Center', text: 'Perfect pattern! +20 XP and +$20.' }); } },
-              { label: 'Choose green', action: () => setActiveDialogue({ name: 'Art Center', text: 'Almost! Look at the alternating colors and try again.' }) },
-              { label: 'Leave', action: () => setActiveDialogue(null) },
-            ] });
+            setActiveDialogue({
+              name: "Color Pattern",
+              text: "Finish the pattern: red, blue, red, blue…",
+              options: [
+                {
+                  label: "Choose red",
+                  action: () => {
+                    if (completeArtActivity())
+                      recordTutorialEvent("complete-art");
+                    playGameSound("reward", "interaction");
+                    setActiveDialogue({
+                      name: "Art Center",
+                      text: "Perfect pattern! +20 XP and +$20.",
+                    });
+                  },
+                },
+                {
+                  label: "Choose green",
+                  action: () =>
+                    setActiveDialogue({
+                      name: "Art Center",
+                      text: "Almost! Look at the alternating colors and try again.",
+                    }),
+                },
+                { label: "Leave", action: () => setActiveDialogue(null) },
+              ],
+            });
           }
-        } else if (activeInteractable === 'show-and-tell-spot') {
-          if (schedule !== 'show-and-tell') {
-            setActiveDialogue({ name: 'Show & Tell Classroom', text: 'The large back-room circle opens for presentations at 10:15 AM.' });
+        } else if (activeInteractable === "show-and-tell-spot") {
+          if (schedule !== "show-and-tell") {
+            setActiveDialogue({
+              name: "Show & Tell Classroom",
+              text: "The large back-room circle opens for presentations at 10:15 AM.",
+            });
           } else {
-            const item = inventory[0] ?? collectibles[0] ?? (expansion.swedishFish > 0 ? 'Swedish Fish' : expansion.seedPackets > 0 ? 'Seed Packet' : null);
-            if (!item) setActiveDialogue({ name: 'Show & Tell', text: 'Bring an eligible Backpack item or collectible to present.' });
+            const item =
+              inventory[0] ??
+              collectibles[0] ??
+              (expansion.swedishFish > 0
+                ? "Swedish Fish"
+                : expansion.seedPackets > 0
+                  ? "Seed Packet"
+                  : null);
+            if (!item)
+              setActiveDialogue({
+                name: "Show & Tell",
+                text: "Bring an eligible Backpack item or collectible to present.",
+              });
             else if (completeShowAndTell()) {
-              playGameSound('reward', 'interaction');
-              setActiveDialogue({ name: 'Show & Tell', text: `You presented ${item}. Ruby says, “That is delightfully weird!” +8 XP and +2 REP.` });
-            } else setActiveDialogue({ name: 'Show & Tell', text: 'You already presented today. The circle still remembers it.' });
+              playGameSound("reward", "interaction");
+              setActiveDialogue({
+                name: "Show & Tell",
+                text: `You presented ${item}. Ruby says, “That is delightfully weird!” +8 XP and +2 REP.`,
+              });
+            } else
+              setActiveDialogue({
+                name: "Show & Tell",
+                text: "You already presented today. The circle still remembers it.",
+              });
           }
-        } else if (activeInteractable === 'tech-market') {
-          if (expansion.dailyHeist === 'tech-stash' && expansion.techHeistStep !== 'complete') {
-            const copy = expansion.techHeistStep === 'idle' ? 'A Pocket Robot is stuck behind the display. Start a toy-cart diversion?' : expansion.techHeistStep === 'diversion' ? 'The cart is rolling. Use the side switch to open the display.' : 'The display is open. Recover the Pocket Robot.';
-            setActiveDialogue({ name: 'Tech Market', text: copy, options: [
-              { label: expansion.techHeistStep === 'retrieve' ? 'Recover robot' : 'Advance heist', action: () => { advanceTechHeist(); playGameSound('interaction', 'interaction'); setActiveDialogue(null); } },
-              { label: 'Leave', action: () => setActiveDialogue(null) },
-            ] });
+        } else if (activeInteractable === "tech-market") {
+          if (
+            expansion.dailyHeist === "tech-stash" &&
+            expansion.techHeistStep !== "complete"
+          ) {
+            const copy =
+              expansion.techHeistStep === "idle"
+                ? "A Pocket Robot is stuck behind the display. Start a toy-cart diversion?"
+                : expansion.techHeistStep === "diversion"
+                  ? "The cart is rolling. Use the side switch to open the display."
+                  : "The display is open. Recover the Pocket Robot.";
+            setActiveDialogue({
+              name: "Tech Market",
+              text: copy,
+              options: [
+                {
+                  label:
+                    expansion.techHeistStep === "retrieve"
+                      ? "Recover robot"
+                      : "Advance heist",
+                  action: () => {
+                    advanceTechHeist();
+                    playGameSound("interaction", "interaction");
+                    setActiveDialogue(null);
+                  },
+                },
+                { label: "Leave", action: () => setActiveDialogue(null) },
+              ],
+            });
           } else {
-            setActiveDialogue({ name: 'Tech Market', text: `Kid-tech trading kiosk. You own ${expansion.techTokens} Pocket Robot token${expansion.techTokens === 1 ? '' : 's'}. Today’s rotating heist is ${expansion.dailyHeist === 'sticker-parade' ? 'Sticker Parade' : 'Tech Stash'}.` });
+            setActiveDialogue({
+              name: "Tech Market",
+              text: `Kid-tech trading kiosk. You own ${expansion.techTokens} Pocket Robot token${expansion.techTokens === 1 ? "" : "s"}. Today’s rotating heist is ${expansion.dailyHeist === "sticker-parade" ? "Sticker Parade" : "Tech Stash"}.`,
+            });
           }
-        } else if (activeInteractable === 'snack-window') {
+        } else if (activeInteractable === "snack-window") {
           const minute = useGameStore.getState().clock.minute;
           const open = minute >= 16 * 60 + 30 && minute < 17 * 60;
-          const alreadyHadSnack = expansion.afternoonSnackDays.includes(dayNumber);
+          const alreadyHadSnack =
+            expansion.afternoonSnackDays.includes(dayNumber);
           setActiveDialogue({
-            name: 'Afternoon Snack Window',
-            text: open ? `Juice + Crackers are available now (4:30–5:00 PM). Stock: ${juiceStock} juice and ${crackerStock} crackers.` : 'Juice + Crackers are served here from 4:30–5:00 PM.',
-            options: open && !alreadyHadSnack ? [
-              { label: 'Take Juice + Crackers', action: () => { if (takeAfternoonSnack()) recordTutorialEvent('complete-snack-sale'); playGameSound('juice-service', 'interaction'); setActiveDialogue(null); } },
-              { label: 'Leave', action: () => setActiveDialogue(null) },
-            ] : undefined,
+            name: "Afternoon Snack Window",
+            text: open
+              ? `Juice + Crackers are available now (4:30–5:00 PM). Stock: ${juiceStock} juice and ${crackerStock} crackers.`
+              : "Juice + Crackers are served here from 4:30–5:00 PM.",
+            options:
+              open && !alreadyHadSnack
+                ? [
+                    {
+                      label: "Take Juice + Crackers",
+                      action: () => {
+                        if (takeAfternoonSnack())
+                          recordTutorialEvent("complete-snack-sale");
+                        playGameSound("juice-service", "interaction");
+                        setActiveDialogue(null);
+                      },
+                    },
+                    { label: "Leave", action: () => setActiveDialogue(null) },
+                  ]
+                : undefined,
           });
-        } else if (activeInteractable.startsWith('garden-landmark-')) {
-          const landmark = activeInteractable.replace('garden-landmark-', '');
-          const landmarkDialogue: Record<string, { name: string; text: string }> = {
+        } else if (activeInteractable.startsWith("garden-landmark-")) {
+          const landmark = activeInteractable.replace("garden-landmark-", "");
+          const landmarkDialogue: Record<
+            string,
+            { name: string; text: string }
+          > = {
             pond: {
-              name: 'Ripple Pond',
-              text: 'Tiny ripples circle the lily pads. The lookout marker keeps everyone a safe step back from the water.',
+              name: "Ripple Pond",
+              text: "Tiny ripples circle the lily pads. The lookout marker keeps everyone a safe step back from the water.",
             },
             gazebo: {
-              name: 'Garden Gazebo',
-              text: 'The roof carries songs across the Garden. It is a calm place for circle time and leaf-sharing.',
+              name: "Garden Gazebo",
+              text: "The roof carries songs across the Garden. It is a calm place for circle time and leaf-sharing.",
             },
             greenhouse: {
-              name: 'Seedling Greenhouse',
-              text: 'Warm glass protects the newest sprouts. Look closely and you can see three different leaf shapes.',
+              name: "Seedling Greenhouse",
+              text: "Warm glass protects the newest sprouts. Look closely and you can see three different leaf shapes.",
             },
           };
           const dialogue = landmarkDialogue[landmark];
           if (dialogue) setActiveDialogue(dialogue);
-        } else if (activeInteractable.startsWith('garden-npc-')) {
-          const name = activeInteractable.replace('garden-npc-', '');
+        } else if (activeInteractable.startsWith("garden-npc-")) {
+          const name = activeInteractable.replace("garden-npc-", "");
           const gardenDialogue: Record<string, string> = {
-            Lily: 'I am watering the west bed, then meeting Finn in the gazebo to compare leaves.',
-            Finn: 'The pond is full of tiny ripples. After I watch them, I am joining the garden ball game.',
-            Zoe: 'I checked the tall flowers and carried the watering can back along the path.',
-            'Ms. Harper': 'I am supervising the planting beds, pond edge, and gazebo path. Everyone has a clear route.',
+            Lily: "I am watering the west bed, then meeting Finn in the gazebo to compare leaves.",
+            Finn: "The pond is full of tiny ripples. After I watch them, I am joining the garden ball game.",
+            Zoe: "I checked the tall flowers and carried the watering can back along the path.",
+            "Ms. Harper":
+              "I am supervising the planting beds, pond edge, and gazebo path. Everyone has a clear route.",
           };
-          setActiveDialogue({ name, text: gardenDialogue[name] ?? 'The Garden has something new to notice at every stop.' });
-        } else if (activeInteractable === 'caper-board') {
-          if (caper.step === 'idle' || caper.step === 'complete') {
+          setActiveDialogue({
+            name,
+            text:
+              gardenDialogue[name] ??
+              "The Garden has something new to notice at every stop.",
+          });
+        } else if (activeInteractable === "caper-board") {
+          if (caper.step === "idle" || caper.step === "complete") {
             if (startCaper()) {
               setActiveDialogue({
-                name: 'Sticker Parade Plan',
-                text: 'Mae’s safe caper has one rule: nobody sneaks, takes, or gets left out. Choose the role you want to practice.',
+                name: "Sticker Parade Plan",
+                text: "Mae’s safe caper has one rule: nobody sneaks, takes, or gets left out. Choose the role you want to practice.",
                 options: [
-                  { label: 'Route Leader', action: () => { chooseCaperRole('route-leader'); setActiveDialogue({ name: 'Mae', text: 'You lead the garden-gate route. I’ll keep the plan card and check each turn with you.' }); } },
-                  { label: 'Lookout', action: () => { chooseCaperRole('lookout'); setActiveDialogue({ name: 'Zoe', text: 'We watch for clear hallways and call a pause if anyone needs the path.' }); } },
-                  { label: 'Supply Helper', action: () => { chooseCaperRole('supply-helper'); setActiveDialogue({ name: 'Sam', text: 'We count washable stickers and carry only what Ms. Harper approves.' }); } },
+                  {
+                    label: "Route Leader",
+                    action: () => {
+                      chooseCaperRole("route-leader");
+                      setActiveDialogue({
+                        name: "Mae",
+                        text: "You lead the garden-gate route. I’ll keep the plan card and check each turn with you.",
+                      });
+                    },
+                  },
+                  {
+                    label: "Lookout",
+                    action: () => {
+                      chooseCaperRole("lookout");
+                      setActiveDialogue({
+                        name: "Zoe",
+                        text: "We watch for clear hallways and call a pause if anyone needs the path.",
+                      });
+                    },
+                  },
+                  {
+                    label: "Supply Helper",
+                    action: () => {
+                      chooseCaperRole("supply-helper");
+                      setActiveDialogue({
+                        name: "Sam",
+                        text: "We count washable stickers and carry only what Ms. Harper approves.",
+                      });
+                    },
+                  },
                 ],
               });
             }
-          } else if (caper.step === 'plan') {
+          } else if (caper.step === "plan") {
             setActiveDialogue({
-              name: 'Sticker Parade Plan',
-              text: 'Pick one role before the route opens.',
-              options: [
-                { label: 'Route Leader', action: () => { chooseCaperRole('route-leader'); setActiveDialogue(null); } },
-                { label: 'Lookout', action: () => { chooseCaperRole('lookout'); setActiveDialogue(null); } },
-                { label: 'Supply Helper', action: () => { chooseCaperRole('supply-helper'); setActiveDialogue(null); } },
-              ],
-            });
-          } else if (caper.step === 'scout') {
-            if (advanceCaper()) {
-              setActiveDialogue({
-                name: 'Sticker Parade Plan',
-                text: `Scouting complete with ${caper.helper}. The ${caper.route.replace('-', ' ')} route has clear corners and a calm stopping spot. Show the plan to Ms. Harper next.`,
-              });
-            }
-          } else if (caper.step === 'teacher-check') {
-            setActiveDialogue({
-              name: 'Sticker Parade Plan',
-              text: 'The plan needs a grown-up check. Bring it to Ms. Harper before launching the parade.',
-            });
-          } else if (caper.step === 'patrol-timing') {
-            setActiveDialogue({
-              name: 'Sticker Parade Plan',
-              text: caper.patrolStartedAt > 0
-                ? 'Keep watching until the marked teacher round is complete.'
-                : 'Ms. Harper marked a calm hallway window. Start the timer and watch one full teacher round before moving.',
+              name: "Sticker Parade Plan",
+              text: "Pick one role before the route opens.",
               options: [
                 {
-                  label: caper.patrolStartedAt > 0 ? 'Check Clear Path' : 'Start Watching',
+                  label: "Route Leader",
+                  action: () => {
+                    chooseCaperRole("route-leader");
+                    setActiveDialogue(null);
+                  },
+                },
+                {
+                  label: "Lookout",
+                  action: () => {
+                    chooseCaperRole("lookout");
+                    setActiveDialogue(null);
+                  },
+                },
+                {
+                  label: "Supply Helper",
+                  action: () => {
+                    chooseCaperRole("supply-helper");
+                    setActiveDialogue(null);
+                  },
+                },
+              ],
+            });
+          } else if (caper.step === "scout") {
+            if (advanceCaper()) {
+              setActiveDialogue({
+                name: "Sticker Parade Plan",
+                text: `Scouting complete with ${caper.helper}. The ${caper.route.replace("-", " ")} route has clear corners and a calm stopping spot. Show the plan to Ms. Harper next.`,
+              });
+            }
+          } else if (caper.step === "teacher-check") {
+            setActiveDialogue({
+              name: "Sticker Parade Plan",
+              text: "The plan needs a grown-up check. Bring it to Ms. Harper before launching the parade.",
+            });
+          } else if (caper.step === "patrol-timing") {
+            setActiveDialogue({
+              name: "Sticker Parade Plan",
+              text:
+                caper.patrolStartedAt > 0
+                  ? "Keep watching until the marked teacher round is complete."
+                  : "Ms. Harper marked a calm hallway window. Start the timer and watch one full teacher round before moving.",
+              options: [
+                {
+                  label:
+                    caper.patrolStartedAt > 0
+                      ? "Check Clear Path"
+                      : "Start Watching",
                   action: () => {
                     const before = useGameStore.getState().caper;
                     observeCaperPatrol(Date.now());
                     const after = useGameStore.getState().caper;
-                    setActiveDialogue(after.step === 'safe-distraction'
-                      ? { name: 'Ms. Harper', text: 'Good waiting. The full round is complete, the hallway is clear, and I am watching the Storage doorway.' }
-                      : {
-                          name: 'Ms. Harper',
-                          text: before.patrolStartedAt > 0
-                            ? 'The round is still moving. Watch a little longer, then check again.'
-                            : 'Timer started. Watch the classroom, art hall, and playground turns before checking again.',
-                        });
+                    setActiveDialogue(
+                      after.step === "safe-distraction"
+                        ? {
+                            name: "Ms. Harper",
+                            text: "Good waiting. The full round is complete, the hallway is clear, and I am watching the Storage doorway.",
+                          }
+                        : {
+                            name: "Ms. Harper",
+                            text:
+                              before.patrolStartedAt > 0
+                                ? "The round is still moving. Watch a little longer, then check again."
+                                : "Timer started. Watch the classroom, art hall, and playground turns before checking again.",
+                          },
+                    );
                   },
                 },
-                { label: 'Pause and Reset', action: () => { interruptCaper(); setActiveDialogue({ name: 'Ms. Harper', text: 'Pausing is a strong choice. We’ll clear the route and scout it together again.' }); } },
+                {
+                  label: "Pause and Reset",
+                  action: () => {
+                    interruptCaper();
+                    setActiveDialogue({
+                      name: "Ms. Harper",
+                      text: "Pausing is a strong choice. We’ll clear the route and scout it together again.",
+                    });
+                  },
+                },
               ],
             });
-          } else if (caper.step === 'safe-distraction') {
+          } else if (caper.step === "safe-distraction") {
             setActiveDialogue({
-              name: 'Sticker Parade Plan',
-              text: 'The timing is right. Set the supervised bubble table in the public hall so the younger group has a calm activity while Ms. Harper opens Storage.',
+              name: "Sticker Parade Plan",
+              text: "The timing is right. Set the supervised bubble table in the public hall so the younger group has a calm activity while Ms. Harper opens Storage.",
             });
-          } else if (caper.step === 'retrieve') {
+          } else if (caper.step === "retrieve") {
             setActiveDialogue({
-              name: 'Sticker Parade Plan',
-              text: 'Ms. Harper has authorized this objective and is supervising the Storage doorway. Retrieve the labeled parade banner, then return here.',
+              name: "Sticker Parade Plan",
+              text: "Ms. Harper has authorized this objective and is supervising the Storage doorway. Retrieve the labeled parade banner, then return here.",
             });
-          } else if (caper.step === 'escape') {
+          } else if (caper.step === "escape") {
             if (advanceCaper()) {
-              setActiveDialogue({ name: 'Sticker Parade Plan', text: 'Safe return complete. Everyone stayed on the approved route. The parade can begin.' });
+              setActiveDialogue({
+                name: "Sticker Parade Plan",
+                text: "Safe return complete. Everyone stayed on the approved route. The parade can begin.",
+              });
             }
-          } else if (caper.step === 'interrupted') {
+          } else if (caper.step === "interrupted") {
             if (advanceCaper()) {
-              setActiveDialogue({ name: 'Ms. Harper', text: 'Reset complete. Scout the route again with your helper; pausing did not erase your progress.' });
+              setActiveDialogue({
+                name: "Ms. Harper",
+                text: "Reset complete. Scout the route again with your helper; pausing did not erase your progress.",
+              });
             }
-          } else if (caper.step === 'celebrate' && advanceCaper()) {
+          } else if (caper.step === "celebrate" && advanceCaper()) {
             setActiveDialogue(null);
           }
-        } else if (activeInteractable === 'parade-banner') {
-          if (caper.step === 'retrieve' && completeCaperRetrieval()) {
+        } else if (activeInteractable === "parade-banner") {
+          if (caper.step === "retrieve" && completeCaperRetrieval()) {
             setActiveInteractable(null);
             setActiveDialogue({
-              name: 'Parade Banner',
-              text: 'You take only the labeled banner while Ms. Harper supervises. Follow the clear return route back to the plan board.',
+              name: "Parade Banner",
+              text: "You take only the labeled banner while Ms. Harper supervises. Follow the clear return route back to the plan board.",
             });
           }
-        } else if (activeInteractable === 'caper-bubble-table') {
-          if (caper.step === 'safe-distraction' && completeCaperSafeSetup()) {
+        } else if (activeInteractable === "caper-bubble-table") {
+          if (caper.step === "safe-distraction" && completeCaperSafeSetup()) {
             setActiveInteractable(null);
             setActiveDialogue({
-              name: 'Bubble Table',
-              text: 'The public hall activity is ready and supervised. Ms. Harper opens Storage for the labeled parade banner only.',
+              name: "Bubble Table",
+              text: "The public hall activity is ready and supervised. Ms. Harper opens Storage for the labeled parade banner only.",
             });
           }
-        } else if (activeInteractable.startsWith('route-')) {
-          const routeId = activeInteractable.replace('route-', '');
-          const route = HUB_ROUTES.find((candidate) => candidate.id === routeId);
+        } else if (activeInteractable.startsWith("route-")) {
+          const routeId = activeInteractable.replace("route-", "");
+          const route = HUB_ROUTES.find(
+            (candidate) => candidate.id === routeId,
+          );
           if (route) {
             const unlocked = isRouteUnlocked(route, progression);
             const tutorial = useFinalMasterStore.getState();
-            const tutorialGardenAccess = tutorial.tutorialStarted && TUTORIAL_CHAPTERS[tutorial.tutorialChapter]?.id === 'garden';
-            if (route.id === 'garden-district' && (unlocked || tutorialGardenAccess)) {
+            const tutorialGardenAccess =
+              tutorial.tutorialStarted &&
+              TUTORIAL_CHAPTERS[tutorial.tutorialChapter]?.id === "garden";
+            if (
+              route.id === "garden-district" &&
+              (unlocked || tutorialGardenAccess)
+            ) {
               enterGarden(tutorialGardenAccess);
-            } else if (route.id === 'storybook-lane' && unlocked && storybookIsOpen(useGameStore.getState().clock.minute)) {
-              if (enterStorybookLane()) playStorybookSound('arrival');
+            } else if (
+              route.id === "storybook-lane" &&
+              unlocked &&
+              storybookIsOpen(useGameStore.getState().clock.minute)
+            ) {
+              if (enterStorybookLane()) playStorybookSound("arrival");
             } else {
-              if (unlocked && route.id === 'maker-market') advanceDistrictPreview('makerMarket');
-              if (unlocked && route.id === 'storybook-lane') advanceDistrictPreview('storybookLane');
-              const foundationProgress = route.id === 'maker-market'
-                ? districtProgress.makerMarket
-                : districtProgress.storybookLane;
+              if (unlocked && route.id === "maker-market")
+                advanceDistrictPreview("makerMarket");
+              if (unlocked && route.id === "storybook-lane")
+                advanceDistrictPreview("storybookLane");
+              const foundationProgress =
+                route.id === "maker-market"
+                  ? districtProgress.makerMarket
+                  : districtProgress.storybookLane;
               setActiveDialogue({
                 name: route.label,
                 text: unlocked
-                  ? route.id === 'storybook-lane'
+                  ? route.id === "storybook-lane"
                     ? `Storybook Lane is ready. It opens from 5:30 PM to 6:30 PM; current time is ${formatClock(useGameStore.getState().clock.minute)}.`
                     : `${route.description} Foundation ${Math.min(3, foundationProgress + 1)}/3 is now sketched at this entrance; the full district remains a future route.`
-                  : route.id === 'garden-district'
+                  : route.id === "garden-district"
                     ? `${route.subtitle}. Garden District opens at 10 hub reputation (${requirementProgressLabel(route, progression)}). Complete helpful quests and activities to earn reputation.`
                     : `${route.subtitle}. Build ${requirementProgressLabel(route, progression)} to prepare this route.`,
               });
             }
           }
-        } else if (activeInteractable.startsWith('teacher-')) {
-          handleTeacherInteraction(activeInteractable.replace('teacher-', ''));
-        } else if (activeInteractable.startsWith('kid-')) {
-          const kidName = activeInteractable.split('-')[1];
+        } else if (activeInteractable.startsWith("teacher-")) {
+          handleTeacherInteraction(activeInteractable.replace("teacher-", ""));
+        } else if (activeInteractable.startsWith("kid-")) {
+          const kidName = activeInteractable.split("-")[1];
           handleKidInteraction(kidName);
         }
       }
@@ -1217,103 +1885,212 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, seatedSeatId, isNapping, sitAtSeat, standUp, beginNap, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, collectibles, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, gummyCrop2, expansion, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, rallyGame, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, startGardenActivity, advanceGardenActivity, resetGardenActivity, completeActivity, castFishingLine, catchSwedishFish, sellSwedishFish, completeArtActivity, completeShowAndTell, takeAfternoonSnack, collectExpansionCollectible, acceptLostFoundJob, collectLostFoundItem, turnInLostFoundJob, advanceTechHeist, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
+  }, [
+    subscribe,
+    activeInteractable,
+    schedule,
+    activeDialogue,
+    isRiding,
+    seatedSeatId,
+    isNapping,
+    sitAtSeat,
+    standUp,
+    beginNap,
+    juiceStock,
+    crackerStock,
+    waitingCustomers,
+    juiceClubCustomerPhase,
+    juiceClubActiveCustomer,
+    inventory,
+    collectibles,
+    progression,
+    quests,
+    zoneTransitioning,
+    gardenActivityStep,
+    gummyCrop,
+    gummyCrop2,
+    expansion,
+    dayNumber,
+    collectShinyRock,
+    rivalStory.beat,
+    caper,
+    districtProgress,
+    frontEndBlocked,
+    rallyGame,
+    plantGummyDrops,
+    harvestGummyDrops,
+    eatGummyDrop,
+    feedGummyDrop,
+    sellGummyCrop,
+    startGardenActivity,
+    advanceGardenActivity,
+    resetGardenActivity,
+    completeActivity,
+    castFishingLine,
+    catchSwedishFish,
+    sellSwedishFish,
+    completeArtActivity,
+    completeShowAndTell,
+    takeAfternoonSnack,
+    collectExpansionCollectible,
+    acceptLostFoundJob,
+    collectLostFoundItem,
+    turnInLostFoundJob,
+    advanceTechHeist,
+    storybook.ribbonBucks,
+    storybook.ownedItems,
+    enterStorybookLane,
+    leaveStorybookLane,
+  ]);
 
   const handleTeacherInteraction = (name: string) => {
-    if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
+    if (name === "Ms. Harper" && caper.step === "teacher-check") {
       if (advanceCaper()) {
         setActiveDialogue({
-          name: 'Ms. Harper',
-          text: 'Clear route, washable stickers, and a role for everyone. Approved. I’ll supervise the turn by the playground gate.',
+          name: "Ms. Harper",
+          text: "Clear route, washable stickers, and a role for everyone. Approved. I’ll supervise the turn by the playground gate.",
         });
       }
       return;
     }
-    if (name === 'Mr. Davis' && objectiveIsActive(quests, 'where-binky', 'search-storage')) {
-      setActiveDialogue({ name, text: 'I moved a small pink toy to the Storage Room for safekeeping. Check the grounded boxes along the back wall.' });
+    if (
+      name === "Mr. Davis" &&
+      objectiveIsActive(quests, "where-binky", "search-storage")
+    ) {
+      setActiveDialogue({
+        name,
+        text: "I moved a small pink toy to the Storage Room for safekeeping. Check the grounded boxes along the back wall.",
+      });
       return;
     }
     const intervention = getTeacherInterventionSnapshot(`hub:${name}`);
-    if (intervention?.phase === 'calling-player') {
+    if (intervention?.phase === "calling-player") {
       acknowledgeTeacherCall(`hub:${name}`);
       setActiveDialogue({
         name,
         text: intervention.targetName
           ? `Thanks for coming over. ${intervention.targetName} is taking a calm reset, and then we’ll notice the better choice together.`
-          : 'Thanks for checking in. The play space is calm again.',
+          : "Thanks for checking in. The play space is calm again.",
       });
       return;
     }
     if (intervention && interventionIsActive(intervention)) {
       setActiveDialogue({
         name,
-        text: intervention.phase === 'praise'
-          ? 'The calmer choice is working. I’m making sure that helpful reset gets noticed.'
-          : 'I’m handling this with a reminder, a little space, and a safer activity choice.',
+        text:
+          intervention.phase === "praise"
+            ? "The calmer choice is working. I’m making sure that helpful reset gets noticed."
+            : "I’m handling this with a reminder, a little space, and a safer activity choice.",
       });
       return;
     }
-    if (name === 'Mr. Davis') {
-      if (schedule === 'outdoor-play') {
-        setActiveDialogue({ name, text: rainyNow ? 'Rain plan today: I am checking the reading and building corners.' : 'I am patrolling the playground fence and keeping the gate paths clear.' });
-      } else if (schedule === 'juice-club') {
-        setActiveDialogue({ name, text: 'I am supervising the Juice Club line. Keep the counter stocked and leave a clear path for customers.' });
-      } else if (schedule === 'art-time') {
-        setActiveDialogue({ name, text: 'I am making rounds between the art table and the hallway. Brushes stay at the table when you are finished.' });
-      } else if (schedule === 'pickup') {
-        setActiveDialogue({ name, text: 'Pickup patrol is underway. I am checking the hallway and making sure everyone has their things.' });
+    if (name === "Mr. Davis") {
+      if (schedule === "outdoor-play") {
+        setActiveDialogue({
+          name,
+          text: rainyNow
+            ? "Rain plan today: I am checking the reading and building corners."
+            : "I am patrolling the playground fence and keeping the gate paths clear.",
+        });
+      } else if (schedule === "juice-club") {
+        setActiveDialogue({
+          name,
+          text: "I am supervising the Juice Club line. Keep the counter stocked and leave a clear path for customers.",
+        });
+      } else if (schedule === "art-time") {
+        setActiveDialogue({
+          name,
+          text: "I am making rounds between the art table and the hallway. Brushes stay at the table when you are finished.",
+        });
+      } else if (schedule === "pickup") {
+        setActiveDialogue({
+          name,
+          text: "Pickup patrol is underway. I am checking the hallway and making sure everyone has their things.",
+        });
       } else {
-        setActiveDialogue({ name, text: 'Morning rounds: classroom, hallway, then the playground gate. Let me know if a toy blocks a path.' });
+        setActiveDialogue({
+          name,
+          text: "Morning rounds: classroom, hallway, then the playground gate. Let me know if a toy blocks a path.",
+        });
       }
       return;
     }
     setActiveDialogue({
       name,
-      text: schedule === 'art-time'
-        ? 'I am helping everyone settle at the art tables. Choose a clear place before you begin.'
-        : 'I am watching today’s activity and helping everyone take turns.',
+      text:
+        schedule === "art-time"
+          ? "I am helping everyone settle at the art tables. Choose a clear place before you begin."
+          : "I am watching today’s activity and helping everyone take turns.",
     });
   };
 
   const handleKidInteraction = (name: string) => {
-    if (name === 'Mia') recordTutorialEvent('talk-mia');
-    if (name === 'Noah') recordTutorialEvent('talk-noah');
-    if (name === 'Mae') {
-      if (rivalStory.beat === 'meet-mae') {
-        const respond = (choice: 'kind' | 'bold' | 'curious', text: string) => {
-          if (chooseRivalResponse(choice)) setActiveDialogue({ name: 'Mae', text });
+    if (name === "Mia") recordTutorialEvent("talk-mia");
+    if (name === "Noah") recordTutorialEvent("talk-noah");
+    if (name === "Mae") {
+      if (rivalStory.beat === "meet-mae") {
+        const respond = (choice: "kind" | "bold" | "curious", text: string) => {
+          if (chooseRivalResponse(choice))
+            setActiveDialogue({ name: "Mae", text });
         };
         setActiveDialogue({
-          name: 'Mae',
-          text: 'I’m Mae. I make the best plans, but nobody follows them for long. I bet I can finish Rainbow Tidy-Up before you.',
+          name: "Mae",
+          text: "I’m Mae. I make the best plans, but nobody follows them for long. I bet I can finish Rainbow Tidy-Up before you.",
           options: [
-            { label: '“We can both help.”', action: () => respond('kind', 'Maybe. I usually work alone—but I wrote you a clue card. Let’s see how your way works.') },
-            { label: '“Challenge accepted.”', action: () => respond('bold', 'Good! A real challenge. I left my first plan in your Journal. No shortcuts, okay?') },
-            { label: '“Why do plans matter?”', action: () => respond('curious', 'Because people forget my ideas when play gets noisy. I left a note in your Journal so this one won’t disappear.') },
+            {
+              label: "“We can both help.”",
+              action: () =>
+                respond(
+                  "kind",
+                  "Maybe. I usually work alone—but I wrote you a clue card. Let’s see how your way works.",
+                ),
+            },
+            {
+              label: "“Challenge accepted.”",
+              action: () =>
+                respond(
+                  "bold",
+                  "Good! A real challenge. I left my first plan in your Journal. No shortcuts, okay?",
+                ),
+            },
+            {
+              label: "“Why do plans matter?”",
+              action: () =>
+                respond(
+                  "curious",
+                  "Because people forget my ideas when play gets noisy. I left a note in your Journal so this one won’t disappear.",
+                ),
+            },
           ],
         });
         return;
       }
-      if (rivalStory.beat === 'rainbow-challenge') {
-        setActiveDialogue({ name: 'Mae', text: 'The Rainbow Tidy-Up is our challenge. You sort your way, I’ll watch whether it really helps everyone.' });
-        return;
-      }
-      if (rivalStory.beat === 'garden-reversal') {
-        setActiveDialogue({ name: 'Mae', text: 'My next plan is in the Garden. Gardener Nia needs help with the seedlings—and I may have mixed up one part.' });
-        return;
-      }
-      if (rivalStory.beat === 'make-peace') {
+      if (rivalStory.beat === "rainbow-challenge") {
         setActiveDialogue({
-          name: 'Mae',
-          text: 'You notice people. I notice steps. Want to make one fair plan together and share the credit?',
+          name: "Mae",
+          text: "The Rainbow Tidy-Up is our challenge. You sort your way, I’ll watch whether it really helps everyone.",
+        });
+        return;
+      }
+      if (rivalStory.beat === "garden-reversal") {
+        setActiveDialogue({
+          name: "Mae",
+          text: "My next plan is in the Garden. Gardener Nia needs help with the seedlings—and I may have mixed up one part.",
+        });
+        return;
+      }
+      if (rivalStory.beat === "make-peace") {
+        setActiveDialogue({
+          name: "Mae",
+          text: "You notice people. I notice steps. Want to make one fair plan together and share the credit?",
           options: [
             {
-              label: 'Build the plan together',
+              label: "Build the plan together",
               action: () => {
                 if (resolveRivalStory()) {
                   setActiveDialogue({
-                    name: 'Mae',
-                    text: 'Two stars, one team. Ms. Harper says “Bridge Builder” is a good nickname for someone who helps ideas meet in the middle.',
+                    name: "Mae",
+                    text: "Two stars, one team. Ms. Harper says “Bridge Builder” is a good nickname for someone who helps ideas meet in the middle.",
                   });
                 }
               },
@@ -1322,66 +2099,106 @@ export function UI() {
         });
         return;
       }
-      setActiveDialogue({ name: 'Mae', text: 'Our next plan has two names at the top. That makes it better.' });
+      setActiveDialogue({
+        name: "Mae",
+        text: "Our next plan has two names at the top. That makes it better.",
+      });
       return;
     }
     // Binky Quest Logic
-    if (name === 'Leo') {
-      if (objectiveIsActive(quests, 'where-binky', 'talk-to-leo')) {
-        advanceQuestObjective('where-binky', 'talk-to-leo');
-        setActiveDialogue({ name: 'Leo', text: "I lost Binky! He's pink and round. I think Mia saw something." });
-      } else if (objectiveIsActive(quests, 'where-binky', 'return-binky')) {
-        if (inventory.includes('binky')) {
-          if (updateBinkyStatus('returned-good')) {
-            updateFriend('Leo', { friendship: 100, mood: 'happy', recentMemory: 'Got Binky back!' });
-            setActiveDialogue({ name: 'Leo', text: "BINKY! Thank you! Ms. Harper has a real helper job next: carry the misplaced blocks to the Rainbow Tidy-Up station." });
+    if (name === "Leo") {
+      if (objectiveIsActive(quests, "where-binky", "talk-to-leo")) {
+        advanceQuestObjective("where-binky", "talk-to-leo");
+        setActiveDialogue({
+          name: "Leo",
+          text: "I lost Binky! He's pink and round. I think Mia saw something.",
+        });
+      } else if (objectiveIsActive(quests, "where-binky", "return-binky")) {
+        if (inventory.includes("binky")) {
+          if (updateBinkyStatus("returned-good")) {
+            updateFriend("Leo", {
+              friendship: 100,
+              mood: "happy",
+              recentMemory: "Got Binky back!",
+            });
+            setActiveDialogue({
+              name: "Leo",
+              text: "BINKY! Thank you! Ms. Harper has a real helper job next: carry the misplaced blocks to the Rainbow Tidy-Up station.",
+            });
           } else {
-            setActiveDialogue({ name: 'Leo', text: "Let's make sure Binky is really here before we finish the helper job." });
+            setActiveDialogue({
+              name: "Leo",
+              text: "Let's make sure Binky is really here before we finish the helper job.",
+            });
           }
         } else {
-          setActiveDialogue({ name: 'Leo', text: "You found Binky, but you're not carrying him. Pick him up from where you dropped him or check Lost & Found." });
-        }
-      } else if (binkyStatus === 'returned-good') {
-        setActiveDialogue({ name: 'Leo', text: "Binky says hi! The Rainbow Tidy-Up station could use your help." });
-      } else {
-        setActiveDialogue({ name: 'Leo', text: "Please find Binky..." });
-      }
-    } else if (name === 'Mia') {
-      if (objectiveIsActive(quests, 'where-binky', 'ask-mia')) {
-        advanceQuestObjective('where-binky', 'ask-mia');
-        setActiveDialogue({ name: 'Mia', text: "I saw Sam taking a shiny rock near the playground." });
-      } else {
-        setActiveDialogue({ name: 'Mia', text: "I like shiny things." });
-      }
-    } else if (name === 'Sam') {
-      if (objectiveIsActive(quests, 'where-binky', 'trade-with-sam')) {
-        if (collectibles.includes('Shiny Rock')) {
           setActiveDialogue({
-            name: 'Sam',
+            name: "Leo",
+            text: "You found Binky, but you're not carrying him. Pick him up from where you dropped him or check Lost & Found.",
+          });
+        }
+      } else if (binkyStatus === "returned-good") {
+        setActiveDialogue({
+          name: "Leo",
+          text: "Binky says hi! The Rainbow Tidy-Up station could use your help.",
+        });
+      } else {
+        setActiveDialogue({ name: "Leo", text: "Please find Binky..." });
+      }
+    } else if (name === "Mia") {
+      if (objectiveIsActive(quests, "where-binky", "ask-mia")) {
+        advanceQuestObjective("where-binky", "ask-mia");
+        setActiveDialogue({
+          name: "Mia",
+          text: "I saw Sam taking a shiny rock near the playground.",
+        });
+      } else {
+        setActiveDialogue({ name: "Mia", text: "I like shiny things." });
+      }
+    } else if (name === "Sam") {
+      if (objectiveIsActive(quests, "where-binky", "trade-with-sam")) {
+        if (collectibles.includes("Shiny Rock")) {
+          setActiveDialogue({
+            name: "Sam",
             text: "I'll tell you what I saw if you give me a Shiny Rock.",
             options: [
-              { label: 'Trade Rock', action: () => {
-                if (tradeShinyRock()) {
-                  setActiveDialogue({ name: 'Sam', text: "Thanks! I saw Mr. Davis put something pink in the Storage Room boxes." });
-                } else {
-                  setActiveDialogue({ name: 'Sam', text: "Let's find that Shiny Rock near the playground first." });
-                }
-              }},
-              { label: 'Keep it', action: () => setActiveDialogue(null) }
-            ]
+              {
+                label: "Trade Rock",
+                action: () => {
+                  if (tradeShinyRock()) {
+                    setActiveDialogue({
+                      name: "Sam",
+                      text: "Thanks! I saw Mr. Davis put something pink in the Storage Room boxes.",
+                    });
+                  } else {
+                    setActiveDialogue({
+                      name: "Sam",
+                      text: "Let's find that Shiny Rock near the playground first.",
+                    });
+                  }
+                },
+              },
+              { label: "Keep it", action: () => setActiveDialogue(null) },
+            ],
           });
         } else {
-          setActiveDialogue({ name: 'Sam', text: "I want a Shiny Rock." });
+          setActiveDialogue({ name: "Sam", text: "I want a Shiny Rock." });
         }
-      } else if (objectiveIsActive(quests, 'where-binky', 'search-storage')) {
-        setActiveDialogue({ name: 'Sam', text: "Check the Storage Room!" });
+      } else if (objectiveIsActive(quests, "where-binky", "search-storage")) {
+        setActiveDialogue({ name: "Sam", text: "Check the Storage Room!" });
       } else {
-        setActiveDialogue({ name: 'Sam', text: "Tag, you're it! Just kidding." });
+        setActiveDialogue({
+          name: "Sam",
+          text: "Tag, you're it! Just kidding.",
+        });
       }
     } else {
       // Generic Kid dialogue
       const f = friends[name];
-      setActiveDialogue({ name: name, text: `I am feeling ${f.mood} today. ${f.recentMemory}` });
+      setActiveDialogue({
+        name: name,
+        text: `I am feeling ${f.mood} today. ${f.recentMemory}`,
+      });
     }
   };
 
@@ -1396,183 +2213,296 @@ export function UI() {
   const formatTime = (time: number) => formatClock(timeOfDayToMinute(time));
 
   const getScheduleLabel = (s: string) => {
-    return s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return s
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
   };
 
   const getInteractionLabel = () => {
     if (activeDialogue?.options) return null;
-    if (activeDialogue) return 'Continue';
-    if (isNapping) return 'Wake Up Early';
-    if (seatedSeatId) return 'Stand Up';
-    if (isRiding) return 'Dismount';
+    if (activeDialogue) return "Continue";
+    if (isNapping) return "Wake Up Early";
+    if (seatedSeatId) return "Stand Up";
+    if (isRiding) return "Dismount";
     if (!activeInteractable) return null;
-    if (activeInteractable === 'binky') return 'Pick up Binky';
-    if (activeInteractable === 'final-home-exit') return 'Exit Home';
-    if (activeInteractable.startsWith('cafeteria-seat-')) return 'Sit for Meal';
-    if (activeInteractable === 'player-nap-mat') return 'Lie Down / Nap';
-    if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
-    if (activeInteractable === 'wavy-slide') return 'Ride the Wavy Slide';
-    if (activeInteractable.startsWith('storybook-realtor-')) return 'Ask about properties';
-    if (activeInteractable === 'home-ping-pong') return 'Play Ping Pong';
-    if (activeInteractable === 'storybook-tennis') return 'Play Tennis';
-    if (activeInteractable === 'home-closet') return 'Open Closet';
-    if (activeInteractable === 'home-theme-switch') return 'Change Home Colours';
-    if (activeInteractable === 'garage-theme-switch') return 'Change Garage Colours';
-    if (activeInteractable.startsWith('storybook-spot-')) {
-      const found = activitySpots().find((entry) => `storybook-spot-${entry.spot.id}` === activeInteractable);
-      return found ? found.spot.hint : 'Look around';
+    if (activeInteractable === "binky") return "Pick up Binky";
+    if (activeInteractable === "final-home-exit") return "Exit Home";
+    if (activeInteractable.startsWith("cafeteria-seat-")) return "Sit for Meal";
+    if (activeInteractable === "player-nap-mat") return "Lie Down / Nap";
+    if (activeInteractable === "shiny-rock") return "Pick up Shiny Rock";
+    if (activeInteractable === "wavy-slide") return "Ride the Wavy Slide";
+    if (activeInteractable.startsWith("storybook-realtor-"))
+      return "Ask about properties";
+    if (activeInteractable === "home-ping-pong") return "Play Ping Pong";
+    if (activeInteractable === "storybook-tennis") return "Play Tennis";
+    if (activeInteractable === "home-closet") return "Open Closet";
+    if (activeInteractable === "home-theme-switch")
+      return "Change Home Colours";
+    if (activeInteractable === "garage-theme-switch")
+      return "Change Garage Colours";
+    if (activeInteractable.startsWith("storybook-spot-")) {
+      const found = activitySpots().find(
+        (entry) => `storybook-spot-${entry.spot.id}` === activeInteractable,
+      );
+      return found ? found.spot.hint : "Look around";
     }
-    if (activeInteractable === 'storybook-garage-door') return 'Enter Garage';
-    if (activeInteractable === 'garage-exit') return 'Exit Garage';
-    if (activeInteractable === 'storybook-whistle-dog') return 'Whistle for your dog';
-    if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
-    if (activeInteractable === 'tricycle') return 'Use Tricycle';
-    if (activeInteractable === 'activity-rainbow-tidy-up') {
-      const item = quests['rainbow-tidy-up']?.currentObjectiveId?.replace('place-', '');
-      if (!item) return 'Place Toy';
-      const name = item.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    if (activeInteractable === "storybook-garage-door") return "Enter Garage";
+    if (activeInteractable === "garage-exit") return "Exit Garage";
+    if (activeInteractable === "storybook-whistle-dog")
+      return "Whistle for your dog";
+    if (activeInteractable === "juice-stand")
+      return schedule === "juice-club"
+        ? "Use Juice Stand"
+        : "Check Juice Stand";
+    if (activeInteractable === "tricycle") return "Use Tricycle";
+    if (activeInteractable === "activity-rainbow-tidy-up") {
+      const item = quests["rainbow-tidy-up"]?.currentObjectiveId?.replace(
+        "place-",
+        "",
+      );
+      if (!item) return "Place Toy";
+      const name = item
+        .split("-")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
       return `Place ${name}`;
     }
-    if (activeInteractable === 'garden-return') return 'Return to DayKare';
-    if (activeInteractable === 'storybook-ice-cream') return 'Get Ice Cream · 25 RB';
-    if (activeInteractable === 'storybook-exit') return 'Return to DayKare';
-    if (activeInteractable.startsWith('storybook-home-')) return activeInteractable === 'storybook-home-my-home' ? 'Visit My Home & Garage' : 'Visit Home';
-    if (activeInteractable.startsWith('garden-activity-host-')) {
+    if (activeInteractable === "garden-return") return "Return to DayKare";
+    if (activeInteractable === "storybook-ice-cream")
+      return "Get Ice Cream · 25 RB";
+    if (activeInteractable === "storybook-exit") return "Return to DayKare";
+    if (activeInteractable.startsWith("storybook-home-"))
+      return activeInteractable === "storybook-home-my-home"
+        ? "Visit My Home & Garage"
+        : "Visit Home";
+    if (activeInteractable.startsWith("garden-activity-host-")) {
       const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
-      const step = bed === 0 ? gardenActivityStep : expansion.secondPlantingStep;
+      const step =
+        bed === 0 ? gardenActivityStep : expansion.secondPlantingStep;
       if (step === 0) return `Start Planting Bed ${bed + 1}`;
       if (step < 3) return `Tend Seedlings · ${step}/3`;
-      return 'Plant Another Bed';
+      return "Plant Another Bed";
     }
-    if (activeInteractable.startsWith('gummy-drop-bed-')) {
+    if (activeInteractable.startsWith("gummy-drop-bed-")) {
       const bed = Number(activeInteractable.at(-1)) === 1 ? 1 : 0;
       const crop = bed === 0 ? gummyCrop : gummyCrop2;
-      const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
-      if (crop.gummyDrops > 0) return `Gummy Basket ${bed + 1} · ${crop.gummyDrops}`;
-      if (cropIsReady(crop, now)) return 'Harvest 10 Gummy Drops';
-      return crop.plantedAt === null ? `Plant Gummy Bed ${bed + 1}` : `Check Candy Plants · ${Math.floor(cropProgress(crop, now) * 100)}%`;
+      const now = absoluteGameMinute(
+        dayNumber,
+        useGameStore.getState().clock.minute,
+      );
+      if (crop.gummyDrops > 0)
+        return `Gummy Basket ${bed + 1} · ${crop.gummyDrops}`;
+      if (cropIsReady(crop, now)) return "Harvest 10 Gummy Drops";
+      return crop.plantedAt === null
+        ? `Plant Gummy Bed ${bed + 1}`
+        : `Check Candy Plants · ${Math.floor(cropProgress(crop, now) * 100)}%`;
     }
-    if (activeInteractable === 'garden-fishing-spot') return expansion.fishingCastReady ? 'Reel Swedish Fish' : `Fish with ${expansion.equippedRod} rod`;
-    if (activeInteractable === 'garden-fishing-shop') return 'Visit Tackle Kiosk';
-    if (activeInteractable === 'seed-inspection') return 'Inspect Held Seeds';
-    if (activeInteractable === 'final-miss-leslie') return 'Talk to Miss Leslie';
-    if (activeInteractable === 'final-heist-board') return 'View Heist Board';
-    if (activeInteractable.startsWith('final-heist-')) return `Scope ${activeInteractable.replace('final-heist-', '').replaceAll('-', ' ')}`;
-    if (activeInteractable.startsWith('expansion-collectible-')) return 'Collect Item';
-    if (activeInteractable === 'lost-found-desk') return expansion.lostFoundJob?.status === 'found' ? 'Return Lost Item' : 'Check Job Board';
-    if (activeInteractable === 'lost-found-item') return 'Pick Up Lost Item';
-    if (activeInteractable === 'art-mini-activity') return 'Play Art Pattern';
-    if (activeInteractable === 'show-and-tell-spot') return 'Present Backpack Item';
-    if (activeInteractable === 'tech-market') return 'Use Tech Market';
-    if (activeInteractable === 'snack-window') return 'Check Juice + Crackers';
-    if (activeInteractable === 'caper-board') {
-      if (caper.step === 'idle' || caper.step === 'complete') return 'Start Sticker Parade';
-      if (caper.step === 'celebrate') return 'Launch Sticker Parade';
-      return `Continue Caper · ${caper.step.replace('-', ' ')}`;
+    if (activeInteractable === "garden-fishing-spot")
+      return expansion.fishingCastReady
+        ? "Reel Swedish Fish"
+        : `Fish with ${expansion.equippedRod} rod`;
+    if (activeInteractable === "garden-fishing-shop")
+      return "Visit Tackle Kiosk";
+    if (activeInteractable === "seed-inspection") return "Inspect Held Seeds";
+    if (activeInteractable === "final-miss-leslie")
+      return "Talk to Miss Leslie";
+    if (activeInteractable === "final-heist-board") return "View Heist Board";
+    if (activeInteractable.startsWith("final-heist-"))
+      return `Scope ${activeInteractable.replace("final-heist-", "").replaceAll("-", " ")}`;
+    if (activeInteractable.startsWith("expansion-collectible-"))
+      return "Collect Item";
+    if (activeInteractable === "lost-found-desk")
+      return expansion.lostFoundJob?.status === "found"
+        ? "Return Lost Item"
+        : "Check Job Board";
+    if (activeInteractable === "lost-found-item") return "Pick Up Lost Item";
+    if (activeInteractable === "art-mini-activity") return "Play Art Pattern";
+    if (activeInteractable === "show-and-tell-spot")
+      return "Present Backpack Item";
+    if (activeInteractable === "tech-market") return "Use Tech Market";
+    if (activeInteractable === "snack-window") return "Check Juice + Crackers";
+    if (activeInteractable === "caper-board") {
+      if (caper.step === "idle" || caper.step === "complete")
+        return "Start Sticker Parade";
+      if (caper.step === "celebrate") return "Launch Sticker Parade";
+      return `Continue Caper · ${caper.step.replace("-", " ")}`;
     }
-    if (activeInteractable === 'parade-banner') return 'Retrieve Parade Banner';
-    if (activeInteractable === 'caper-bubble-table') return 'Set Up Bubble Table';
-    if (activeInteractable.startsWith('garden-landmark-')) {
+    if (activeInteractable === "parade-banner") return "Retrieve Parade Banner";
+    if (activeInteractable === "caper-bubble-table")
+      return "Set Up Bubble Table";
+    if (activeInteractable.startsWith("garden-landmark-")) {
       const labels: Record<string, string> = {
-        pond: 'Notice Pond Ripples',
-        gazebo: 'Listen at the Gazebo',
-        greenhouse: 'Inspect Seedlings',
+        pond: "Notice Pond Ripples",
+        gazebo: "Listen at the Gazebo",
+        greenhouse: "Inspect Seedlings",
       };
-      return labels[activeInteractable.replace('garden-landmark-', '')] ?? 'Explore Garden Landmark';
+      return (
+        labels[activeInteractable.replace("garden-landmark-", "")] ??
+        "Explore Garden Landmark"
+      );
     }
-    if (activeInteractable.startsWith('garden-npc-')) return `Talk to ${activeInteractable.replace('garden-npc-', '')}`;
-    if (activeInteractable.startsWith('route-')) {
-      const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
-      if (!route) return 'Check Route';
+    if (activeInteractable.startsWith("garden-npc-"))
+      return `Talk to ${activeInteractable.replace("garden-npc-", "")}`;
+    if (activeInteractable.startsWith("route-")) {
+      const route = HUB_ROUTES.find(
+        (candidate) => `route-${candidate.id}` === activeInteractable,
+      );
+      if (!route) return "Check Route";
       const tutorial = useFinalMasterStore.getState();
-      const tutorialGardenAccess = route.id === 'garden-district' && tutorial.tutorialStarted && TUTORIAL_CHAPTERS[tutorial.tutorialChapter]?.id === 'garden';
-      const canEnter = (isRouteUnlocked(route, progression) || tutorialGardenAccess)
-        && (route.id === 'garden-district' || (route.id === 'storybook-lane' && storybookIsOpen(useGameStore.getState().clock.minute)));
-      return `${canEnter ? 'Enter' : 'Check'} ${route.label}`;
+      const tutorialGardenAccess =
+        route.id === "garden-district" &&
+        tutorial.tutorialStarted &&
+        TUTORIAL_CHAPTERS[tutorial.tutorialChapter]?.id === "garden";
+      const canEnter =
+        (isRouteUnlocked(route, progression) || tutorialGardenAccess) &&
+        (route.id === "garden-district" ||
+          (route.id === "storybook-lane" &&
+            storybookIsOpen(useGameStore.getState().clock.minute)));
+      return `${canEnter ? "Enter" : "Check"} ${route.label}`;
     }
-    if (activeInteractable.startsWith('teacher-')) return `Talk to ${activeInteractable.replace('teacher-', '')}`;
-    if (activeInteractable.startsWith('kid-')) return `Talk to ${activeInteractable.split('-')[1]}`;
-    if (activeInteractable.includes('block')) return 'Pick up Toy';
-    return 'Interact';
+    if (activeInteractable.startsWith("teacher-"))
+      return `Talk to ${activeInteractable.replace("teacher-", "")}`;
+    if (activeInteractable.startsWith("kid-"))
+      return `Talk to ${activeInteractable.split("-")[1]}`;
+    if (activeInteractable.includes("block")) return "Pick up Toy";
+    return "Interact";
   };
 
   const interactionLabel = getInteractionLabel();
   const getInteractionDetail = () => {
     if (activeDialogue) return null;
-    if (isNapping) return 'Early exit forfeits Nap completion XP';
-    if (seatedSeatId) return 'Meal participation counts only while seated';
+    if (isNapping) return "Early exit forfeits Nap completion XP";
+    if (seatedSeatId) return "Meal participation counts only while seated";
     if (!activeInteractable) return null;
-    if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
-    if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
-    if (activeInteractable === 'storybook-ice-cream') return `${storybook.ribbonBucks} RB balance · scoop ${storybook.sessionScoops + 1}`;
-    if (activeInteractable === 'storybook-exit') return 'Leave the neighborhood';
-    if (activeInteractable.startsWith('storybook-home-')) return activeInteractable === 'storybook-home-my-home' ? 'Starter home · pets, crib and vehicle shop' : 'Visitable social home';
-    if (activeInteractable.startsWith('garden-activity-host-')) return '3 seeds · +12 XP once per planting set';
-    if (activeInteractable.startsWith('gummy-drop-bed-')) return 'Five-hour crop · $30 per full basket · REP from sharing';
-    if (activeInteractable === 'garden-fishing-spot') return 'Catch +1 XP · sell for $5 +2 XP';
-    if (activeInteractable === 'garden-fishing-shop') return 'Fishing safety and supplies';
-    if (activeInteractable === 'seed-inspection') return `${expansion.seedPackets} seed packets · crop and yield report`;
-    if (activeInteractable === 'final-miss-leslie') return 'Story heist · shared across keyboard, touch, and controller';
-    if (activeInteractable === 'final-heist-board') return 'Walk-up planning · Route Planner and career stats';
-    if (activeInteractable.startsWith('final-heist-')) return 'Active story objective · generous interaction range';
-    if (activeInteractable.startsWith('expansion-collectible-')) return 'Rotating daycare and Garden hunt';
-    if (activeInteractable === 'lost-found-desk' || activeInteractable === 'lost-found-item') return '10-minute rotating job · RNG reward';
-    if (activeInteractable === 'art-mini-activity') return 'Art Time · +20 XP and +$20 once per day';
-    if (activeInteractable === 'show-and-tell-spot') return 'Show & Tell · present a Backpack item';
-    if (activeInteractable === 'tech-market') return 'Kid-tech kiosk · rotating heist hook';
-    if (activeInteractable === 'snack-window') return 'Open 4:30–5:00 PM';
-    if (activeInteractable === 'caper-board') return 'Safe caper · planned with teacher supervision';
-    if (activeInteractable === 'parade-banner') return 'Authorized story objective · teacher supervised';
-    if (activeInteractable === 'caper-bubble-table') return 'Public hall setup · supervised activity';
-    if (activeInteractable.startsWith('garden-landmark-')) return 'Garden discovery · safe observation point';
-    if (activeInteractable.startsWith('garden-npc-')) return 'Garden routine';
-    if (activeInteractable.startsWith('route-')) {
-      const route = HUB_ROUTES.find((candidate) => `route-${candidate.id}` === activeInteractable);
-      if (!route) return 'Future access point';
+    if (activeInteractable === "activity-rainbow-tidy-up")
+      return "Physical quest · sort one toy at a time";
+    if (activeInteractable === "garden-return")
+      return "Connected route · daycare hub";
+    if (activeInteractable === "storybook-ice-cream")
+      return `${storybook.ribbonBucks} RB balance · scoop ${storybook.sessionScoops + 1}`;
+    if (activeInteractable === "storybook-exit")
+      return "Leave the neighborhood";
+    if (activeInteractable.startsWith("storybook-home-"))
+      return activeInteractable === "storybook-home-my-home"
+        ? "Starter home · pets, crib and vehicle shop"
+        : "Visitable social home";
+    if (activeInteractable.startsWith("garden-activity-host-"))
+      return "3 seeds · +12 XP once per planting set";
+    if (activeInteractable.startsWith("gummy-drop-bed-"))
+      return "Five-hour crop · $30 per full basket · REP from sharing";
+    if (activeInteractable === "garden-fishing-spot")
+      return "Catch +1 XP · sell for $5 +2 XP";
+    if (activeInteractable === "garden-fishing-shop")
+      return "Fishing safety and supplies";
+    if (activeInteractable === "seed-inspection")
+      return `${expansion.seedPackets} seed packets · crop and yield report`;
+    if (activeInteractable === "final-miss-leslie")
+      return "Story heist · shared across keyboard, touch, and controller";
+    if (activeInteractable === "final-heist-board")
+      return "Walk-up planning · Route Planner and career stats";
+    if (activeInteractable.startsWith("final-heist-"))
+      return "Active story objective · generous interaction range";
+    if (activeInteractable.startsWith("expansion-collectible-"))
+      return "Rotating daycare and Garden hunt";
+    if (
+      activeInteractable === "lost-found-desk" ||
+      activeInteractable === "lost-found-item"
+    )
+      return "10-minute rotating job · RNG reward";
+    if (activeInteractable === "art-mini-activity")
+      return "Art Time · +20 XP and +$20 once per day";
+    if (activeInteractable === "show-and-tell-spot")
+      return "Show & Tell · present a Backpack item";
+    if (activeInteractable === "tech-market")
+      return "Kid-tech kiosk · rotating heist hook";
+    if (activeInteractable === "snack-window") return "Open 4:30–5:00 PM";
+    if (activeInteractable === "caper-board")
+      return "Safe caper · planned with teacher supervision";
+    if (activeInteractable === "parade-banner")
+      return "Authorized story objective · teacher supervised";
+    if (activeInteractable === "caper-bubble-table")
+      return "Public hall setup · supervised activity";
+    if (activeInteractable.startsWith("garden-landmark-"))
+      return "Garden discovery · safe observation point";
+    if (activeInteractable.startsWith("garden-npc-")) return "Garden routine";
+    if (activeInteractable.startsWith("route-")) {
+      const route = HUB_ROUTES.find(
+        (candidate) => `route-${candidate.id}` === activeInteractable,
+      );
+      if (!route) return "Future access point";
       return isRouteUnlocked(route, progression)
-        ? route.id === 'garden-district'
-          ? 'Connected route · Garden spawn'
-          : route.id === 'storybook-lane'
-            ? storybookIsOpen(useGameStore.getState().clock.minute) ? 'Open now · closes 6:30 PM' : 'Opens 5:30 PM'
-            : 'Route prepared'
+        ? route.id === "garden-district"
+          ? "Connected route · Garden spawn"
+          : route.id === "storybook-lane"
+            ? storybookIsOpen(useGameStore.getState().clock.minute)
+              ? "Open now · closes 6:30 PM"
+              : "Opens 5:30 PM"
+            : "Route prepared"
         : `Locked · ${requirementProgressLabel(route, progression)}`;
     }
-    if (activeInteractable === 'wavy-slide') return 'Playground fun';
-    if (activeInteractable.startsWith('storybook-realtor-')) return 'Stony Brook Realty';
-    if (activeInteractable === 'home-ping-pong') return 'Basement minigame';
-    if (activeInteractable === 'storybook-tennis') return 'Neighbourhood minigame';
-    if (activeInteractable === 'home-closet') return 'Outfits and drip';
-    if (activeInteractable === 'home-theme-switch' || activeInteractable === 'garage-theme-switch') return 'Interior colours';
-    if (activeInteractable.startsWith('storybook-spot-')) {
-      const found = activitySpots().find((entry) => `storybook-spot-${entry.spot.id}` === activeInteractable);
-      return found ? found.activity.label : 'Neighbourhood';
+    if (activeInteractable === "wavy-slide") return "Playground fun";
+    if (activeInteractable.startsWith("storybook-realtor-"))
+      return "Stony Brook Realty";
+    if (activeInteractable === "home-ping-pong") return "Basement minigame";
+    if (activeInteractable === "storybook-tennis")
+      return "Neighbourhood minigame";
+    if (activeInteractable === "home-closet") return "Outfits and drip";
+    if (
+      activeInteractable === "home-theme-switch" ||
+      activeInteractable === "garage-theme-switch"
+    )
+      return "Interior colours";
+    if (activeInteractable.startsWith("storybook-spot-")) {
+      const found = activitySpots().find(
+        (entry) => `storybook-spot-${entry.spot.id}` === activeInteractable,
+      );
+      return found ? found.activity.label : "Neighbourhood";
     }
-    if (activeInteractable === 'storybook-garage-door') return 'Store and manage your rides';
-    if (activeInteractable === 'garage-exit') return 'Back to the driveway';
-    if (activeInteractable === 'storybook-whistle-dog') return 'Call your pet';
-    if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
-    if (activeInteractable === 'tricycle') return 'Ride or customize';
-    if (activeInteractable.startsWith('teacher-')) return 'Teacher guidance';
-    if (activeInteractable.startsWith('kid-')) return 'Friend interaction';
-    return 'Nearby object';
+    if (activeInteractable === "storybook-garage-door")
+      return "Store and manage your rides";
+    if (activeInteractable === "garage-exit") return "Back to the driveway";
+    if (activeInteractable === "storybook-whistle-dog") return "Call your pet";
+    if (activeInteractable === "juice-stand")
+      return schedule === "juice-club"
+        ? "Business activity"
+        : "Opens at 12:00 PM";
+    if (activeInteractable === "tricycle") return "Ride or customize";
+    if (activeInteractable.startsWith("teacher-")) return "Teacher guidance";
+    if (activeInteractable.startsWith("kid-")) return "Friend interaction";
+    return "Nearby object";
   };
   const interactionDetail = getInteractionDetail();
   const activeQuest = getActiveQuest(quests);
   const activeObjective = getCurrentObjective(quests);
   useEffect(() => {
-    if (activeQuest?.id !== 'rainbow-tidy-up' || typeof window === 'undefined') return;
-    const key = 'daykare-rainbow-tidy-discovered';
+    if (activeQuest?.id !== "rainbow-tidy-up" || typeof window === "undefined")
+      return;
+    const key = "daykare-rainbow-tidy-discovered";
     try {
       if (window.localStorage.getItem(key)) return;
-      window.localStorage.setItem(key, '1');
-    } catch { /* local save warning already explains unavailable storage */ }
-    useToastStore.getState().enqueue({ title: 'Optional Job Discovered', detail: 'Rainbow Tidy-Up earns XP and money whenever you want to play.' });
+      window.localStorage.setItem(key, "1");
+    } catch {
+      /* local save warning already explains unavailable storage */
+    }
+    useToastStore
+      .getState()
+      .enqueue({
+        title: "Optional Job Discovered",
+        detail: "Rainbow Tidy-Up earns XP and money whenever you want to play.",
+      });
   }, [activeQuest?.id]);
-  const gameplayBlocked = journalOpen || heistBoardOpen || Boolean(rallyGame) || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked || Boolean(expansion.lastDayReport);
+  const gameplayBlocked =
+    journalOpen ||
+    heistBoardOpen ||
+    Boolean(rallyGame) ||
+    Boolean(activeDialogue) ||
+    zoneTransitioning ||
+    frontEndBlocked ||
+    Boolean(expansion.lastDayReport);
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">
-      
       {/* HUD - Top Left */}
       <div className="daykare-hud-left absolute top-6 left-6 flex flex-col gap-3 pointer-events-auto">
         <div className="bg-card/90 backdrop-blur border-2 border-primary/20 p-4 rounded-xl shadow-lg flex items-center gap-4 text-card-foreground">
@@ -1580,8 +2510,13 @@ export function UI() {
             <Clock className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <div className="text-2xl font-bold tracking-tight">{formatTime(timeOfDay)}</div>
-            <div className="text-sm font-medium text-muted-foreground">Day {dayNumber} · {getScheduleLabel(schedule)} · {weatherLabel}{rainyNow && " (Indoor)"}</div>
+            <div className="text-2xl font-bold tracking-tight">
+              {formatTime(timeOfDay)}
+            </div>
+            <div className="text-sm font-medium text-muted-foreground">
+              Day {dayNumber} · {getScheduleLabel(schedule)} · {weatherLabel}
+              {rainyNow && " (Indoor)"}
+            </div>
           </div>
           <img
             src={`${import.meta.env.BASE_URL}daykare-assets/01_playtime_app_icon.png`}
@@ -1591,48 +2526,99 @@ export function UI() {
         </div>
 
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={advanceSchedule}
             disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-card border-2 border-transparent hover:border-primary/20 transition-all pointer-events-auto"
           >
-            {timeOfDay >= 18.5 ? 'Next day' : '+1.5h'}
+            {timeOfDay >= 18.5 ? "Next day" : "+1.5h"}
           </button>
-          <button 
+          <button
             onClick={toggleRain}
             disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur p-2 rounded-lg shadow hover:bg-card border-2 border-transparent hover:border-blue-400/30 transition-all pointer-events-auto text-blue-500"
             title="Toggle Rain"
           >
-            {rainyNow ? <CloudRain className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+            {rainyNow ? (
+              <CloudRain className="w-5 h-5" />
+            ) : (
+              <Sun className="w-5 h-5" />
+            )}
           </button>
-          <button 
+          <button
             onClick={toggleImagination}
             disabled={gameplayBlocked}
             className={`backdrop-blur p-2 rounded-lg shadow transition-all pointer-events-auto border-2 ${
-              isImaginationMode 
-                ? 'bg-accent text-white border-accent' 
-                : 'bg-card/90 text-accent border-transparent hover:border-accent/30'
+              isImaginationMode
+                ? "bg-accent text-white border-accent"
+                : "bg-card/90 text-accent border-transparent hover:border-accent/30"
             }`}
             title="Imagination Mode"
           >
             <Wand2 className="w-5 h-5" />
           </button>
-          <button 
-            onClick={() => useGameStore.setState(s => ({ quality: s.quality === 'high' ? 'low' : 'high' }))}
+          <button
+            onClick={() =>
+              useGameStore.setState((s) => ({
+                quality: s.quality === "high" ? "low" : "high",
+              }))
+            }
             disabled={gameplayBlocked}
             className="bg-card/90 backdrop-blur px-3 py-2 rounded-lg text-sm font-bold shadow hover:bg-card border-2 border-transparent hover:border-gray-400/30 transition-all pointer-events-auto text-gray-700"
             title="Quality Toggle"
           >
-            {useGameStore.getState().quality === 'high' ? 'HQ' : 'LQ'}
+            {useGameStore.getState().quality === "high" ? "HQ" : "LQ"}
           </button>
         </div>
-        {activeQuest && activeObjective && questTrackerMode === 'hidden' && <button className="daykare-quest-reopen" onClick={() => setQuestTrackerMode('collapsed')} aria-label="Reopen Jobs tracker">⭐</button>}
-        {activeQuest && activeObjective && questTrackerMode !== 'hidden' && (
-          <div className={`daykare-quest-card ${questTrackerMode === 'expanded' ? 'is-expanded' : ''} max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-2 rounded-xl shadow-lg`} data-testid="optional-job-tracker">
-            <button className="daykare-quest-toggle" onClick={() => setQuestTrackerMode(questTrackerMode === 'expanded' ? 'collapsed' : 'expanded')}><img src={`${import.meta.env.BASE_URL}daykare-assets/13_ui_quest_icons.png`} alt="" /><span><small>{activeQuest.id === 'rainbow-tidy-up' ? 'Optional XP job' : 'Active quest'}</small><strong>{activeQuest.title}</strong></span><b>{questTrackerMode === 'expanded' ? '−' : '+'}</b></button>
-            <button className="daykare-quest-hide" onClick={() => setQuestTrackerMode('hidden')} aria-label="Hide Jobs tracker">×</button>
-            {questTrackerMode === 'expanded' && <div className="daykare-quest-detail"><strong>{activeObjective.label}</strong><span>{activeObjective.guidance}</span></div>}
+        {activeQuest && activeObjective && questTrackerMode === "hidden" && (
+          <button
+            className="daykare-quest-reopen"
+            onClick={() => setQuestTrackerMode("collapsed")}
+            aria-label="Reopen Jobs tracker"
+          >
+            ⭐
+          </button>
+        )}
+        {activeQuest && activeObjective && questTrackerMode !== "hidden" && (
+          <div
+            className={`daykare-quest-card ${questTrackerMode === "expanded" ? "is-expanded" : ""} max-w-xs bg-card/92 backdrop-blur border-2 border-amber-400/35 p-2 rounded-xl shadow-lg`}
+            data-testid="optional-job-tracker"
+          >
+            <button
+              className="daykare-quest-toggle"
+              onClick={() =>
+                setQuestTrackerMode(
+                  questTrackerMode === "expanded" ? "collapsed" : "expanded",
+                )
+              }
+            >
+              <img
+                src={`${import.meta.env.BASE_URL}daykare-assets/13_ui_quest_icons.png`}
+                alt=""
+              />
+              <span>
+                <small>
+                  {activeQuest.id === "rainbow-tidy-up"
+                    ? "Optional XP job"
+                    : "Active quest"}
+                </small>
+                <strong>{activeQuest.title}</strong>
+              </span>
+              <b>{questTrackerMode === "expanded" ? "−" : "+"}</b>
+            </button>
+            <button
+              className="daykare-quest-hide"
+              onClick={() => setQuestTrackerMode("hidden")}
+              aria-label="Hide Jobs tracker"
+            >
+              ×
+            </button>
+            {questTrackerMode === "expanded" && (
+              <div className="daykare-quest-detail">
+                <strong>{activeObjective.label}</strong>
+                <span>{activeObjective.guidance}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1650,14 +2636,21 @@ export function UI() {
           <span className="font-bold hidden sm:block">Menu</span>
           <Menu className="w-6 h-6 text-primary" />
         </button>
-        {activeMode === 'multiplayer' && (
-          <div className="bg-[#e8ffff]/95 backdrop-blur border-2 border-[#33cccc]/35 px-3 py-2 rounded-xl shadow text-[#004d4d] font-black text-xs" role="status" data-testid="status-multiplayer-hud">
-            DayKare Room · {multiplayerStatus === 'connected' ? `${multiplayerOccupancy}/20` : multiplayerStatus}
+        {activeMode === "multiplayer" && (
+          <div
+            className="bg-[#e8ffff]/95 backdrop-blur border-2 border-[#33cccc]/35 px-3 py-2 rounded-xl shadow text-[#004d4d] font-black text-xs"
+            role="status"
+            data-testid="status-multiplayer-hud"
+          >
+            DayKare Room ·{" "}
+            {multiplayerStatus === "connected"
+              ? `${multiplayerOccupancy}/20`
+              : multiplayerStatus}
           </div>
         )}
         <button
           type="button"
-          onClick={() => openPanel('shop')}
+          onClick={() => openPanel("shop")}
           disabled={Boolean(activeDialogue) || zoneTransitioning}
           className="bg-card/90 backdrop-blur border-2 border-violet-400/25 px-3 py-2 rounded-xl shadow-lg flex items-center gap-2 hover:scale-105 transition-transform"
           data-testid="button-open-kare-shop"
@@ -1665,10 +2658,15 @@ export function UI() {
         >
           <ShoppingBag className="w-5 h-5 text-violet-600" />
           <span className="font-bold hidden sm:block">Kare Shop</span>
-          <span className="text-[10px] font-black text-violet-700">{careGems} G</span>
+          <span className="text-[10px] font-black text-violet-700">
+            {careGems} G
+          </span>
         </button>
-        <button 
-          onClick={() => { if (!journalOpen) recordTutorialEvent('open-backpack'); toggleJournal(); }}
+        <button
+          onClick={() => {
+            if (!journalOpen) recordTutorialEvent("open-backpack");
+            toggleJournal();
+          }}
           disabled={Boolean(activeDialogue) || zoneTransitioning}
           className="bg-card/90 backdrop-blur border-2 border-primary/20 p-3 rounded-xl shadow-lg flex items-center gap-3 hover:scale-105 transition-transform"
         >
@@ -1677,7 +2675,20 @@ export function UI() {
         </button>
 
         <div className="daykare-progress-chip daykare-hud-progress bg-card/90 backdrop-blur border-2 border-amber-400/25 px-3 py-2 rounded-xl shadow flex items-center gap-3 text-card-foreground">
-          <div className="daykare-rank-readout relative"><strong>Rank {rankProgress.rank}</strong><small>{rankProgress.xpIntoRank}/{rankProgress.xpForNextRank} XP</small><i><b style={{ width: `${Math.min(100, (rankProgress.xpIntoRank / rankProgress.xpForNextRank) * 100)}%` }} /></i><RewardPulse value={progression.experience ?? 0} suffix=" XP" /></div>
+          <div className="daykare-rank-readout relative">
+            <strong>Rank {rankProgress.rank}</strong>
+            <small>
+              {rankProgress.xpIntoRank}/{rankProgress.xpForNextRank} XP
+            </small>
+            <i>
+              <b
+                style={{
+                  width: `${Math.min(100, (rankProgress.xpIntoRank / rankProgress.xpForNextRank) * 100)}%`,
+                }}
+              />
+            </i>
+            <RewardPulse value={progression.experience ?? 0} suffix=" XP" />
+          </div>
           <div className="w-px h-4 bg-amber-300/50" />
           <div className="text-xs font-bold text-muted-foreground relative">
             {progression.reputation} REP
@@ -1708,12 +2719,16 @@ export function UI() {
         >
           <MapPinned className="w-4 h-4 text-emerald-600" aria-hidden="true" />
           <span className="flex flex-col leading-tight">
-            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">You are in</span>
-            <span className="text-xs font-black uppercase tracking-wide">{zoneLabel(zone)}</span>
+            <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+              You are in
+            </span>
+            <span className="text-xs font-black uppercase tracking-wide">
+              {zoneLabel(zone)}
+            </span>
           </span>
         </div>
-        
-        {schedule === 'juice-club' && (
+
+        {schedule === "juice-club" && (
           <div className="daykare-hud-juice bg-card/90 backdrop-blur border-2 border-green-500/20 p-3 rounded-xl shadow flex flex-col items-end text-green-600 font-bold">
             <div className="flex items-center gap-2 text-lg">
               <DollarSign className="w-5 h-5" />
@@ -1721,13 +2736,18 @@ export function UI() {
             </div>
             {waitingCustomers.length > 0 && (
               <div className="text-xs text-orange-600 animate-pulse mt-1">
-                {juiceClubCustomerPhase === 'ordering' ? `${juiceClubActiveCustomer} is ordering!` : `Customer ${juiceClubCustomerPhase}`}
+                {juiceClubCustomerPhase === "ordering"
+                  ? `${juiceClubActiveCustomer} is ordering!`
+                  : `Customer ${juiceClubCustomerPhase}`}
               </div>
             )}
           </div>
         )}
-        {zone === 'storybook' && (
-          <div className="bg-[#fff6d9]/95 backdrop-blur border-2 border-[#b77b22]/30 px-3 py-2 rounded-xl shadow flex items-center gap-2 text-[#5c3a21] font-black" data-testid="status-ribbon-bucks">
+        {zone === "storybook" && (
+          <div
+            className="bg-[#fff6d9]/95 backdrop-blur border-2 border-[#b77b22]/30 px-3 py-2 rounded-xl shadow flex items-center gap-2 text-[#5c3a21] font-black"
+            data-testid="status-ribbon-bucks"
+          >
             <span aria-hidden="true">🎀</span>
             <span>{storybook.ribbonBucks.toLocaleString()} RB</span>
           </div>
@@ -1735,32 +2755,38 @@ export function UI() {
       </div>
 
       <div className="daykare-center-notices" aria-live="polite">
-        {canEnterStorybookNow && !activeDialogue && !journalOpen && !zoneTransitioning && (
-          <button
-            type="button"
-            className="daykare-gameplay-instruction"
-            onClick={() => {
-              if (enterStorybookLane()) playStorybookSound('arrival');
-            }}
-            data-testid="button-enter-storybook-lane"
-          >
-            <strong>Storybook Lane is open</strong>
-            <span>Head over for the after-day hangout before 6:30 PM.</span>
-            <small>Enter Storybook Lane</small>
-          </button>
-        )}
-        {activeInstruction && !activeDialogue && !journalOpen && !zoneTransitioning && (
-          <button
-            type="button"
-            className="daykare-gameplay-instruction"
-            onClick={dismissInstruction}
-            aria-label="Dismiss instruction"
-          >
-            <strong>What to do</strong>
-            <span>{activeInstruction.text}</span>
-            <small>Tap to dismiss</small>
-          </button>
-        )}
+        {canEnterStorybookNow &&
+          !activeDialogue &&
+          !journalOpen &&
+          !zoneTransitioning && (
+            <button
+              type="button"
+              className="daykare-gameplay-instruction"
+              onClick={() => {
+                if (enterStorybookLane()) playStorybookSound("arrival");
+              }}
+              data-testid="button-enter-storybook-lane"
+            >
+              <strong>Storybook Lane is open</strong>
+              <span>Head over for the after-day hangout before 6:30 PM.</span>
+              <small>Enter Storybook Lane</small>
+            </button>
+          )}
+        {activeInstruction &&
+          !activeDialogue &&
+          !journalOpen &&
+          !zoneTransitioning && (
+            <button
+              type="button"
+              className="daykare-gameplay-instruction"
+              onClick={dismissInstruction}
+              aria-label="Dismiss instruction"
+            >
+              <strong>What to do</strong>
+              <span>{activeInstruction.text}</span>
+              <small>Tap to dismiss</small>
+            </button>
+          )}
         {teacherSuspicion > 0 && (
           <div className="daykare-suspicion bg-red-500/90 text-white px-6 py-2 rounded-full font-bold shadow-lg flex items-center gap-2">
             <AlertTriangle className="w-5 h-5" />
@@ -1768,53 +2794,136 @@ export function UI() {
           </div>
         )}
         {storageWarning && (
-          <div className="daykare-save-warning max-w-md rounded-xl bg-amber-50/95 border-2 border-amber-500/55 px-4 py-2 text-sm font-bold text-amber-950 shadow-xl" role="status">
-            Saving is unavailable in this browser. Your game will continue, but progress will not be saved.
+          <div
+            className="daykare-save-warning max-w-md rounded-xl bg-amber-50/95 border-2 border-amber-500/55 px-4 py-2 text-sm font-bold text-amber-950 shadow-xl"
+            role="status"
+          >
+            Saving is unavailable in this browser. Your game will continue, but
+            progress will not be saved.
           </div>
         )}
         {recoverySeconds > 0 && (
-          <div className="max-w-md rounded-full bg-[#dff3d3]/96 border-2 border-[#5b934d]/50 px-5 py-3 text-sm font-black text-[#31542a] shadow-xl" role="status" data-testid="status-icecream-recovery">
-            Recovering from too much ice cream… 0:{String(recoverySeconds).padStart(2, '0')}
+          <div
+            className="max-w-md rounded-full bg-[#dff3d3]/96 border-2 border-[#5b934d]/50 px-5 py-3 text-sm font-black text-[#31542a] shadow-xl"
+            role="status"
+            data-testid="status-icecream-recovery"
+          >
+            Recovering from too much ice cream… 0:
+            {String(recoverySeconds).padStart(2, "0")}
           </div>
         )}
       </div>
 
-      {seedInspectionOpen && <div className="seed-inspection-backdrop"><section className="seed-inspection-game" role="dialog" aria-modal="true" aria-label="Seed inspection timing game"><small>Seed Inspection</small><h2>Stop inside the green zone</h2><div className="seed-meter"><i /><b style={{ left: `${seedMeter}%` }} /></div><p>One attempt per in-game day. Failure never downgrades your seed.</p><button onClick={finishSeedInspection}>Inspect now</button><button className="seed-cancel" onClick={() => setSeedInspectionOpen(false)}>Cancel</button></section></div>}
+      {seedInspectionOpen && (
+        <div className="seed-inspection-backdrop">
+          <section
+            className="seed-inspection-game"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Seed inspection timing game"
+          >
+            <small>Seed Inspection</small>
+            <h2>Stop inside the green zone</h2>
+            <div className="seed-meter">
+              <i />
+              <b style={{ left: `${seedMeter}%` }} />
+            </div>
+            <p>
+              One attempt per in-game day. Failure never downgrades your seed.
+            </p>
+            <button onClick={finishSeedInspection}>Inspect now</button>
+            <button
+              className="seed-cancel"
+              onClick={() => setSeedInspectionOpen(false)}
+            >
+              Cancel
+            </button>
+          </section>
+        </div>
+      )}
 
       {activeReward && (
         <div className="daykare-reward-burst" role="status" aria-live="polite">
-          <div className="daykare-reward-sparkle" aria-hidden="true">✦</div>
+          <div className="daykare-reward-sparkle" aria-hidden="true">
+            ✦
+          </div>
           <div className="daykare-reward-copy">
             <strong>{activeReward.title}</strong>
             <span>{activeReward.detail}</span>
             {(activeReward.tokens > 0 || activeReward.reputation > 0) && (
               <small>
-                {activeReward.tokens > 0 ? `+${activeReward.tokens} ★` : ''}
-                {activeReward.tokens > 0 && activeReward.reputation > 0 ? '  ·  ' : ''}
-                {activeReward.reputation > 0 ? `+${activeReward.reputation} REP` : ''}
+                {activeReward.tokens > 0 ? `+${activeReward.tokens} ★` : ""}
+                {activeReward.tokens > 0 && activeReward.reputation > 0
+                  ? "  ·  "
+                  : ""}
+                {activeReward.reputation > 0
+                  ? `+${activeReward.reputation} REP`
+                  : ""}
               </small>
             )}
           </div>
-          {activeReward.sticker && <div className="daykare-reward-sticker">{activeReward.sticker}</div>}
+          {activeReward.sticker && (
+            <div className="daykare-reward-sticker">{activeReward.sticker}</div>
+          )}
         </div>
       )}
 
       {expansion.lastDayReport && (
-        <div className="absolute inset-0 z-[75] grid place-items-center bg-[#183f35]/70 p-4 pointer-events-auto" role="dialog" aria-modal="true" aria-label="Day report">
+        <div
+          className="absolute inset-0 z-[75] grid place-items-center bg-[#183f35]/70 p-4 pointer-events-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Day report"
+        >
           <section className="w-full max-w-lg rounded-3xl border-4 border-[#ffd166] bg-[#fff8e8] p-6 text-[#5c3a21] shadow-2xl">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9b642e]">Day {expansion.lastDayReport.day}</p>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9b642e]">
+              Day {expansion.lastDayReport.day}
+            </p>
             <h2 className="font-serif text-3xl font-black">Day Report</h2>
             <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-              <strong>Activities attended</strong><span>{expansion.lastDayReport.attended.length ? expansion.lastDayReport.attended.map(getScheduleLabel).join(', ') : 'None'}</span>
-              <strong>Activities missed</strong><span>{expansion.lastDayReport.missed.length ? expansion.lastDayReport.missed.map(getScheduleLabel).join(', ') : 'None'}</span>
-              <strong>Good behavior</strong><span>{expansion.lastDayReport.goodBehavior ? 'Yes' : 'Needs practice'}</span>
-              <strong>Escape attempts</strong><span>{expansion.lastDayReport.escapeAttempts}</span>
-              <strong>Jobs completed</strong><span>{expansion.lastDayReport.jobsCompleted}</span>
-              <strong>REP earned / lost</strong><span>+{expansion.lastDayReport.reputationEarned} / -{expansion.lastDayReport.reputationLost}</span>
-              <strong>XP earned</strong><span>+{expansion.lastDayReport.xpEarned}</span>
-              <strong>Money earned</strong><span>+${expansion.lastDayReport.moneyEarned}</span>
+              <strong>Activities attended</strong>
+              <span>
+                {expansion.lastDayReport.attended.length
+                  ? expansion.lastDayReport.attended
+                      .map(getScheduleLabel)
+                      .join(", ")
+                  : "None"}
+              </span>
+              <strong>Activities missed</strong>
+              <span>
+                {expansion.lastDayReport.missed.length
+                  ? expansion.lastDayReport.missed
+                      .map(getScheduleLabel)
+                      .join(", ")
+                  : "None"}
+              </span>
+              <strong>Good behavior</strong>
+              <span>
+                {expansion.lastDayReport.goodBehavior
+                  ? "Yes"
+                  : "Needs practice"}
+              </span>
+              <strong>Escape attempts</strong>
+              <span>{expansion.lastDayReport.escapeAttempts}</span>
+              <strong>Jobs completed</strong>
+              <span>{expansion.lastDayReport.jobsCompleted}</span>
+              <strong>REP earned / lost</strong>
+              <span>
+                +{expansion.lastDayReport.reputationEarned} / -
+                {expansion.lastDayReport.reputationLost}
+              </span>
+              <strong>XP earned</strong>
+              <span>+{expansion.lastDayReport.xpEarned}</span>
+              <strong>Money earned</strong>
+              <span>+${expansion.lastDayReport.moneyEarned}</span>
             </div>
-            <button type="button" className="mt-5 w-full rounded-xl bg-[#5c3a21] px-4 py-3 font-black text-white" onClick={dismissDayReport}>Start the next day</button>
+            <button
+              type="button"
+              className="mt-5 w-full rounded-xl bg-[#5c3a21] px-4 py-3 font-black text-white"
+              onClick={dismissDayReport}
+            >
+              Start the next day
+            </button>
           </section>
         </div>
       )}
@@ -1830,13 +2939,17 @@ export function UI() {
           tabIndex={-1}
           onKeyDown={onDialogueKeyDown}
         >
-          <div className="font-serif font-bold text-2xl text-primary mb-2">{activeDialogue.name}</div>
-          <div className="text-lg text-card-foreground mb-4">{activeDialogue.text}</div>
-          
+          <div className="font-serif font-bold text-2xl text-primary mb-2">
+            {activeDialogue.name}
+          </div>
+          <div className="text-lg text-card-foreground mb-4">
+            {activeDialogue.text}
+          </div>
+
           {activeDialogue.options ? (
             <div className="daykare-dialogue-actions flex gap-4">
               {activeDialogue.options.map((opt, i) => (
-                <button 
+                <button
                   key={i}
                   onClick={opt.action}
                   className="bg-primary/10 hover:bg-primary/20 text-primary font-bold py-2 px-4 rounded-lg transition-colors border border-primary/30"
@@ -1871,29 +2984,47 @@ export function UI() {
       )}
 
       {zoneTransitioning && (
-        <div className="absolute inset-0 z-[80] bg-[#183f35]/92 text-white flex items-center justify-center pointer-events-auto" role="status" aria-live="assertive">
+        <div
+          className="absolute inset-0 z-[80] bg-[#183f35]/92 text-white flex items-center justify-center pointer-events-auto"
+          role="status"
+          aria-live="assertive"
+        >
           <div className="text-center px-6">
             <div className="w-14 h-14 mx-auto rounded-full border-4 border-white/25 border-t-[#ffd166] animate-spin" />
             <div className="font-serif text-3xl font-bold mt-5">
-              {pendingZone === 'garden' ? 'Opening Garden District' : pendingZone === 'storybook' ? 'STORYBOOK LANE' : 'Returning to DayKare'}
+              {pendingZone === "garden"
+                ? "Opening Garden District"
+                : pendingZone === "storybook"
+                  ? "STORYBOOK LANE"
+                  : "Returning to DayKare"}
             </div>
-            <div className="text-sm text-white/75 mt-2">{pendingZone === 'storybook' ? '5:30 PM – 6:30 PM · Hang out before heading home.' : 'Following the connected path…'}</div>
+            <div className="text-sm text-white/75 mt-2">
+              {pendingZone === "storybook"
+                ? "5:30 PM – 6:30 PM · Hang out before heading home."
+                : "Following the connected path…"}
+            </div>
           </div>
         </div>
       )}
 
       {/* Interaction Prompt - Bottom Center */}
       <WavyShout />
-      {rallyGame && <RallyGameOverlay id={rallyGame} onClose={() => setRallyGame(null)} />}
+      {rallyGame && (
+        <RallyGameOverlay id={rallyGame} onClose={() => setRallyGame(null)} />
+      )}
       {interactionLabel && !journalOpen && !activeDialogue && (
         <div className="daykare-desktop-interact daykare-interaction-prompt absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
           <div className="bg-primary text-primary-foreground font-mono font-bold w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner">
             E
           </div>
           <div>
-            <div className="text-lg font-bold text-card-foreground">{interactionLabel}</div>
+            <div className="text-lg font-bold text-card-foreground">
+              {interactionLabel}
+            </div>
             {interactionDetail && (
-              <div className="text-xs font-semibold text-muted-foreground mt-0.5">{interactionDetail}</div>
+              <div className="text-xs font-semibold text-muted-foreground mt-0.5">
+                {interactionDetail}
+              </div>
             )}
           </div>
         </div>
@@ -1906,28 +3037,66 @@ export function UI() {
 
       {/* Journal Overlay */}
       {journalOpen && (
-        <Suspense fallback={<div className="absolute inset-0 z-50 grid place-items-center bg-black/40 text-white" role="status">Opening Journal…</div>}>
+        <Suspense
+          fallback={
+            <div
+              className="absolute inset-0 z-50 grid place-items-center bg-black/40 text-white"
+              role="status"
+            >
+              Opening Journal…
+            </div>
+          }
+        >
           <Journal />
         </Suspense>
       )}
 
       <TouchControls
-        movementEnabled={!journalOpen && !activeDialogue && !zoneTransitioning && recoverySeconds === 0}
-        interactionLabel={journalOpen || activeDialogue || zoneTransitioning ? null : interactionLabel}
-        interactionDetail={journalOpen || activeDialogue || zoneTransitioning ? null : interactionDetail}
+        movementEnabled={
+          !journalOpen &&
+          !activeDialogue &&
+          !zoneTransitioning &&
+          recoverySeconds === 0
+        }
+        interactionLabel={
+          journalOpen || activeDialogue || zoneTransitioning
+            ? null
+            : interactionLabel
+        }
+        interactionDetail={
+          journalOpen || activeDialogue || zoneTransitioning
+            ? null
+            : interactionDetail
+        }
         onInteract={() => interactRef.current()}
       />
 
       {/* Controls Legend */}
       {!journalOpen && (
         <div className="daykare-desktop-only absolute bottom-6 right-6 bg-black/50 backdrop-blur text-white p-4 rounded-xl text-xs font-mono space-y-2 pointer-events-none">
-          <div className="flex justify-between gap-4"><span>Move</span> <span className="text-gray-300">Arrows / WASD</span></div>
-          <div className="flex justify-between gap-4"><span>Jump</span> <span className="text-gray-300">Space</span></div>
-          <div className="flex justify-between gap-4"><span>Run</span> <span className="text-gray-300">Shift</span></div>
-          <div className="flex justify-between gap-4"><span>Camera</span> <span className="text-gray-300">Drag orbit · R centers</span></div>
-          <div className="flex justify-between gap-4"><span>Crouch</span> <span className="text-gray-300">C</span></div>
-          <div className="flex justify-between gap-4"><span>Interact</span> <span className="text-gray-300">E</span></div>
-          <div className="flex justify-between gap-4"><span>Journal</span> <span className="text-gray-300">J/Tab</span></div>
+          <div className="flex justify-between gap-4">
+            <span>Move</span>{" "}
+            <span className="text-gray-300">Arrows / WASD</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Jump</span> <span className="text-gray-300">Space</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Run</span> <span className="text-gray-300">Shift</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Camera</span>{" "}
+            <span className="text-gray-300">Drag orbit · R centers</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Crouch</span> <span className="text-gray-300">C</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Interact</span> <span className="text-gray-300">E</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Journal</span> <span className="text-gray-300">J/Tab</span>
+          </div>
         </div>
       )}
     </div>
@@ -1939,9 +3108,15 @@ function WavyShout() {
   const until = useSlideStore((state) => state.shoutFallbackUntil);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    if (until <= Date.now()) { setVisible(false); return undefined; }
+    if (until <= Date.now()) {
+      setVisible(false);
+      return undefined;
+    }
     setVisible(true);
-    const timer = window.setTimeout(() => setVisible(false), until - Date.now());
+    const timer = window.setTimeout(
+      () => setVisible(false),
+      until - Date.now(),
+    );
     return () => window.clearTimeout(timer);
   }, [until]);
   if (!visible) return null;

@@ -5,7 +5,7 @@ import {
   type AudioScene,
   type VoiceGroup,
 } from "./audioAssets";
-import { setGameAudioMix } from "./audio";
+import { setGameAudioMix, unlockGameAudio } from "./audio";
 
 export interface AudioMix {
   enabled: boolean;
@@ -135,16 +135,16 @@ function refreshDebug() {
     music.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
   );
   state.musicCurrentTime = music?.currentTime ?? 0;
-  if (typeof document !== 'undefined') {
+  if (typeof document !== "undefined") {
     const root = document.documentElement.dataset;
     root.audioUnlocked = String(state.unlocked);
     root.audioScene = state.scene;
-    root.audioTrack = state.currentTrack ?? '';
+    root.audioTrack = state.currentTrack ?? "";
     root.audioPlaying = String(state.musicPlaying);
     root.audioCurrentTime = state.musicCurrentTime.toFixed(2);
     root.audioVoiceCount = String(state.voicesPlayed);
     root.audioSfxCount = String(state.sfxPlayed);
-    root.audioLastVoice = state.lastVoice ?? '';
+    root.audioLastVoice = state.lastVoice ?? "";
     root.audioFailures = String(state.failures.length);
   }
 }
@@ -168,13 +168,17 @@ function startSceneMusic() {
   next.loop = MUSIC_BY_SCENE[scene].length === 1;
   next.preload = "auto";
   next.volume = 0;
-  next.addEventListener('timeupdate', refreshDebug);
-  next.addEventListener("ended", () => {
-    if (music !== next) return;
-    selectedCue = chooseMusicCue(scene, next.dataset.cue);
-    lastCueByScene.set(scene, selectedCue.id);
-    startSceneMusic();
-  }, { once: true });
+  next.addEventListener("timeupdate", refreshDebug);
+  next.addEventListener(
+    "ended",
+    () => {
+      if (music !== next) return;
+      selectedCue = chooseCompatibleCue(next.dataset.cue);
+      lastCueByScene.set(scene, selectedCue.id);
+      startSceneMusic();
+    },
+    { once: true },
+  );
   music = next;
   const play = next.play();
   void play
@@ -201,8 +205,32 @@ function startSceneMusic() {
     .catch((error) => {
       if (music === next) music = previous;
       reportFailure(`play music ${cue.file}`, error);
+      failedMusicFiles.add(cue.file);
+      const fallback = chooseCompatibleCue(cue.id);
+      if (fallback.file !== cue.file) {
+        selectedCue = fallback;
+        window.setTimeout(startSceneMusic, 0);
+      }
       refreshDebug();
     });
+}
+
+const failedMusicFiles = new Set<string>();
+
+function chooseCompatibleCue(previousId?: string) {
+  const probe = typeof Audio === "undefined" ? undefined : new Audio();
+  const compatible = probe
+    ? (mime: string) => probe.canPlayType(mime)
+    : undefined;
+  const available = MUSIC_BY_SCENE[scene].filter(
+    (cue) => !failedMusicFiles.has(cue.file),
+  );
+  if (available.length) {
+    const selected = chooseMusicCue(scene, previousId, Math.random, compatible);
+    if (!failedMusicFiles.has(selected.file)) return selected;
+    return available[0];
+  }
+  return chooseMusicCue(scene, previousId, Math.random, compatible);
 }
 
 export function configureRichGameAudio(next: AudioMix) {
@@ -227,14 +255,21 @@ export function configureRichGameAudio(next: AudioMix) {
 export function unlockRichGameAudio(initialScene?: AudioScene) {
   if (initialScene) scene = initialScene;
   unlocked = true;
+  selectedCue = chooseCompatibleCue(lastCueByScene.get(scene));
   startSceneMusic();
   refreshDebug();
+}
+
+/** One gesture unlocks both WebAudio SFX and HTMLAudio music/voices. */
+export function unlockAllGameAudio(initialScene?: AudioScene) {
+  unlockGameAudio();
+  unlockRichGameAudio(initialScene);
 }
 
 export function setAudioScene(nextScene: AudioScene) {
   if (scene === nextScene) return;
   scene = nextScene;
-  selectedCue = chooseMusicCue(scene, lastCueByScene.get(scene));
+  selectedCue = chooseCompatibleCue(lastCueByScene.get(scene));
   lastCueByScene.set(scene, selectedCue.id);
   startSceneMusic();
   refreshDebug();
@@ -256,8 +291,12 @@ export function playAssetSfx(path: string, relativeVolume = 1) {
   const audio = new Audio(assetUrl(path));
   audio.preload = "auto";
   audio.volume = clamp(mix.sfxVolume * relativeVolume);
-  void audio.play()
-    .then(() => { debug().sfxPlayed += 1; refreshDebug(); })
+  void audio
+    .play()
+    .then(() => {
+      debug().sfxPlayed += 1;
+      refreshDebug();
+    })
     .catch((error) => reportFailure(`play SFX ${path}`, error));
   return true;
 }
@@ -288,7 +327,8 @@ export function playVoice(group: VoiceGroup, options: VoiceOptions = {}) {
     (file) => now - (voiceLastPlayedAt.get(file) ?? -Infinity) >= 45,
   );
   if (!eligible.length) return false;
-  const file = eligible[Math.floor(Math.random() * eligible.length)] ?? eligible[0];
+  const file =
+    eligible[Math.floor(Math.random() * eligible.length)] ?? eligible[0];
   const audio = new Audio(assetUrl(`audio/voices/${file}`));
   audio.preload = "auto";
   audio.volume = clamp(mix.voiceVolume * (options.attenuation ?? 1));
@@ -314,7 +354,8 @@ export function playVoice(group: VoiceGroup, options: VoiceOptions = {}) {
     },
     { once: true },
   );
-  void audio.play()
+  void audio
+    .play()
     .then(() => {
       const state = debug();
       state.lastVoice = file;

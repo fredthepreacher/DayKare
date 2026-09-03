@@ -1,5 +1,8 @@
-import { DRIP_CATALOG } from './drip';
-import { STORYBOOK_PRICES, type StorybookItemId } from './storybookLaneConfig';
+import { DRIP_CATALOG } from "./drip";
+import {
+  storybookItemPrice,
+  type StorybookItemId,
+} from "./storybookLaneConfig";
 
 /**
  * What the player owns, read out of the state that already records it.
@@ -39,18 +42,22 @@ export interface OwnershipCategory {
 
 /** A player-facing name for a home tier, instead of "Crib tier 0". */
 export function homeTierName(cribTier: number) {
-  const tier = Math.max(0, Math.floor(Number.isFinite(cribTier) ? cribTier : 0));
-  if (tier <= 0) return 'Starter Home';
-  if (tier === 1) return 'Comfy Home';
-  if (tier === 2) return 'Deluxe Home';
-  return 'Showpiece Home';
+  const tier = Math.max(
+    0,
+    Math.floor(Number.isFinite(cribTier) ? cribTier : 0),
+  );
+  if (tier <= 0) return "Starter Home";
+  if (tier === 1) return "Comfy Home";
+  if (tier === 2) return "Deluxe Home";
+  return "Showpiece Home";
 }
 
 const LANE_ITEM_LABELS: Record<StorybookItemId, string> = {
-  tricycle: 'Tricycle',
-  dog: 'Dog',
-  crib: 'Personal Crib',
-  'mini-ride-on': 'Mini Ride-On',
+  tricycle: "Tricycle",
+  dog: "Dog",
+  crib: "Personal Crib",
+  "mini-ride-on": "Mini Ride-On",
+  "ping-pong-table": "Ping-Pong Table",
 };
 
 export function ownershipSummary(input: OwnershipInput): OwnershipCategory[] {
@@ -59,37 +66,62 @@ export function ownershipSummary(input: OwnershipInput): OwnershipCategory[] {
   const property: OwnershipEntry[] = [];
   if (input.ownedStarterHome) {
     property.push({
-      id: 'wavy-manor',
-      label: 'Wavy Manor',
+      id: "wavy-manor",
+      label: "Wavy Manor",
       detail: `${homeTierName(input.cribTier)} · Stony Brook`,
     });
   } else if (input.homeVoucher) {
     property.push({
-      id: 'home-voucher',
-      label: 'Free-home voucher',
-      detail: 'Claim it from a Stony Brook realtor',
+      id: "home-voucher",
+      label: "Free-home voucher",
+      detail: "Claim it from a Stony Brook realtor",
     });
   }
 
-  const pets: OwnershipEntry[] = owns('dog')
-    ? [{ id: 'dog', label: 'Dog', detail: 'Follows you in Stony Brook · whistle to call' }]
+  const pets: OwnershipEntry[] = owns("dog")
+    ? [
+        {
+          id: "dog",
+          label: "Dog",
+          detail: "Follows you in Stony Brook · whistle to call",
+        },
+      ]
     : [];
 
   // Rides live in the garage now, so the summary says where to find them.
   const parked = garageBays(input.laneItems);
-  const rides: OwnershipEntry[] = (['tricycle', 'mini-ride-on'] as StorybookItemId[])
+  const rides: OwnershipEntry[] = (
+    ["tricycle", "mini-ride-on"] as StorybookItemId[]
+  )
     .filter(owns)
     .map((item) => ({
       id: item,
       label: LANE_ITEM_LABELS[item],
       detail: parked.some((bay) => bay?.id === item)
-        ? 'In the garage'
-        : `Owned · ${STORYBOOK_PRICES[item === 'mini-ride-on' ? 'miniRideOn' : item].toLocaleString()} RB`,
+        ? "In the garage"
+        : `Owned · ${storybookItemPrice(item).toLocaleString()} RB`,
     }));
 
-  const furnishings: OwnershipEntry[] = owns('crib')
-    ? [{ id: 'crib', label: 'Personal Crib', detail: 'Installed at your home' }]
-    : [];
+  const furnishings: OwnershipEntry[] = [
+    ...(owns("crib")
+      ? [
+          {
+            id: "crib",
+            label: "Personal Crib",
+            detail: "Installed at your home",
+          },
+        ]
+      : []),
+    ...(owns("ping-pong-table")
+      ? [
+          {
+            id: "ping-pong-table",
+            label: "Ping-Pong Table",
+            detail: "Playable in the basement rec room",
+          },
+        ]
+      : []),
+  ];
 
   const drip: OwnershipEntry[] = input.dripOwned
     .map((id) => DRIP_CATALOG.find((item) => item.id === id))
@@ -97,24 +129,45 @@ export function ownershipSummary(input: OwnershipInput): OwnershipCategory[] {
     .map((item) => ({
       id: item.id,
       label: item.name,
-      detail: input.dripEquipped[item.category] === item.id
-        ? `${item.category} · Equipped`
-        : `${item.category} · ${item.rarity}`,
+      detail:
+        input.dripEquipped[item.category] === item.id
+          ? `${item.category} · Equipped`
+          : `${item.category} · ${item.rarity}`,
     }));
 
   const gear: OwnershipEntry[] = input.fishingRods.map((color) => ({
     id: `rod-${color}`,
     label: `${color.charAt(0).toUpperCase()}${color.slice(1)} fishing rod`,
-    detail: 'Garden District',
+    detail: "Garden District",
   }));
 
   return [
-    { id: 'property', title: 'Property', entries: property, emptyLabel: 'No home yet — talk to a Stony Brook realtor.' },
-    { id: 'pets', title: 'Pets', entries: pets, emptyLabel: 'No pet yet.' },
-    { id: 'rides', title: 'Rides (garage)', entries: rides, emptyLabel: 'The garage is empty — no rides yet.' },
-    { id: 'furnishings', title: 'Furnishings', entries: furnishings, emptyLabel: 'Nothing installed yet.' },
-    { id: 'drip', title: 'Drip', entries: drip, emptyLabel: 'No cosmetics owned yet.' },
-    { id: 'gear', title: 'Gear', entries: gear, emptyLabel: 'No gear yet.' },
+    {
+      id: "property",
+      title: "Property",
+      entries: property,
+      emptyLabel: "No home yet — talk to a Stony Brook realtor.",
+    },
+    { id: "pets", title: "Pets", entries: pets, emptyLabel: "No pet yet." },
+    {
+      id: "rides",
+      title: "Rides (garage)",
+      entries: rides,
+      emptyLabel: "The garage is empty — no rides yet.",
+    },
+    {
+      id: "furnishings",
+      title: "Furnishings",
+      entries: furnishings,
+      emptyLabel: "Nothing installed yet.",
+    },
+    {
+      id: "drip",
+      title: "Drip",
+      entries: drip,
+      emptyLabel: "No cosmetics owned yet.",
+    },
+    { id: "gear", title: "Gear", entries: gear, emptyLabel: "No gear yet." },
   ];
 }
 
@@ -128,8 +181,8 @@ export function ownershipSummary(input: OwnershipInput): OwnershipCategory[] {
  */
 export function garageBays(ownedItems: readonly string[]) {
   const RIDES: { id: StorybookItemId; label: string }[] = [
-    { id: 'tricycle', label: 'Tricycle' },
-    { id: 'mini-ride-on', label: 'Mini Ride-On' },
+    { id: "tricycle", label: "Tricycle" },
+    { id: "mini-ride-on", label: "Mini Ride-On" },
   ];
   const parked = RIDES.filter((ride) => ownedItems.includes(ride.id));
   return [0, 1, 2, 3].map((index) => parked[index] ?? null);
@@ -137,5 +190,5 @@ export function garageBays(ownedItems: readonly string[]) {
 
 /** A one-line wallet summary to head the ownership screen. */
 export function ownershipWalletLine(input: OwnershipInput) {
-  return `${input.rascalBucks.toLocaleString()} RB · ${input.gems} Care Gem${input.gems === 1 ? '' : 's'} · ${input.tokens} Star Token${input.tokens === 1 ? '' : 's'}`;
+  return `${input.rascalBucks.toLocaleString()} RB · ${input.gems} Care Gem${input.gems === 1 ? "" : "s"} · ${input.tokens} Star Token${input.tokens === 1 ? "" : "s"}`;
 }

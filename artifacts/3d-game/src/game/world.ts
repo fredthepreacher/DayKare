@@ -1,20 +1,20 @@
-import * as THREE from 'three';
-import { isSweptSphereClear, sweptSphereClearance } from './cameraRig';
+import * as THREE from "three";
+import { isSweptSphereClear, sweptSphereClearance } from "./cameraRig";
 
 export type SolidKind =
-  | 'boundary'
-  | 'wall'
-  | 'furniture'
-  | 'counter'
-  | 'cubby'
-  | 'table'
-  | 'box'
-  | 'playground'
-  | 'route-gate'
-  | 'activity-station'
-  | 'camera-blocker';
+  | "boundary"
+  | "wall"
+  | "furniture"
+  | "counter"
+  | "cubby"
+  | "table"
+  | "box"
+  | "playground"
+  | "route-gate"
+  | "activity-station"
+  | "camera-blocker";
 
-export type GameZone = 'hub' | 'garden' | 'storybook' | 'home' | 'garage';
+export type GameZone = "hub" | "garden" | "storybook" | "home" | "garage";
 
 export interface WorldSolid {
   id: string;
@@ -24,7 +24,7 @@ export interface WorldSolid {
   maxX: number;
   minZ: number;
   maxZ: number;
-  shape?: 'box' | 'circle';
+  shape?: "box" | "circle";
   radius?: number;
   collision?: boolean;
   /**
@@ -37,14 +37,14 @@ export interface WorldSolid {
    * pretending to be 1.5 m tall.
    */
   blocksWhenFlat?: boolean;
-  cameraRole?: 'structural' | 'substantial' | 'none';
+  cameraRole?: "structural" | "substantial" | "none";
   minY?: number;
   maxY?: number;
 }
 
 export interface WorldPortal {
   id: string;
-  axis: 'x' | 'z';
+  axis: "x" | "z";
   position: [number, number, number];
   width: number;
   connects: [string, string];
@@ -71,7 +71,7 @@ export interface WorldSolidTransform {
   size: [number, number, number];
 }
 
-export type WorldSolidFace = 'north' | 'south' | 'west' | 'east' | 'top';
+export type WorldSolidFace = "north" | "south" | "west" | "east" | "top";
 
 export interface WorldSurfaceTransform {
   position: [number, number, number];
@@ -83,9 +83,10 @@ export interface WorldSurfaceValidation {
   issues: string[];
 }
 
-const defaultCameraRole = (kind: SolidKind): WorldSolid['cameraRole'] => (
-  kind === 'wall' || kind === 'boundary' || kind === 'route-gate' ? 'structural' : 'none'
-);
+const defaultCameraRole = (kind: SolidKind): WorldSolid["cameraRole"] =>
+  kind === "wall" || kind === "boundary" || kind === "route-gate"
+    ? "structural"
+    : "none";
 
 const box = (
   id: string,
@@ -96,12 +97,19 @@ const box = (
   maxZ: number,
   options: Partial<WorldSolid> = {},
 ): WorldSolid => ({
-  id, kind, zone: 'hub', minX, maxX, minZ, maxZ,
-  shape: 'box',
+  id,
+  kind,
+  zone: "hub",
+  minX,
+  maxX,
+  minZ,
+  maxZ,
+  shape: "box",
   collision: true,
   cameraRole: defaultCameraRole(kind),
   minY: 0,
-  maxY: kind === 'boundary' || kind === 'wall' || kind === 'route-gate' ? 3 : 1.5,
+  maxY:
+    kind === "boundary" || kind === "wall" || kind === "route-gate" ? 3 : 1.5,
   ...options,
 });
 
@@ -113,7 +121,8 @@ const gardenBox = (
   minZ: number,
   maxZ: number,
   options: Partial<WorldSolid> = {},
-): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'garden', ...options });
+): WorldSolid =>
+  box(id, kind, minX, maxX, minZ, maxZ, { zone: "garden", ...options });
 
 const gardenCircle = (
   id: string,
@@ -122,15 +131,12 @@ const gardenCircle = (
   z: number,
   radius: number,
   options: Partial<WorldSolid> = {},
-): WorldSolid => gardenBox(
-  id,
-  kind,
-  x - radius,
-  x + radius,
-  z - radius,
-  z + radius,
-  { shape: 'circle', radius, ...options },
-);
+): WorldSolid =>
+  gardenBox(id, kind, x - radius, x + radius, z - radius, z + radius, {
+    shape: "circle",
+    radius,
+    ...options,
+  });
 
 const storybookBox = (
   id: string,
@@ -140,7 +146,8 @@ const storybookBox = (
   minZ: number,
   maxZ: number,
   options: Partial<WorldSolid> = {},
-): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'storybook', ...options });
+): WorldSolid =>
+  box(id, kind, minX, maxX, minZ, maxZ, { zone: "storybook", ...options });
 
 /* ------------------------------------------------------------------ *
  * The owned Stony Brook home.
@@ -168,8 +175,16 @@ export const HOME_SPAWN: [number, number, number] = [-1, 0, 6.4];
 export const HOME_EXIT_POINT: [number, number, number] = [-1, 0, 7.4];
 /** Where the player stands on the front path after leaving the house. */
 export const STONY_BROOK_DOOR_RETURN: [number, number, number] = [-13, 0, -8.6];
-export const HOME_UPPER_LANDING: [number, number, number] = [7.4, HOME_UPPER_Y, 0];
-export const HOME_BASEMENT_LANDING: [number, number, number] = [-15.4, HOME_BASEMENT_Y, 0];
+export const HOME_UPPER_LANDING: [number, number, number] = [
+  7.4,
+  HOME_UPPER_Y,
+  0,
+];
+export const HOME_BASEMENT_LANDING: [number, number, number] = [
+  -15.4,
+  HOME_BASEMENT_Y,
+  0,
+];
 
 /* ------------------------------------------------------------------ *
  * The garage.
@@ -182,8 +197,13 @@ export const HOME_BASEMENT_LANDING: [number, number, number] = [-15.4, HOME_BASE
  * ------------------------------------------------------------------ */
 
 /** The tennis court's playing surface, and the walk-up spot beside it. */
-export const TENNIS_COURT = { minX: 13.5, maxX: 20.5, minZ: -21.5, maxZ: -15 } as const;
-export const TENNIS_APPROACH: [number, number, number] = [17, 0, -14.2];
+export const TENNIS_COURT = {
+  minX: 11.5,
+  maxX: 22.5,
+  minZ: -22.5,
+  maxZ: -11.5,
+} as const;
+export const TENNIS_APPROACH: [number, number, number] = [17, 0, -10.7];
 
 export const GARAGE_SPAWN: [number, number, number] = [0, 0, 4.6];
 /** The inside face of the garage door, and the way back to Stony Brook. */
@@ -208,8 +228,12 @@ const garageBox = (
   maxX: number,
   minZ: number,
   maxZ: number,
-  options: Omit<Partial<WorldSolid>, 'id' | 'kind' | 'minX' | 'maxX' | 'minZ' | 'maxZ'> = {},
-): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'garage', ...options });
+  options: Omit<
+    Partial<WorldSolid>,
+    "id" | "kind" | "minX" | "maxX" | "minZ" | "maxZ"
+  > = {},
+): WorldSolid =>
+  box(id, kind, minX, maxX, minZ, maxZ, { zone: "garage", ...options });
 
 const homeBox = (
   id: string,
@@ -218,18 +242,23 @@ const homeBox = (
   maxX: number,
   minZ: number,
   maxZ: number,
-  options: Omit<Partial<WorldSolid>, 'id' | 'kind' | 'minX' | 'maxX' | 'minZ' | 'maxZ'> = {},
-): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'home', ...options });
+  options: Omit<
+    Partial<WorldSolid>,
+    "id" | "kind" | "minX" | "maxX" | "minZ" | "maxZ"
+  > = {},
+): WorldSolid =>
+  box(id, kind, minX, maxX, minZ, maxZ, { zone: "home", ...options });
 
 /**
  * The floor a rider stands on at a given X inside the home. Every other
  * zone is flat, so this returns 0 for them and costs one comparison.
  */
-export function groundHeightAt(x: number, zone: GameZone = 'hub') {
-  if (zone !== 'home') return 0;
+export function groundHeightAt(x: number, zone: GameZone = "hub") {
+  if (zone !== "home") return 0;
   if (x <= HOME_BASEMENT_MAX_X) return HOME_BASEMENT_Y;
   if (x < HOME_GROUND_MIN_X) {
-    const t = (x - HOME_BASEMENT_MAX_X) / (HOME_GROUND_MIN_X - HOME_BASEMENT_MAX_X);
+    const t =
+      (x - HOME_BASEMENT_MAX_X) / (HOME_GROUND_MIN_X - HOME_BASEMENT_MAX_X);
     return HOME_BASEMENT_Y * (1 - t);
   }
   if (x <= HOME_GROUND_MAX_X) return 0;
@@ -246,8 +275,8 @@ export const PLAY_SLIDE_RAMP = {
   rotation: [-Math.PI / 4, 0, 0] as [number, number, number],
   // The rotated ramp mesh sinks below the floor at z = -3.0; the collider ran
   // to -2.3, leaving 0.28 m where the player was stopped by bare grass.
-  solid: box('play-slide-ramp', 'playground', 11.4, 12.6, -4.7, -3, {
-    cameraRole: 'substantial',
+  solid: box("play-slide-ramp", "playground", 11.4, 12.6, -4.7, -3, {
+    cameraRole: "substantial",
     maxY: 1.7,
   }),
 };
@@ -255,59 +284,91 @@ export const PLAY_SLIDE_RAMP = {
 export const SHINY_ROCK_SPAWN = [10.2, 0.18, -0.4] as [number, number, number];
 
 export const WORLD_SOLIDS: WorldSolid[] = [
-  box('north-boundary', 'boundary', -16, 16, -16.3, -15.7),
-  box('south-boundary', 'boundary', -16, 16, 15.7, 16.3),
-  box('west-boundary', 'boundary', -16.3, -15.7, -16, 16),
-  box('east-boundary', 'boundary', 15.7, 16.3, -16, 16),
-  box('main-north-wall', 'wall', -8, 8, -8.3, -7.7),
+  box("north-boundary", "boundary", -16, 16, -16.3, -15.7),
+  box("south-boundary", "boundary", -16, 16, 15.7, 16.3),
+  box("west-boundary", "boundary", -16.3, -15.7, -16, 16),
+  box("east-boundary", "boundary", 15.7, 16.3, -16, 16),
+  box("main-north-wall", "wall", -8, 8, -8.3, -7.7),
   // A real doorway connects the classroom to the cafeteria wing.
-  box('main-south-wall-west', 'wall', -8, -2.2, 7.7, 8.3),
-  box('main-south-wall-east', 'wall', 2.2, 8, 7.7, 8.3),
-  box('playground-divider-north', 'wall', 7.7, 8.3, -8, -2.15),
-  box('playground-divider-south', 'wall', 7.7, 8.3, 2.15, 8),
-  box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2.15),
-  box('hall-divider-south', 'wall', -8.3, -7.7, 2.15, 8),
+  box("main-south-wall-west", "wall", -8, -2.2, 7.7, 8.3),
+  box("main-south-wall-east", "wall", 2.2, 8, 7.7, 8.3),
+  box("playground-divider-north", "wall", 7.7, 8.3, -8, -2.15),
+  box("playground-divider-south", "wall", 7.7, 8.3, 2.15, 8),
+  box("hall-divider-north", "wall", -8.3, -7.7, -8, -2.15),
+  box("hall-divider-south", "wall", -8.3, -7.7, 2.15, 8),
   // The hallway/art-room and hallway/storage seams had a 4 m doorway cut into
   // an 8 m span of continuously rendered floor, and NO wall either side of it -
   // so 4.85 m of each seam was a hard stop with no geometry to explain it. These
   // four panels are the walls that were always implied, following the same
   // pattern as the dividers above.
-  box('art-divider-west', 'wall', -15.7, -14, -8.3, -7.7),
-  box('art-divider-east', 'wall', -10, -8.3, -8.3, -7.7),
-  box('storage-divider-west', 'wall', -15.7, -14, 7.7, 8.3),
-  box('storage-divider-east', 'wall', -10, -8.3, 7.7, 8.3),
-  box('juice-stand', 'counter', 2, 4, -3.6, -2.4, { cameraRole: 'substantial' }),
-  box('juice-signboard', 'furniture', 2, 4, -3.06, -2.94, {
+  box("art-divider-west", "wall", -15.7, -14, -8.3, -7.7),
+  box("art-divider-east", "wall", -10, -8.3, -8.3, -7.7),
+  box("storage-divider-west", "wall", -15.7, -14, 7.7, 8.3),
+  box("storage-divider-east", "wall", -10, -8.3, 7.7, 8.3),
+  box("juice-stand", "counter", 2, 4, -3.6, -2.4, {
+    cameraRole: "substantial",
+  }),
+  box("juice-signboard", "furniture", 2, 4, -3.06, -2.94, {
     collision: false,
-    cameraRole: 'none',
+    cameraRole: "none",
     minY: 0.78,
     maxY: 2.22,
   }),
-  box('art-table', 'table', -11.7, -8.3, -13.7, -10.3, { cameraRole: 'substantial', maxY: 1 }),
+  box("art-table", "table", -11.7, -8.3, -13.7, -10.3, {
+    cameraRole: "substantial",
+    maxY: 1,
+  }),
   // Entirely inside art-table's footprint, so it only ever added a second
   // push-out inside a single-pass resolver. The table already blocks here.
-  box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8, { collision: false, cameraRole: 'substantial' }),
+  box("art-easel", "furniture", -13.1, -11.9, -13.2, -12.8, {
+    collision: false,
+    cameraRole: "substantial",
+  }),
   // Extended back to the wall face. The 0.6 m gap behind it needed 0.84 m to
   // enter, so it read as a space you could slip into and never could.
-  box('cubbies', 'cubby', -7.6, -3.8, -7.7, -6.3, { cameraRole: 'substantial', maxY: 2.2 }),
+  box("cubbies", "cubby", -7.6, -3.8, -7.7, -6.3, {
+    cameraRole: "substantial",
+    maxY: 2.2,
+  }),
   // Trimmed to the beanbag and shelf the player can actually see.
-  box('reading-nook', 'furniture', 4.7, 6.5, -7.24, -5.96, { cameraRole: 'substantial', maxY: 1.1 }),
-  box('storage-box-a', 'box', -14.7, -13.3, 13.7, 15.1, { cameraRole: 'substantial' }),
-  box('storage-box-upper', 'box', -14.4, -13.6, 14, 14.8, {
+  box("reading-nook", "furniture", 4.7, 6.5, -7.24, -5.96, {
+    cameraRole: "substantial",
+    maxY: 1.1,
+  }),
+  box("storage-box-a", "box", -14.7, -13.3, 13.7, 15.1, {
+    cameraRole: "substantial",
+  }),
+  box("storage-box-upper", "box", -14.4, -13.6, 14, 14.8, {
     collision: false,
-    cameraRole: 'none',
+    cameraRole: "none",
     minY: 1,
     maxY: 1.8,
   }),
-  box('storage-box-b', 'box', -11.1, -9.5, 13.7, 15.3, { cameraRole: 'substantial' }),
+  box("storage-box-b", "box", -11.1, -9.5, 13.7, 15.3, {
+    cameraRole: "substantial",
+  }),
   // Cafeteria: its own central wing, physically separate from restricted storage.
-  box('cafeteria-west-wall', 'wall', -8.3, -7.7, 8, 13.3),
-  box('cafeteria-east-wall', 'wall', 7.7, 8.3, 8, 13.3),
-  box('cafeteria-future-divider', 'wall', -8, 8, 13.0, 13.3),
-  box('cafeteria-counter-west', 'counter', -6, -3.5, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
-  box('cafeteria-counter-east', 'counter', 3.5, 6, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
-  box('cafeteria-table-a', 'table', -3.38, -1.82, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
-  box('cafeteria-table-b', 'table', 1.82, 3.38, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
+  box("cafeteria-west-wall", "wall", -8.3, -7.7, 8, 13.3),
+  box("cafeteria-east-wall", "wall", 7.7, 8.3, 8, 13.3),
+  box("cafeteria-future-divider", "wall", -8, 8, 13.0, 13.3),
+  box("cafeteria-counter-west", "counter", -6, -3.5, 11.82, 12.54, {
+    cameraRole: "substantial",
+    maxY: 1.25,
+  }),
+  box("cafeteria-counter-east", "counter", 3.5, 6, 11.82, 12.54, {
+    cameraRole: "substantial",
+    maxY: 1.25,
+  }),
+  box("cafeteria-table-a", "table", -3.38, -1.82, 9.22, 10.78, {
+    shape: "circle",
+    radius: 0.78,
+    maxY: 0.6,
+  }),
+  box("cafeteria-table-b", "table", 1.82, 3.38, 9.22, 10.78, {
+    shape: "circle",
+    radius: 0.78,
+    maxY: 0.6,
+  }),
   // The heist hub's back wall, shortened at its western end.
   //
   // At its full span (x 8.52 -> 12.78) it met the Maker Market gate (x 13 ->
@@ -319,11 +380,20 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   //
   // Ending it at x 9.9 leaves a 1.26 m walkway up the hub's west side, so the
   // north playground is reachable while the planning desk stays enclosed.
-  box('heist-hub-back', 'furniture', 9.9, 12.78, 11.79, 11.97, { cameraRole: 'substantial', maxY: 2.4 }),
-  box('heist-hub-east', 'furniture', 12.62, 12.78, 9.3, 11.8, { cameraRole: 'substantial', maxY: 1.8 }),
-  box('heist-planning-desk', 'table', 9.38, 11.03, 10.24, 11.06, { cameraRole: 'substantial', maxY: 1.06 }),
-  box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8, {
-    cameraRole: 'substantial',
+  box("heist-hub-back", "furniture", 9.9, 12.78, 11.79, 11.97, {
+    cameraRole: "substantial",
+    maxY: 2.4,
+  }),
+  box("heist-hub-east", "furniture", 12.62, 12.78, 9.3, 11.8, {
+    cameraRole: "substantial",
+    maxY: 1.8,
+  }),
+  box("heist-planning-desk", "table", 9.38, 11.03, 10.24, 11.06, {
+    cameraRole: "substantial",
+    maxY: 1.06,
+  }),
+  box("play-slide", "playground", 11.3, 12.7, -6.2, -4.8, {
+    cameraRole: "substantial",
     maxY: 2,
   }),
   PLAY_SLIDE_RAMP.solid,
@@ -331,188 +401,440 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   // mesh - and with height ignored it cut the playground's 6.56 m corridor down
   // to two 0.86 m lanes, or 0.30 m on the tricycle. Now it reads as the floor
   // decoration it looks like.
-  box('sandbox', 'playground', 10, 14, 3, 7, { cameraRole: 'substantial', maxY: 0.07 }),
+  box("sandbox", "playground", 10, 14, 3, 7, {
+    cameraRole: "substantial",
+    maxY: 0.07,
+  }),
   /* ---- The garage: one room, four bays, a workbench and a door ---- */
-  garageBox('garage-north', 'wall', -6.3, 6.3, -6.3, -6.0),
-  garageBox('garage-south-west', 'wall', -6.3, -1.1, 6.0, 6.3),
-  garageBox('garage-south-east', 'wall', 1.1, 6.3, 6.0, 6.3),
+  garageBox("garage-north", "wall", -6.3, 6.3, -6.3, -6.0),
+  garageBox("garage-south-west", "wall", -6.3, -1.1, 6.0, 6.3),
+  garageBox("garage-south-east", "wall", 1.1, 6.3, 6.0, 6.3),
   // The roller door. Solid, like the home's front door: you leave through the
   // interaction, not through the gap.
-  garageBox('garage-door', 'wall', -1.1, 1.1, 6.0, 6.3),
-  garageBox('garage-west', 'wall', -6.3, -6.0, -6.3, 6.3),
-  garageBox('garage-east', 'wall', 6.0, 6.3, -6.3, 6.3),
-  garageBox('garage-workbench', 'counter', -5.9, -2.2, -5.9, -5.0, { cameraRole: 'substantial', maxY: 0.95 }),
-  garageBox('garage-shelf', 'furniture', 4.6, 5.9, -5.9, -3.2, { cameraRole: 'substantial', maxY: 1.9 }),
-  garageBox('garage-toolbox', 'furniture', -0.7, 0.7, -5.9, -5.1, { maxY: 0.85 }),
+  garageBox("garage-door", "wall", -1.1, 1.1, 6.0, 6.3),
+  garageBox("garage-west", "wall", -6.3, -6.0, -6.3, 6.3),
+  garageBox("garage-east", "wall", 6.0, 6.3, -6.3, 6.3),
+  garageBox("garage-workbench", "counter", -5.9, -2.2, -5.9, -5.0, {
+    cameraRole: "substantial",
+    maxY: 0.95,
+  }),
+  garageBox("garage-shelf", "furniture", 4.6, 5.9, -5.9, -3.2, {
+    cameraRole: "substantial",
+    maxY: 1.9,
+  }),
+  garageBox("garage-toolbox", "furniture", -0.7, 0.7, -5.9, -5.1, {
+    maxY: 0.85,
+  }),
 
   /* ---- The owned Stony Brook home interior ---- */
-  homeBox('home-ground-north', 'wall', -10.3, 2.3, -8.3, -8.0),
-  homeBox('home-ground-south-west', 'wall', -10.3, -1.9, 8.0, 8.3),
-  homeBox('home-ground-south-east', 'wall', -0.1, 2.3, 8.0, 8.3),
+  homeBox("home-ground-north", "wall", -10.3, 2.3, -8.3, -8.0),
+  homeBox("home-ground-south-west", "wall", -10.3, -1.9, 8.0, 8.3),
+  homeBox("home-ground-south-east", "wall", -0.1, 2.3, 8.0, 8.3),
   // The front door itself. Without it the doorway gap is a hole in the
   // shell and the player can simply walk out of the house.
-  homeBox('home-front-door', 'wall', -1.9, -0.1, 8.0, 8.3),
-  homeBox('home-ground-east-north', 'wall', 2.0, 2.3, -8.3, -2.6),
-  homeBox('home-ground-east-south', 'wall', 2.0, 2.3, 2.6, 8.3),
+  homeBox("home-front-door", "wall", -1.9, -0.1, 8.0, 8.3),
+  homeBox("home-ground-east-north", "wall", 2.0, 2.3, -8.3, -2.6),
+  homeBox("home-ground-east-south", "wall", 2.0, 2.3, 2.6, 8.3),
   // The middle stub of this spine turned the ground floor into a maze of
   // short walls with dead pockets between them. Removing it leaves one
   // wide opening from the kitchen through the dining area to the living
   // room, and keeps the dining room's own walls standing.
-  homeBox('home-ground-spine-a', 'wall', -3.15, -2.85, -8.3, -2.0),
-  homeBox('home-ground-spine-c', 'wall', -3.15, -2.85, 3.6, 8.3),
-  homeBox('home-ground-kitchen-wall-a', 'wall', -10.3, -8.0, -0.15, 0.15),
-  homeBox('home-ground-kitchen-wall-b', 'wall', -6.4, -2.85, -0.15, 0.15),
-  homeBox('home-ground-bath-wall-a', 'wall', -1.2, 2.3, -3.15, -2.85),
+  homeBox("home-ground-spine-a", "wall", -3.15, -2.85, -8.3, -2.0),
+  homeBox("home-ground-spine-c", "wall", -3.15, -2.85, 3.6, 8.3),
+  homeBox("home-ground-kitchen-wall-a", "wall", -10.3, -8.0, -0.15, 0.15),
+  homeBox("home-ground-kitchen-wall-b", "wall", -6.4, -2.85, -0.15, 0.15),
+  homeBox("home-ground-bath-wall-a", "wall", -1.2, 2.3, -3.15, -2.85),
   // A 5.2 m stairwell rather than a 4 m slot: the approach was tight
   // enough that the camera boxed in at the landing.
-  homeBox('home-upstairs-north', 'wall', 1.7, 6.3, -2.9, -2.6),
-  homeBox('home-upstairs-south', 'wall', 1.7, 6.3, 2.6, 2.9),
-  homeBox('home-upper-north', 'wall', 5.7, 18.3, -8.3, -8.0),
-  homeBox('home-upper-south', 'wall', 5.7, 18.3, 8.0, 8.3),
-  homeBox('home-upper-east', 'wall', 18.0, 18.3, -8.3, 8.3),
-  homeBox('home-upper-west-north', 'wall', 5.7, 6.0, -8.3, -2.6),
-  homeBox('home-upper-west-south', 'wall', 5.7, 6.0, 2.6, 8.3),
+  homeBox("home-upstairs-north", "wall", 1.7, 6.3, -2.9, -2.6),
+  homeBox("home-upstairs-south", "wall", 1.7, 6.3, 2.6, 2.9),
+  homeBox("home-upper-north", "wall", 5.7, 18.3, -8.3, -8.0),
+  homeBox("home-upper-south", "wall", 5.7, 18.3, 8.0, 8.3),
+  homeBox("home-upper-east", "wall", 18.0, 18.3, -8.3, 8.3),
+  homeBox("home-upper-west-north", "wall", 5.7, 6.0, -8.3, -2.6),
+  homeBox("home-upper-west-south", "wall", 5.7, 6.0, 2.6, 8.3),
   // Two rooms upstairs, not three: the flex room was a corridor with a bed
   // in it, so its footprint is now part of the primary bedroom. The hallway
   // spine keeps one wide bedroom door and one bathroom door.
-  homeBox('home-upper-spine-a', 'wall', 8.85, 9.15, -8.3, -5.6),
-  homeBox('home-upper-spine-b', 'wall', 8.85, 9.15, -4.0, 1.2),
-  homeBox('home-upper-spine-c', 'wall', 8.85, 9.15, 3.2, 8.3),
-  homeBox('home-upper-room-wall-b', 'wall', 9.15, 18.3, -3.15, -2.85),
-  homeBox('home-downstairs-north', 'wall', -14.3, -9.7, -2.9, -2.6),
-  homeBox('home-downstairs-south', 'wall', -14.3, -9.7, 2.6, 2.9),
-  homeBox('home-ground-west-north', 'wall', -10.3, -10.0, -8.3, -2.6),
-  homeBox('home-ground-west-south', 'wall', -10.3, -10.0, 2.6, 8.3),
-  homeBox('home-basement-north', 'wall', -26.3, -13.7, -7.3, -7.0),
-  homeBox('home-basement-south', 'wall', -26.3, -13.7, 7.0, 7.3),
-  homeBox('home-basement-west', 'wall', -26.3, -26.0, -7.3, 7.3),
-  homeBox('home-basement-east-north', 'wall', -14.0, -13.7, -7.3, -2.6),
-  homeBox('home-basement-east-south', 'wall', -14.0, -13.7, 2.6, 7.3),
+  homeBox("home-upper-spine-a", "wall", 8.85, 9.15, -8.3, -5.6),
+  homeBox("home-upper-spine-b", "wall", 8.85, 9.15, -4.0, 1.2),
+  homeBox("home-upper-spine-c", "wall", 8.85, 9.15, 3.2, 8.3),
+  homeBox("home-upper-room-wall-b", "wall", 9.15, 18.3, -3.15, -2.85),
+  homeBox("home-downstairs-north", "wall", -14.3, -9.7, -2.9, -2.6),
+  homeBox("home-downstairs-south", "wall", -14.3, -9.7, 2.6, 2.9),
+  homeBox("home-ground-west-north", "wall", -10.3, -10.0, -8.3, -2.6),
+  homeBox("home-ground-west-south", "wall", -10.3, -10.0, 2.6, 8.3),
+  homeBox("home-basement-north", "wall", -26.3, -13.7, -7.3, -7.0),
+  homeBox("home-basement-south", "wall", -26.3, -13.7, 7.0, 7.3),
+  homeBox("home-basement-west", "wall", -26.3, -26.0, -7.3, 7.3),
+  homeBox("home-basement-east-north", "wall", -14.0, -13.7, -7.3, -2.6),
+  homeBox("home-basement-east-south", "wall", -14.0, -13.7, 2.6, 7.3),
   // Moved 1.5 m west: the old nook was 4 m across, which is a cupboard,
   // not a room you can put a table and four chairs in.
-  homeBox('home-basement-divider-a', 'wall', -20.65, -20.35, -7.3, -1.0),
-  homeBox('home-basement-divider-b', 'wall', -20.65, -20.35, 1.0, 7.3),
-  homeBox('home-sofa', 'furniture', -9.6, -6.4, 5.9, 7.0, { cameraRole: 'substantial', maxY: 0.85 }),
-  homeBox('home-tv-stand', 'furniture', -9.6, -6.4, 1.0, 1.8, { cameraRole: 'substantial', maxY: 0.62 }),
-  homeBox('home-bookshelf', 'furniture', -4.6, -3.3, 5.6, 6.5, { cameraRole: 'substantial', maxY: 1.9 }),
-  homeBox('home-kitchen-counter-north', 'counter', -9.7, -3.3, -7.7, -6.8, { cameraRole: 'substantial', maxY: 0.95 }),
-  homeBox('home-kitchen-counter-west', 'counter', -9.7, -8.8, -6.8, -3.4, { cameraRole: 'substantial', maxY: 0.95 }),
-  homeBox('home-kitchen-island', 'counter', -7.0, -5.0, -4.4, -3.2, { cameraRole: 'substantial', maxY: 0.95 }),
-  homeBox('home-fridge', 'furniture', -4.4, -3.4, -7.7, -6.6, { cameraRole: 'substantial', maxY: 1.9 }),
-  homeBox('home-bath1-tub', 'furniture', -2.7, -0.8, -7.7, -6.4, { cameraRole: 'substantial', maxY: 0.6 }),
-  homeBox('home-bath1-vanity', 'counter', 0.6, 1.9, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
-  homeBox('home-primary-bed', 'furniture', 10.4, 12.5, 5.1, 7.4, { cameraRole: 'substantial', maxY: 0.62 }),
-  homeBox('home-primary-nightstand-west', 'furniture', 10.4, 11.0, 4.2, 4.8, { maxY: 0.56 }),
-  homeBox('home-primary-nightstand-east', 'furniture', 11.9, 12.5, 4.2, 4.8, { maxY: 0.56 }),
-  homeBox('home-primary-dresser', 'furniture', 16.6, 17.8, 5.0, 6.8, { cameraRole: 'substantial', maxY: 1.05 }),
-  homeBox('home-primary-closet', 'furniture', 16.4, 17.8, 1.6, 3.4, { cameraRole: 'substantial', maxY: 2.2 }),
+  homeBox("home-basement-divider-a", "wall", -20.65, -20.35, -7.3, -1.0),
+  homeBox("home-basement-divider-b", "wall", -20.65, -20.35, 1.0, 7.3),
+  homeBox("home-sofa", "furniture", -9.6, -6.4, 5.9, 7.0, {
+    cameraRole: "substantial",
+    maxY: 0.85,
+  }),
+  homeBox("home-tv-stand", "furniture", -9.6, -6.4, 1.0, 1.8, {
+    cameraRole: "substantial",
+    maxY: 0.62,
+  }),
+  homeBox("home-bookshelf", "furniture", -4.6, -3.3, 5.6, 6.5, {
+    cameraRole: "substantial",
+    maxY: 1.9,
+  }),
+  homeBox("home-kitchen-counter-north", "counter", -9.7, -3.3, -7.7, -6.8, {
+    cameraRole: "substantial",
+    maxY: 0.95,
+  }),
+  homeBox("home-kitchen-counter-west", "counter", -9.7, -8.8, -6.8, -3.4, {
+    cameraRole: "substantial",
+    maxY: 0.95,
+  }),
+  homeBox("home-kitchen-island", "counter", -7.0, -5.0, -4.4, -3.2, {
+    cameraRole: "substantial",
+    maxY: 0.95,
+  }),
+  homeBox("home-fridge", "furniture", -4.4, -3.4, -7.7, -6.6, {
+    cameraRole: "substantial",
+    maxY: 1.9,
+  }),
+  homeBox("home-bath1-tub", "furniture", -2.7, -0.8, -7.7, -6.4, {
+    cameraRole: "substantial",
+    maxY: 0.6,
+  }),
+  homeBox("home-bath1-vanity", "counter", 0.6, 1.9, -7.7, -6.9, {
+    cameraRole: "substantial",
+    maxY: 0.85,
+  }),
+  homeBox("home-primary-bed", "furniture", 10.4, 12.5, 5.1, 7.4, {
+    cameraRole: "substantial",
+    maxY: 0.62,
+  }),
+  homeBox("home-primary-nightstand-west", "furniture", 10.4, 11.0, 4.2, 4.8, {
+    maxY: 0.56,
+  }),
+  homeBox("home-primary-nightstand-east", "furniture", 11.9, 12.5, 4.2, 4.8, {
+    maxY: 0.56,
+  }),
+  homeBox("home-primary-dresser", "furniture", 16.6, 17.8, 5.0, 6.8, {
+    cameraRole: "substantial",
+    maxY: 1.05,
+  }),
+  homeBox("home-primary-closet", "furniture", 16.4, 17.8, 1.6, 3.4, {
+    cameraRole: "substantial",
+    maxY: 2.2,
+  }),
   // The flex room's furniture stays, now as the bedroom's reading end.
-  homeBox('home-primary-armchair', 'furniture', 10.4, 11.7, -2.2, -0.9, { maxY: 0.78 }),
-  homeBox('home-primary-desk', 'table', 16.4, 17.8, -1.8, 0.4, { cameraRole: 'substantial', maxY: 0.76 }),
-  homeBox('home-primary-bookshelf', 'furniture', 13.4, 15.2, -2.9, -2.2, { cameraRole: 'substantial', maxY: 1.6 }),
-  homeBox('home-bath2-tub', 'furniture', 15.9, 17.8, -7.7, -6.2, { cameraRole: 'substantial', maxY: 0.6 }),
-  homeBox('home-bath2-vanity', 'counter', 9.6, 11.2, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
+  homeBox("home-primary-armchair", "furniture", 10.4, 11.7, -2.2, -0.9, {
+    maxY: 0.78,
+  }),
+  homeBox("home-primary-desk", "table", 16.4, 17.8, -1.8, 0.4, {
+    cameraRole: "substantial",
+    maxY: 0.76,
+  }),
+  homeBox("home-primary-bookshelf", "furniture", 13.4, 15.2, -2.9, -2.2, {
+    cameraRole: "substantial",
+    maxY: 1.6,
+  }),
+  homeBox("home-bath2-tub", "furniture", 15.9, 17.8, -7.7, -6.2, {
+    cameraRole: "substantial",
+    maxY: 0.6,
+  }),
+  homeBox("home-bath2-vanity", "counter", 9.6, 11.2, -7.7, -6.9, {
+    cameraRole: "substantial",
+    maxY: 0.85,
+  }),
   // The divider moved west when the nook became the dining room; this sofa
   // was left overlapping it, and the shelf below ended up on the wrong side
   // of the wall entirely.
-  homeBox('home-rec-sofa', 'furniture', -20.1, -17.1, 5.4, 6.6, { cameraRole: 'substantial', maxY: 0.85 }),
-  homeBox('home-rec-arcade', 'furniture', -15.6, -14.4, -6.6, -5.0, { cameraRole: 'substantial', maxY: 1.85 }),
-  homeBox('home-rec-shelf', 'furniture', -14.9, -14.1, -3.4, -0.6, { cameraRole: 'substantial', maxY: 1.6 }),
-  // Ping pong, in the middle of the rec room with room to stand at both ends.
-  homeBox('home-ping-pong', 'table', -19.3, -17.8, 0.2, 2.9, { cameraRole: 'substantial', maxY: 0.76 }),
+  homeBox("home-rec-sofa", "furniture", -20.1, -17.1, 5.4, 6.6, {
+    cameraRole: "substantial",
+    maxY: 0.85,
+  }),
+  homeBox("home-rec-arcade", "furniture", -15.6, -14.4, -6.6, -5.0, {
+    cameraRole: "substantial",
+    maxY: 1.85,
+  }),
+  homeBox("home-rec-shelf", "furniture", -14.9, -14.1, -3.4, -0.6, {
+    cameraRole: "substantial",
+    maxY: 1.6,
+  }),
+  // Ping pong is optional owned furniture. It intentionally has no static
+  // collider, avoiding an invisible obstacle for players who do not own it.
   // The basement dining room: a table with four chairs and room to walk
   // all the way round it.
-  homeBox('home-basement-dining-table', 'table', -24.5, -22.3, 1.6, 3.8, { cameraRole: 'substantial', maxY: 0.74 }),
-  homeBox('home-basement-dining-chair-nw', 'furniture', -24.4, -23.8, 0.7, 1.3, { maxY: 0.52 }),
-  homeBox('home-basement-dining-chair-ne', 'furniture', -23.0, -22.4, 0.7, 1.3, { maxY: 0.52 }),
-  homeBox('home-basement-dining-chair-sw', 'furniture', -24.4, -23.8, 4.1, 4.7, { maxY: 0.52 }),
-  homeBox('home-basement-dining-chair-se', 'furniture', -23.0, -22.4, 4.1, 4.7, { maxY: 0.52 }),
-  homeBox('home-basement-sideboard', 'counter', -25.8, -25.0, -1.4, 1.4, { cameraRole: 'substantial', maxY: 0.95 }),
+  homeBox("home-basement-dining-table", "table", -24.5, -22.3, 1.6, 3.8, {
+    cameraRole: "substantial",
+    maxY: 0.74,
+  }),
+  homeBox(
+    "home-basement-dining-chair-nw",
+    "furniture",
+    -24.4,
+    -23.8,
+    0.7,
+    1.3,
+    { maxY: 0.52 },
+  ),
+  homeBox(
+    "home-basement-dining-chair-ne",
+    "furniture",
+    -23.0,
+    -22.4,
+    0.7,
+    1.3,
+    { maxY: 0.52 },
+  ),
+  homeBox(
+    "home-basement-dining-chair-sw",
+    "furniture",
+    -24.4,
+    -23.8,
+    4.1,
+    4.7,
+    { maxY: 0.52 },
+  ),
+  homeBox(
+    "home-basement-dining-chair-se",
+    "furniture",
+    -23.0,
+    -22.4,
+    4.1,
+    4.7,
+    { maxY: 0.52 },
+  ),
+  homeBox("home-basement-sideboard", "counter", -25.8, -25.0, -1.4, 1.4, {
+    cameraRole: "substantial",
+    maxY: 0.95,
+  }),
   // Storage joined the rec room when the nook became the dining room.
-  homeBox('home-storage-crates', 'furniture', -19.6, -18.1, -6.6, -5.6, { cameraRole: 'substantial', maxY: 1.1 }),
-  homeBox('home-storage-shelf', 'furniture', -17.2, -16.2, -6.6, -4.2, { cameraRole: 'substantial', maxY: 1.7 }),
-  box('route-garden-district', 'route-gate', 13, 15.4, -14.3, -12.3),
-  box('route-storybook-lane', 'route-gate', -15.4, -13, -14.3, -12.3),
-  box('route-maker-market', 'route-gate', 13, 15.4, 12.2, 14.3),
+  homeBox("home-storage-crates", "furniture", -19.6, -18.1, -6.6, -5.6, {
+    cameraRole: "substantial",
+    maxY: 1.1,
+  }),
+  homeBox("home-storage-shelf", "furniture", -17.2, -16.2, -6.6, -4.2, {
+    cameraRole: "substantial",
+    maxY: 1.7,
+  }),
+  box("route-garden-district", "route-gate", 13, 15.4, -14.3, -12.3),
+  box("route-storybook-lane", "route-gate", -15.4, -13, -14.3, -12.3),
+  box("route-maker-market", "route-gate", 13, 15.4, 12.2, 14.3),
   // A circle matching the visible bin. The square left 0.89 m of invisible wall
   // on each diagonal, right on the edge of the classroom rug - which is exactly
   // where a player would report being blocked by a rug.
-  box('rainbow-tidy-up', 'activity-station', -0.64, 0.64, -4.64, -3.36, {
-    shape: 'circle',
+  box("rainbow-tidy-up", "activity-station", -0.64, 0.64, -4.64, -3.36, {
+    shape: "circle",
     radius: 0.64,
     maxY: 0.52,
     blocksWhenFlat: true,
   }),
-  gardenBox('garden-north-boundary', 'boundary', -18.3, 18.3, -18.3, -17.7),
-  gardenBox('garden-south-boundary', 'boundary', -18.3, 18.3, 17.7, 18.3),
-  gardenBox('garden-west-boundary', 'boundary', -18.3, -17.7, -18, 18),
-  gardenBox('garden-east-boundary', 'boundary', 17.7, 18.3, -18, 18),
-  gardenBox('garden-greenhouse-west', 'wall', -14.8, -8.8, -11.8, -11.2),
-  gardenBox('garden-greenhouse-east', 'wall', -14.8, -8.8, -5.8, -5.2),
-  gardenBox('garden-greenhouse-north', 'wall', -14.8, -14.2, -11.8, -5.2),
+  gardenBox("garden-north-boundary", "boundary", -18.3, 18.3, -18.3, -17.7),
+  gardenBox("garden-south-boundary", "boundary", -18.3, 18.3, 17.7, 18.3),
+  gardenBox("garden-west-boundary", "boundary", -18.3, -17.7, -18, 18),
+  gardenBox("garden-east-boundary", "boundary", 17.7, 18.3, -18, 18),
+  gardenBox("garden-greenhouse-west", "wall", -14.8, -8.8, -11.8, -11.2),
+  gardenBox("garden-greenhouse-east", "wall", -14.8, -8.8, -5.8, -5.2),
+  gardenBox("garden-greenhouse-north", "wall", -14.8, -14.2, -11.8, -5.2),
   // Flat, and still not somewhere you walk. Water is the one case the
   // step-over rule should not decide.
-  gardenCircle('garden-pond', 'playground', 10, -0.2, 2.72, { maxY: 0.12, blocksWhenFlat: true }),
-  gardenCircle('garden-gazebo-nw-post', 'furniture', -2.7, 3.4, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenCircle('garden-gazebo-ne-post', 'furniture', 2.7, 3.4, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenCircle('garden-gazebo-sw-post', 'furniture', -2.7, 8.8, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenCircle('garden-gazebo-se-post', 'furniture', 2.7, 8.8, 0.16, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenBox('garden-bed-west', 'activity-station', -12.8, -8.8, 1.2, 4.4, { cameraRole: 'substantial' }),
-  gardenBox('garden-bed-east', 'activity-station', 8.8, 12.8, 8.2, 11.4, { cameraRole: 'substantial' }),
-  gardenCircle('garden-tree-a', 'furniture', -14.5, -1, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenCircle('garden-tree-b', 'furniture', -7, 11.8, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenCircle('garden-tree-c', 'furniture', 6.4, 11.5, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenCircle('garden-tree-d', 'furniture', 14.2, -8.5, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenCircle('garden-tree-e', 'furniture', 2, -13.8, 0.3, { cameraRole: 'substantial', maxY: 2.5 }),
-  gardenBox('garden-sign', 'furniture', -2.15, 2.15, -15.82, -15.58, { cameraRole: 'substantial', maxY: 1.9 }),
+  gardenCircle("garden-pond", "playground", 10, -0.2, 2.72, {
+    maxY: 0.12,
+    blocksWhenFlat: true,
+  }),
+  gardenCircle("garden-gazebo-nw-post", "furniture", -2.7, 3.4, 0.16, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenCircle("garden-gazebo-ne-post", "furniture", 2.7, 3.4, 0.16, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenCircle("garden-gazebo-sw-post", "furniture", -2.7, 8.8, 0.16, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenCircle("garden-gazebo-se-post", "furniture", 2.7, 8.8, 0.16, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenBox("garden-bed-west", "activity-station", -12.8, -8.8, 1.2, 4.4, {
+    cameraRole: "substantial",
+  }),
+  gardenBox("garden-bed-east", "activity-station", 8.8, 12.8, 8.2, 11.4, {
+    cameraRole: "substantial",
+  }),
+  gardenCircle("garden-tree-a", "furniture", -14.5, -1, 0.3, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenCircle("garden-tree-b", "furniture", -7, 11.8, 0.3, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenCircle("garden-tree-c", "furniture", 6.4, 11.5, 0.3, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenCircle("garden-tree-d", "furniture", 14.2, -8.5, 0.3, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenCircle("garden-tree-e", "furniture", 2, -13.8, 0.3, {
+    cameraRole: "substantial",
+    maxY: 2.5,
+  }),
+  gardenBox("garden-sign", "furniture", -2.15, 2.15, -15.82, -15.58, {
+    cameraRole: "substantial",
+    maxY: 1.9,
+  }),
   // The arch is a real threshold: its footprint matches the visible return
   // gate and keeps the southern edge from reading as open terrain.
-  gardenBox('garden-return-threshold', 'route-gate', -1.2, 1.2, 15.75, 16.25, { maxY: 2.5 }),
-  storybookBox('storybook-north-boundary', 'boundary', -24.3, 24.3, -24.3, -23.7),
-  storybookBox('storybook-south-boundary-west', 'boundary', -24.3, -2.8, 23.7, 24.3),
-  storybookBox('storybook-south-boundary-east', 'boundary', 2.8, 24.3, 23.7, 24.3),
-  storybookBox('storybook-west-boundary', 'boundary', -24.3, -23.7, -24, 24),
-  storybookBox('storybook-east-boundary', 'boundary', 23.7, 24.3, -24, 24),
-  storybookBox('storybook-ice-cream-stand', 'counter', -2.1, 2.1, -9.1, -6.9, { cameraRole: 'substantial', maxY: 2.6 }),
+  gardenBox("garden-return-threshold", "route-gate", -1.2, 1.2, 15.75, 16.25, {
+    maxY: 2.5,
+  }),
+  storybookBox(
+    "storybook-north-boundary",
+    "boundary",
+    -24.3,
+    24.3,
+    -24.3,
+    -23.7,
+  ),
+  storybookBox(
+    "storybook-south-boundary-west",
+    "boundary",
+    -24.3,
+    -2.8,
+    23.7,
+    24.3,
+  ),
+  storybookBox(
+    "storybook-south-boundary-east",
+    "boundary",
+    2.8,
+    24.3,
+    23.7,
+    24.3,
+  ),
+  storybookBox("storybook-west-boundary", "boundary", -24.3, -23.7, -24, 24),
+  storybookBox("storybook-east-boundary", "boundary", 23.7, 24.3, -24, 24),
+  storybookBox("storybook-ice-cream-stand", "counter", -2.1, 2.1, -9.1, -6.9, {
+    cameraRole: "substantial",
+    maxY: 2.6,
+  }),
   /* ---- Wavy Manor: the owned Stony Brook property ----
      The shell is one solid because the player never walks through the
      exterior; the front door is an interaction that loads the interior
      zone. The driveway and walkway are surfaces, not obstacles. */
-  storybookBox('sb-manor-shell', 'wall', -18, -8, -17, -11, { cameraRole: 'structural', maxY: 6.2 }),
-  storybookBox('sb-manor-porch-post-west', 'furniture', -15.15, -14.85, -10.9, -10.6, { maxY: 2.6 }),
-  storybookBox('sb-manor-porch-post-east', 'furniture', -11.15, -10.85, -10.9, -10.6, { maxY: 2.6 }),
+  storybookBox("sb-manor-shell", "wall", -18, -8, -17, -11, {
+    cameraRole: "structural",
+    maxY: 6.2,
+  }),
+  storybookBox(
+    "sb-manor-porch-post-west",
+    "furniture",
+    -15.15,
+    -14.85,
+    -10.9,
+    -10.6,
+    { maxY: 2.6 },
+  ),
+  storybookBox(
+    "sb-manor-porch-post-east",
+    "furniture",
+    -11.15,
+    -10.85,
+    -10.9,
+    -10.6,
+    { maxY: 2.6 },
+  ),
   /* ---- Tennis court, north-east of the lane ---- */
   // The net is the only solid; the surface and the lines are flat, and the
   // fence posts sit outside the play area so a rally never catches on one.
-  storybookBox('sb-tennis-net', 'furniture', 13.6, 20.4, -18.35, -18.15, { maxY: 0.95 }),
-  storybookBox('sb-tennis-post-nw', 'furniture', 13.35, 13.65, -21.65, -21.35, { maxY: 1.6 }),
-  storybookBox('sb-tennis-post-ne', 'furniture', 20.35, 20.65, -21.65, -21.35, { maxY: 1.6 }),
-  storybookBox('sb-tennis-post-sw', 'furniture', 13.35, 13.65, -15.15, -14.85, { maxY: 1.6 }),
-  storybookBox('sb-tennis-post-se', 'furniture', 20.35, 20.65, -15.15, -14.85, { maxY: 1.6 }),
+  storybookBox("sb-tennis-net", "furniture", 11.6, 22.4, -17.1, -16.9, {
+    maxY: 0.95,
+  }),
+  storybookBox("sb-tennis-post-nw", "furniture", 11.35, 11.65, -22.65, -22.35, {
+    maxY: 1.6,
+  }),
+  storybookBox("sb-tennis-post-ne", "furniture", 22.35, 22.65, -22.65, -22.35, {
+    maxY: 1.6,
+  }),
+  storybookBox("sb-tennis-post-sw", "furniture", 11.35, 11.65, -11.65, -11.35, {
+    maxY: 1.6,
+  }),
+  storybookBox("sb-tennis-post-se", "furniture", 22.35, 22.65, -11.65, -11.35, {
+    maxY: 1.6,
+  }),
   /* ---- Lane furniture: lamps, benches and planters ---- */
-  storybookBox('sb-lamp-west', 'furniture', -7.15, -6.85, -6.15, -5.85, { maxY: 3.2 }),
-  storybookBox('sb-lamp-east', 'furniture', 6.85, 7.15, -6.15, -5.85, { maxY: 3.2 }),
-  storybookBox('sb-lamp-north', 'furniture', -0.15, 0.15, 11.85, 12.15, { maxY: 3.2 }),
-  storybookBox('sb-bench-west', 'furniture', -5.4, -3.6, -11.7, -11.1, { maxY: 0.8 }),
-  storybookBox('sb-bench-east', 'furniture', 3.6, 5.4, -11.7, -11.1, { maxY: 0.8 }),
-  storybookBox('sb-planter-west', 'furniture', -2.9, -2.1, 11.6, 12.4, { maxY: 0.7 }),
-  storybookBox('sb-planter-east', 'furniture', 2.1, 2.9, 11.6, 12.4, { maxY: 0.7 }),
-  storybookBox('sb-lane-sign', 'furniture', -0.2, 0.2, -12.2, -11.8, { maxY: 2.4 }),
+  storybookBox("sb-lamp-west", "furniture", -7.15, -6.85, -6.15, -5.85, {
+    maxY: 3.2,
+  }),
+  storybookBox("sb-lamp-east", "furniture", 6.85, 7.15, -6.15, -5.85, {
+    maxY: 3.2,
+  }),
+  storybookBox("sb-lamp-north", "furniture", -0.15, 0.15, 11.85, 12.15, {
+    maxY: 3.2,
+  }),
+  storybookBox("sb-bench-west", "furniture", -5.4, -3.6, -11.7, -11.1, {
+    maxY: 0.8,
+  }),
+  storybookBox("sb-bench-east", "furniture", 3.6, 5.4, -11.7, -11.1, {
+    maxY: 0.8,
+  }),
+  storybookBox("sb-planter-west", "furniture", -2.9, -2.1, 11.6, 12.4, {
+    maxY: 0.7,
+  }),
+  storybookBox("sb-planter-east", "furniture", 2.1, 2.9, 11.6, 12.4, {
+    maxY: 0.7,
+  }),
+  storybookBox("sb-lane-sign", "furniture", -0.2, 0.2, -12.2, -11.8, {
+    maxY: 2.4,
+  }),
 
-  storybookBox('sb-manor-mailbox', 'furniture', -12.06, -11.62, -6.42, -5.98, { maxY: 1.2 }),
+  storybookBox("sb-manor-mailbox", "furniture", -12.06, -11.62, -6.42, -5.98, {
+    maxY: 1.2,
+  }),
   // The west hedge used to run across the driveway, so the one clear route
   // to the garage front was walled off by shrubbery. The hedges now sit in
   // the two gaps either side of the front walkway and leave both the drive
   // and the doorway open.
-  storybookBox('sb-manor-hedge-west', 'furniture', -14.9, -13.95, -10.95, -10.35, { maxY: 0.85 }),
-  storybookBox('sb-manor-hedge-east', 'furniture', -12.15, -8.6, -10.95, -10.35, { maxY: 0.85 }),
+  storybookBox(
+    "sb-manor-hedge-west",
+    "furniture",
+    -14.9,
+    -13.95,
+    -10.95,
+    -10.35,
+    { maxY: 0.85 },
+  ),
+  storybookBox(
+    "sb-manor-hedge-east",
+    "furniture",
+    -12.15,
+    -8.6,
+    -10.95,
+    -10.35,
+    { maxY: 0.85 },
+  ),
 ];
 
-export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {
+export function getWorldSolidTransform(
+  id: string,
+  height: number,
+  centerY = height / 2,
+): WorldSolidTransform {
   const solid = WORLD_SOLIDS.find((candidate) => candidate.id === id);
   if (!solid) throw new Error(`Unknown world solid: ${id}`);
   return {
-    position: [(solid.minX + solid.maxX) / 2, centerY, (solid.minZ + solid.maxZ) / 2],
+    position: [
+      (solid.minX + solid.maxX) / 2,
+      centerY,
+      (solid.minZ + solid.maxZ) / 2,
+    ],
     size: [solid.maxX - solid.minX, height, solid.maxZ - solid.minZ],
   };
 }
@@ -526,28 +848,29 @@ export function getWorldSolidSurfaceTransform(
 ): WorldSurfaceTransform {
   const solid = WORLD_SOLIDS.find((candidate) => candidate.id === id);
   if (!solid) throw new Error(`Unknown world solid: ${id}`);
-  if (solid.shape === 'circle') throw new Error(`Circular world solid has no flat artwork surface: ${id}`);
+  if (solid.shape === "circle")
+    throw new Error(`Circular world solid has no flat artwork surface: ${id}`);
   const centerX = (solid.minX + solid.maxX) / 2;
   const centerZ = (solid.minZ + solid.maxZ) / 2;
-  if (face === 'top') {
+  if (face === "top") {
     return {
       position: [along ?? centerX, height, centerZ],
       rotation: [-Math.PI / 2, 0, 0],
     };
   }
-  if (face === 'north') {
+  if (face === "north") {
     return {
       position: [along ?? centerX, height, solid.minZ - offset],
       rotation: [0, Math.PI, 0],
     };
   }
-  if (face === 'south') {
+  if (face === "south") {
     return {
       position: [along ?? centerX, height, solid.maxZ + offset],
       rotation: [0, 0, 0],
     };
   }
-  if (face === 'west') {
+  if (face === "west") {
     return {
       position: [solid.minX - offset, height, along ?? centerZ],
       rotation: [0, -Math.PI / 2, 0],
@@ -568,98 +891,278 @@ export function validateWorldSurfaceAnchor(
 ): WorldSurfaceValidation {
   const solid = WORLD_SOLIDS.find((candidate) => candidate.id === id);
   if (!solid) return { valid: false, issues: [`Unknown world solid: ${id}`] };
-  if (solid.shape === 'circle') {
-    return { valid: false, issues: [`Circular world solid has no flat artwork surface: ${id}`] };
+  if (solid.shape === "circle") {
+    return {
+      valid: false,
+      issues: [`Circular world solid has no flat artwork surface: ${id}`],
+    };
   }
   const issues: string[] = [];
   const halfWidth = size[0] / 2;
   const halfHeight = size[1] / 2;
   const centerX = (solid.minX + solid.maxX) / 2;
   const centerZ = (solid.minZ + solid.maxZ) / 2;
-  const anchorAlong = along ?? (face === 'west' || face === 'east' ? centerZ : centerX);
+  const anchorAlong =
+    along ?? (face === "west" || face === "east" ? centerZ : centerX);
 
-  if (face === 'top') {
-    if (anchorAlong - halfWidth < solid.minX - 0.001 || anchorAlong + halfWidth > solid.maxX + 0.001) {
+  if (face === "top") {
+    if (
+      anchorAlong - halfWidth < solid.minX - 0.001 ||
+      anchorAlong + halfWidth > solid.maxX + 0.001
+    ) {
       issues.push(`top artwork exceeds ${id} x bounds`);
     }
-    if (centerZ - halfHeight < solid.minZ - 0.001 || centerZ + halfHeight > solid.maxZ + 0.001) {
+    if (
+      centerZ - halfHeight < solid.minZ - 0.001 ||
+      centerZ + halfHeight > solid.maxZ + 0.001
+    ) {
       issues.push(`top artwork exceeds ${id} z bounds`);
     }
     if (solid.maxY !== undefined && Math.abs(height - solid.maxY) > 0.15) {
       issues.push(`top artwork does not rest on ${id}`);
     }
   } else {
-    const alongMin = face === 'west' || face === 'east' ? solid.minZ : solid.minX;
-    const alongMax = face === 'west' || face === 'east' ? solid.maxZ : solid.maxX;
-    if (anchorAlong - halfWidth < alongMin - 0.001 || anchorAlong + halfWidth > alongMax + 0.001) {
+    const alongMin =
+      face === "west" || face === "east" ? solid.minZ : solid.minX;
+    const alongMax =
+      face === "west" || face === "east" ? solid.maxZ : solid.maxX;
+    if (
+      anchorAlong - halfWidth < alongMin - 0.001 ||
+      anchorAlong + halfWidth > alongMax + 0.001
+    ) {
       issues.push(`${face} artwork exceeds ${id} bounds`);
     }
   }
 
-  if (face !== 'top') {
+  if (face !== "top") {
     const minY = height - halfHeight;
     const maxY = height + halfHeight;
-    const supportMaxY = solid.kind === 'wall' || solid.kind === 'boundary'
-      ? solid.maxY ?? 3
-      : solid.maxY;
-    if (minY < (solid.minY ?? 0) - 0.001) issues.push(`artwork sinks below ${id}`);
-    if (supportMaxY !== undefined && maxY > supportMaxY + 0.001) issues.push(`artwork exceeds ${id} height`);
+    const supportMaxY =
+      solid.kind === "wall" || solid.kind === "boundary"
+        ? (solid.maxY ?? 3)
+        : solid.maxY;
+    if (minY < (solid.minY ?? 0) - 0.001)
+      issues.push(`artwork sinks below ${id}`);
+    if (supportMaxY !== undefined && maxY > supportMaxY + 0.001)
+      issues.push(`artwork exceeds ${id} height`);
   }
   return { valid: issues.length === 0, issues };
 }
 
 export const WORLD_PORTALS: WorldPortal[] = [
-  { id: 'main-hall-west', axis: 'x', position: [-8, 0, 0], width: 4.3, connects: ['classroom', 'hallway'] },
-  { id: 'main-play-east', axis: 'x', position: [8, 0, 0], width: 4.3, connects: ['classroom', 'playground'] },
-  { id: 'hall-art-north', axis: 'z', position: [-12, 0, -8], width: 4, connects: ['hallway', 'art-room'] },
-  { id: 'hall-storage-south', axis: 'z', position: [-12, 0, 8], width: 4, connects: ['hallway', 'storage'] },
-  { id: 'main-cafeteria-south', axis: 'z', position: [0, 0, 8], width: 4.4, connects: ['classroom', 'cafeteria'] },
+  {
+    id: "main-hall-west",
+    axis: "x",
+    position: [-8, 0, 0],
+    width: 4.3,
+    connects: ["classroom", "hallway"],
+  },
+  {
+    id: "main-play-east",
+    axis: "x",
+    position: [8, 0, 0],
+    width: 4.3,
+    connects: ["classroom", "playground"],
+  },
+  {
+    id: "hall-art-north",
+    axis: "z",
+    position: [-12, 0, -8],
+    width: 4,
+    connects: ["hallway", "art-room"],
+  },
+  {
+    id: "hall-storage-south",
+    axis: "z",
+    position: [-12, 0, 8],
+    width: 4,
+    connects: ["hallway", "storage"],
+  },
+  {
+    id: "main-cafeteria-south",
+    axis: "z",
+    position: [0, 0, 8],
+    width: 4.4,
+    connects: ["classroom", "cafeteria"],
+  },
 ];
 
 export const WORLD_WALKABLE_REGIONS: WalkableRegion[] = [
-  { id: 'classroom', zone: 'hub', minX: -7.7, maxX: 7.7, minZ: -7.7, maxZ: 7.7 },
-  { id: 'hallway', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: -7.7, maxZ: 7.7 },
-  { id: 'art-room', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: -15.7, maxZ: -8.3 },
-  { id: 'storage', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: 8.3, maxZ: 15.7 },
-  { id: 'cafeteria', zone: 'hub', minX: -7.7, maxX: 7.7, minZ: 8.3, maxZ: 12.9 },
-  { id: 'playground', zone: 'hub', minX: 8.3, maxX: 15.7, minZ: -15.7, maxZ: 15.7 },
-  { id: 'garden', zone: 'garden', minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 },
-  { id: 'storybook-neighborhood', zone: 'storybook', minX: -23.7, maxX: 23.7, minZ: -23.7, maxZ: 23.7 },
+  {
+    id: "classroom",
+    zone: "hub",
+    minX: -7.7,
+    maxX: 7.7,
+    minZ: -7.7,
+    maxZ: 7.7,
+  },
+  {
+    id: "hallway",
+    zone: "hub",
+    minX: -15.7,
+    maxX: -8.3,
+    minZ: -7.7,
+    maxZ: 7.7,
+  },
+  {
+    id: "art-room",
+    zone: "hub",
+    minX: -15.7,
+    maxX: -8.3,
+    minZ: -15.7,
+    maxZ: -8.3,
+  },
+  {
+    id: "storage",
+    zone: "hub",
+    minX: -15.7,
+    maxX: -8.3,
+    minZ: 8.3,
+    maxZ: 15.7,
+  },
+  {
+    id: "cafeteria",
+    zone: "hub",
+    minX: -7.7,
+    maxX: 7.7,
+    minZ: 8.3,
+    maxZ: 12.9,
+  },
+  {
+    id: "playground",
+    zone: "hub",
+    minX: 8.3,
+    maxX: 15.7,
+    minZ: -15.7,
+    maxZ: 15.7,
+  },
+  {
+    id: "garden",
+    zone: "garden",
+    minX: -17.7,
+    maxX: 17.7,
+    minZ: -17.7,
+    maxZ: 17.7,
+  },
+  {
+    id: "storybook-neighborhood",
+    zone: "storybook",
+    minX: -23.7,
+    maxX: 23.7,
+    minZ: -23.7,
+    maxZ: 23.7,
+  },
   // One region, not five. Walkable regions are inset by the player's
   // radius, so two abutting regions leave an 0.84 m seam the player
   // cannot cross - which is exactly what sealed the staircases. The
   // home is fully enclosed by its own walls, so the walls can do all
   // the containing and the region only has to be large enough.
-  { id: 'home-interior', zone: 'home', minX: -26.5, maxX: 18.5, minZ: -8.5, maxZ: 8.5 },
-  { id: 'garage-interior', zone: 'garage', minX: -6.5, maxX: 6.5, minZ: -6.5, maxZ: 6.5 },
+  {
+    id: "home-interior",
+    zone: "home",
+    minX: -26.5,
+    maxX: 18.5,
+    minZ: -8.5,
+    maxZ: 8.5,
+  },
+  {
+    id: "garage-interior",
+    zone: "garage",
+    minX: -6.5,
+    maxX: 6.5,
+    minZ: -6.5,
+    maxZ: 6.5,
+  },
 ];
 
 export const GARDEN_SPAWN: [number, number, number] = [0, 0, 14];
 export const GARDEN_RETURN_SPAWN: [number, number, number] = [12, 0, -10.4];
-export const GARDEN_BOUNDS = { minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 };
+export const GARDEN_BOUNDS = {
+  minX: -17.7,
+  maxX: 17.7,
+  minZ: -17.7,
+  maxZ: 17.7,
+};
 export const STORYBOOK_SPAWN: [number, number, number] = [0, 0, 19.5];
 
 export const WORLD_ANCHORS: WorldAnchor[] = [
-  { id: 'classroom-circle', position: [0, 0, 0], room: 'classroom', activity: 'morning-play' },
-  { id: 'art-table', position: [-10, 0, -12], room: 'art-room', activity: 'art-time' },
-  { id: 'storage-shelves', position: [-13, 0, 12], room: 'storage', activity: 'storage' },
-  { id: 'cafeteria', position: [0, 0, 9.4], room: 'cafeteria', activity: 'breakfast' },
-  { id: 'juice-counter', position: [3, 0, -3], room: 'classroom', activity: 'juice-club' },
-  { id: 'playground-loop', position: [12, 0, 0], room: 'playground', activity: 'outdoor-play' },
-  { id: 'pickup-line', position: [-6, 0, 0], room: 'hallway', activity: 'pickup' },
-  { id: 'tidy-station', position: [0, 0, -4], room: 'classroom', activity: 'rainbow-tidy-up' },
+  {
+    id: "classroom-circle",
+    position: [0, 0, 0],
+    room: "classroom",
+    activity: "morning-play",
+  },
+  {
+    id: "art-table",
+    position: [-10, 0, -12],
+    room: "art-room",
+    activity: "art-time",
+  },
+  {
+    id: "storage-shelves",
+    position: [-13, 0, 12],
+    room: "storage",
+    activity: "storage",
+  },
+  {
+    id: "cafeteria",
+    position: [0, 0, 9.4],
+    room: "cafeteria",
+    activity: "breakfast",
+  },
+  {
+    id: "juice-counter",
+    position: [3, 0, -3],
+    room: "classroom",
+    activity: "juice-club",
+  },
+  {
+    id: "playground-loop",
+    position: [12, 0, 0],
+    room: "playground",
+    activity: "outdoor-play",
+  },
+  {
+    id: "pickup-line",
+    position: [-6, 0, 0],
+    room: "hallway",
+    activity: "pickup",
+  },
+  {
+    id: "tidy-station",
+    position: [0, 0, -4],
+    room: "classroom",
+    activity: "rainbow-tidy-up",
+  },
 ];
 
 export const WORLD_INTERACTION_TARGETS = [
-  { id: 'juice-stand', position: [3, 0, -3] as [number, number, number], approach: [3, 0, -1.7] as [number, number, number] },
-  { id: 'tricycle', position: [12, 0, 2] as [number, number, number], approach: [10.7, 0, 2] as [number, number, number] },
-  { id: 'binky-storage', position: [-14, 0, 14] as [number, number, number], approach: [-12.8, 0, 13.2] as [number, number, number] },
-  { id: 'rainbow-tidy-up', position: [0, 0, -4] as [number, number, number], approach: [0, 0, -2.8] as [number, number, number] },
+  {
+    id: "juice-stand",
+    position: [3, 0, -3] as [number, number, number],
+    approach: [3, 0, -1.7] as [number, number, number],
+  },
+  {
+    id: "tricycle",
+    position: [12, 0, 2] as [number, number, number],
+    approach: [10.7, 0, 2] as [number, number, number],
+  },
+  {
+    id: "binky-storage",
+    position: [-14, 0, 14] as [number, number, number],
+    approach: [-12.8, 0, 13.2] as [number, number, number],
+  },
+  {
+    id: "rainbow-tidy-up",
+    position: [0, 0, -4] as [number, number, number],
+    approach: [0, 0, -2.8] as [number, number, number],
+  },
 ];
 
-export const CAMERA_BLOCKERS = WORLD_SOLIDS.filter((solid) => (
-  solid.cameraRole === 'structural' || solid.cameraRole === 'substantial'
-));
+export const CAMERA_BLOCKERS = WORLD_SOLIDS.filter(
+  (solid) =>
+    solid.cameraRole === "structural" || solid.cameraRole === "substantial",
+);
 
 export const PLAYER_RADIUS = 0.42;
 export const TRICYCLE_RADIUS = 0.7;
@@ -678,76 +1181,111 @@ export function getTrackedPlayerPosition(): [number, number, number] {
 }
 
 function distanceToSolid(point: THREE.Vector3, solid: WorldSolid) {
-  if (solid.shape === 'circle' && solid.radius !== undefined) {
+  if (solid.shape === "circle" && solid.radius !== undefined) {
     const centerX = (solid.minX + solid.maxX) / 2;
     const centerZ = (solid.minZ + solid.maxZ) / 2;
-    return Math.max(0, Math.hypot(point.x - centerX, point.z - centerZ) - solid.radius);
+    return Math.max(
+      0,
+      Math.hypot(point.x - centerX, point.z - centerZ) - solid.radius,
+    );
   }
   const dx = Math.max(solid.minX - point.x, 0, point.x - solid.maxX);
   const dz = Math.max(solid.minZ - point.z, 0, point.z - solid.maxZ);
   return Math.hypot(dx, dz);
 }
 
-function overlapsCircle(point: THREE.Vector3, radius: number, solid: WorldSolid) {
+function overlapsCircle(
+  point: THREE.Vector3,
+  radius: number,
+  solid: WorldSolid,
+) {
   return distanceToSolid(point, solid) < radius;
 }
 
-function blocksCameraAt(point: THREE.Vector3, radius: number, solid: WorldSolid) {
+function blocksCameraAt(
+  point: THREE.Vector3,
+  radius: number,
+  solid: WorldSolid,
+) {
   const minY = solid.minY ?? 0;
   const maxY = solid.maxY ?? 3;
-  return point.y + radius >= minY
-    && point.y - radius <= maxY
-    && overlapsCircle(point, radius, solid);
+  return (
+    point.y + radius >= minY &&
+    point.y - radius <= maxY &&
+    overlapsCircle(point, radius, solid)
+  );
 }
 
 export function isCameraPositionClear(
   point: THREE.Vector3,
   radius = 0.2,
-  zone: GameZone = 'hub',
+  zone: GameZone = "hub",
 ) {
-  return !CAMERA_BLOCKERS.some((solid) => (
-    solid.zone === zone && blocksCameraAt(point, radius, solid)
-  ));
+  return !CAMERA_BLOCKERS.some(
+    (solid) => solid.zone === zone && blocksCameraAt(point, radius, solid),
+  );
 }
 
 export function cameraSweepClearance(
   from: THREE.Vector3,
   to: THREE.Vector3,
   radius = 0.2,
-  zone: GameZone = 'hub',
+  zone: GameZone = "hub",
 ) {
-  return sweptSphereClearance(from, to, radius, CAMERA_BLOCKERS.filter((solid) => solid.zone === zone));
+  return sweptSphereClearance(
+    from,
+    to,
+    radius,
+    CAMERA_BLOCKERS.filter((solid) => solid.zone === zone),
+  );
 }
 
 export function isCameraTransitionClear(
   from: THREE.Vector3,
   to: THREE.Vector3,
   radius = 0.2,
-  zone: GameZone = 'hub',
+  zone: GameZone = "hub",
 ) {
-  return isSweptSphereClear(from, to, radius, CAMERA_BLOCKERS.filter((solid) => solid.zone === zone));
+  return isSweptSphereClear(
+    from,
+    to,
+    radius,
+    CAMERA_BLOCKERS.filter((solid) => solid.zone === zone),
+  );
 }
 
-export function isWithinWalkableBounds(position: THREE.Vector3, radius = PLAYER_RADIUS, zone: GameZone = 'hub') {
-  const contains = (region: WalkableRegion) => (
-    position.x >= region.minX + radius
-    && position.x <= region.maxX - radius
-    && position.z >= region.minZ + radius
-    && position.z <= region.maxZ - radius
-  );
-  if (WORLD_WALKABLE_REGIONS.filter((region) => (region.zone ?? 'hub') === zone).some(contains)) return true;
+export function isWithinWalkableBounds(
+  position: THREE.Vector3,
+  radius = PLAYER_RADIUS,
+  zone: GameZone = "hub",
+) {
+  const contains = (region: WalkableRegion) =>
+    position.x >= region.minX + radius &&
+    position.x <= region.maxX - radius &&
+    position.z >= region.minZ + radius &&
+    position.z <= region.maxZ - radius;
+  if (
+    WORLD_WALKABLE_REGIONS.filter(
+      (region) => (region.zone ?? "hub") === zone,
+    ).some(contains)
+  )
+    return true;
 
-  if (zone !== 'hub') return false;
+  if (zone !== "hub") return false;
 
   // Door openings occupy the thin divider strips between authored floor regions.
   return WORLD_PORTALS.some((portal) => {
     const halfWidth = portal.width / 2 - radius;
-    if (portal.axis === 'x') {
-      return Math.abs(position.x - portal.position[0]) <= 0.3 + radius
-        && Math.abs(position.z - portal.position[2]) <= halfWidth;
+    if (portal.axis === "x") {
+      return (
+        Math.abs(position.x - portal.position[0]) <= 0.3 + radius &&
+        Math.abs(position.z - portal.position[2]) <= halfWidth
+      );
     }
-    return Math.abs(position.z - portal.position[2]) <= 0.3 + radius
-      && Math.abs(position.x - portal.position[0]) <= halfWidth;
+    return (
+      Math.abs(position.z - portal.position[2]) <= 0.3 + radius &&
+      Math.abs(position.x - portal.position[0]) <= halfWidth
+    );
   });
 }
 
@@ -777,10 +1315,15 @@ export function blocksPlayer(solid: WorldSolid): boolean {
   return top > STEP_OVER_HEIGHT;
 }
 
-function pushOut(point: THREE.Vector3, radius: number, solid: WorldSolid, axis: 'x' | 'z') {
+function pushOut(
+  point: THREE.Vector3,
+  radius: number,
+  solid: WorldSolid,
+  axis: "x" | "z",
+) {
   if (!overlapsCircle(point, radius, solid)) return;
   const clearance = radius + 0.0001;
-  if (solid.shape === 'circle' && solid.radius !== undefined) {
+  if (solid.shape === "circle" && solid.radius !== undefined) {
     const centerX = (solid.minX + solid.maxX) / 2;
     const centerZ = (solid.minZ + solid.maxZ) / 2;
     const offsetX = point.x - centerX;
@@ -788,7 +1331,7 @@ function pushOut(point: THREE.Vector3, radius: number, solid: WorldSolid, axis: 
     const distance = Math.hypot(offsetX, offsetZ);
     const requiredDistance = solid.radius + clearance;
     if (distance < 0.0001) {
-      if (axis === 'x') point.x = centerX + requiredDistance;
+      if (axis === "x") point.x = centerX + requiredDistance;
       else point.z = centerZ + requiredDistance;
       return;
     }
@@ -796,7 +1339,7 @@ function pushOut(point: THREE.Vector3, radius: number, solid: WorldSolid, axis: 
     point.z = centerZ + (offsetZ / distance) * requiredDistance;
     return;
   }
-  if (axis === 'x') {
+  if (axis === "x") {
     const left = Math.abs(point.x - (solid.minX - clearance));
     const right = Math.abs(point.x - (solid.maxX + clearance));
     point.x = left < right ? solid.minX - clearance : solid.maxX + clearance;
@@ -811,14 +1354,18 @@ export function isWalkable(
   position: THREE.Vector3,
   radius = PLAYER_RADIUS,
   ignoredKinds: SolidKind[] = [],
-  zone: GameZone = 'hub',
+  zone: GameZone = "hub",
 ) {
-  return isWithinWalkableBounds(position, radius, zone) && !WORLD_SOLIDS.some((solid) => (
-    solid.zone === zone
-    && blocksPlayer(solid)
-    && !ignoredKinds.includes(solid.kind)
-    && overlapsCircle(position, radius, solid)
-  ));
+  return (
+    isWithinWalkableBounds(position, radius, zone) &&
+    !WORLD_SOLIDS.some(
+      (solid) =>
+        solid.zone === zone &&
+        blocksPlayer(solid) &&
+        !ignoredKinds.includes(solid.kind) &&
+        overlapsCircle(position, radius, solid),
+    )
+  );
 }
 
 export function resolveMovement(
@@ -826,7 +1373,7 @@ export function resolveMovement(
   desired: THREE.Vector3,
   radius = PLAYER_RADIUS,
   maxStep = 0.38,
-  zone: GameZone = 'hub',
+  zone: GameZone = "hub",
 ) {
   const next = current.clone();
   const distance = Math.hypot(desired.x - current.x, desired.z - current.z);
@@ -838,12 +1385,14 @@ export function resolveMovement(
     const before = next.clone();
     next.x += stepX;
     for (const solid of WORLD_SOLIDS) {
-      if (solid.zone === zone && blocksPlayer(solid)) pushOut(next, radius, solid, 'x');
+      if (solid.zone === zone && blocksPlayer(solid))
+        pushOut(next, radius, solid, "x");
     }
     if (!isWithinWalkableBounds(next, radius, zone)) next.x = before.x;
     next.z += stepZ;
     for (const solid of WORLD_SOLIDS) {
-      if (solid.zone === zone && blocksPlayer(solid)) pushOut(next, radius, solid, 'z');
+      if (solid.zone === zone && blocksPlayer(solid))
+        pushOut(next, radius, solid, "z");
     }
     if (!isWithinWalkableBounds(next, radius, zone)) next.z = before.z;
   }
@@ -854,7 +1403,7 @@ export function resolveCameraPosition(
   target: THREE.Vector3,
   desired: THREE.Vector3,
   radius = 0.2,
-  zone: GameZone = 'hub',
+  zone: GameZone = "hub",
 ) {
   const desiredOffset = desired.clone().sub(target);
   const distance = desiredOffset.length();
@@ -863,21 +1412,36 @@ export function resolveCameraPosition(
   const vertical = desiredOffset.y;
   const blockers = CAMERA_BLOCKERS.filter((solid) => solid.zone === zone);
 
-  const trace = (direction: THREE.Vector3) => sweptSphereClearance(
-    target,
-    target.clone().addScaledVector(direction, distance),
-    radius,
-    blockers,
-  );
+  const trace = (direction: THREE.Vector3) =>
+    sweptSphereClearance(
+      target,
+      target.clone().addScaledVector(direction, distance),
+      radius,
+      blockers,
+    );
 
-  const yawOffsets = [0, Math.PI / 8, -Math.PI / 8, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, Math.PI];
+  const yawOffsets = [
+    0,
+    Math.PI / 8,
+    -Math.PI / 8,
+    Math.PI / 4,
+    -Math.PI / 4,
+    Math.PI / 2,
+    -Math.PI / 2,
+    Math.PI,
+  ];
   const candidates = yawOffsets.map((yaw) => {
     const rotated = horizontal.clone().rotateAround(new THREE.Vector2(), yaw);
-    const direction = new THREE.Vector3(rotated.x, vertical, rotated.y).normalize();
+    const direction = new THREE.Vector3(
+      rotated.x,
+      vertical,
+      rotated.y,
+    ).normalize();
     const safeDistance = trace(direction);
-    const retainedDistance = safeDistance >= distance - 1e-5
-      ? distance
-      : Math.max(0, safeDistance - 0.035);
+    const retainedDistance =
+      safeDistance >= distance - 1e-5
+        ? distance
+        : Math.max(0, safeDistance - 0.035);
     const anglePenalty = Math.abs(yaw) / Math.PI;
     const framingScore = retainedDistance / distance;
     return {
@@ -892,27 +1456,34 @@ export function resolveCameraPosition(
     .sort((a, b) => b.score - a.score);
   if (validCandidates.length > 0) {
     const best = validCandidates[0];
-    return target.clone().addScaledVector(best.direction, best.retainedDistance);
+    return target
+      .clone()
+      .addScaledVector(best.direction, best.retainedDistance);
   }
 
-  const bestConstrained = candidates.sort((a, b) => (
-    b.safeDistance - a.safeDistance || b.score - a.score
-  ))[0];
+  const bestConstrained = candidates.sort(
+    (a, b) => b.safeDistance - a.safeDistance || b.score - a.score,
+  )[0];
   // In a fully constrained pocket, never invent clearance that the trace did
   // not prove. Remaining close to the target is preferable to crossing a wall.
-  const constrainedDistance = Math.max(0, Math.min(
-    bestConstrained.safeDistance - radius * 0.5,
-    EMERGENCY_CAMERA_DISTANCE,
-    distance,
-  ));
-  return target.clone().addScaledVector(bestConstrained.direction, constrainedDistance);
+  const constrainedDistance = Math.max(
+    0,
+    Math.min(
+      bestConstrained.safeDistance - radius * 0.5,
+      EMERGENCY_CAMERA_DISTANCE,
+      distance,
+    ),
+  );
+  return target
+    .clone()
+    .addScaledVector(bestConstrained.direction, constrainedDistance);
 }
 
 export function findApproachPoint(
   target: THREE.Vector3,
   preferred: THREE.Vector3,
   radius = PLAYER_RADIUS,
-  zone: GameZone = 'hub',
+  zone: GameZone = "hub",
 ) {
   const towardTarget = preferred.clone().sub(target).setY(0);
   if (towardTarget.lengthSq() < 0.01) towardTarget.set(0, 0, 1);
@@ -928,11 +1499,12 @@ export function findApproachPoint(
  * Hub" instead of failing to compile.
  */
 export const ZONE_LABELS: Record<GameZone, string> = {
-  home: 'Your Stony Brook Home',
-  garage: 'Your Garage',
-  hub: 'DayKare Hub',
-  garden: 'Garden District',
-  storybook: 'Storybook Lane',
+  home: "Your Stony Brook Home",
+  garage: "Your Garage",
+  hub: "DayKare Hub",
+  garden: "Garden District",
+  storybook: "Storybook Lane",
 };
 
-export const zoneLabel = (zone: GameZone): string => ZONE_LABELS[zone] ?? ZONE_LABELS.hub;
+export const zoneLabel = (zone: GameZone): string =>
+  ZONE_LABELS[zone] ?? ZONE_LABELS.hub;
