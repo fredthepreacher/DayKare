@@ -8,6 +8,9 @@ export const ART_XP = 20;
 export const ART_CASH = 20;
 export const MISSED_ACTIVITY_REP = 5;
 export const LOST_FOUND_INTERVAL_MINUTES = 10;
+export const MEAL_REQUIRED_REAL_SECONDS = 10;
+export const NAP_XP_PER_REAL_MINUTE = 2;
+export const NAP_FULL_SESSION_REAL_SECONDS = 55;
 
 export const SEED_QUALITY_TIERS = [
   { id: "basic", label: "Basic Seed", multiplier: 1 },
@@ -34,7 +37,7 @@ export const COLLECTIBLE_DEFINITIONS = [
 
 export type CollectibleId = (typeof COLLECTIBLE_DEFINITIONS)[number]["id"];
 export type HeistId = "sticker-parade" | "tech-stash";
-export type RequiredActivityId = "show-and-tell" | "art-time";
+export type RequiredActivityId = "breakfast" | "show-and-tell" | "art-time" | "lunch" | "nap";
 
 export interface AttendanceEntry {
   seconds: number;
@@ -81,6 +84,8 @@ export interface GameplayExpansionState {
   afternoonSnackDays: number[];
   attendanceDay: number;
   attendance: Record<RequiredActivityId, AttendanceEntry>;
+  napRewardedDays: number[];
+  napInterruptedDays: number[];
   dayStartExperience: number;
   dayStartCash: number;
   dayStartReputation: number;
@@ -101,8 +106,11 @@ export interface GameplayExpansionState {
 }
 
 const emptyAttendance = (): Record<RequiredActivityId, AttendanceEntry> => ({
+  "breakfast": { seconds: 0, completed: false },
   "show-and-tell": { seconds: 0, completed: false },
   "art-time": { seconds: 0, completed: false },
+  "lunch": { seconds: 0, completed: false },
+  "nap": { seconds: 0, completed: false },
 });
 
 export function heistForDay(day: number, previous: HeistId | null): HeistId {
@@ -133,6 +141,8 @@ export function createGameplayExpansion(day = 1): GameplayExpansionState {
     afternoonSnackDays: [],
     attendanceDay: day,
     attendance: emptyAttendance(),
+    napRewardedDays: [],
+    napInterruptedDays: [],
     dayStartExperience: 0,
     dayStartCash: 0,
     dayStartReputation: 0,
@@ -201,6 +211,8 @@ export function normalizeGameplayExpansion(value: unknown, day = 1): GameplayExp
     afternoonSnackDays: validDays(raw.afternoonSnackDays),
     attendanceDay: count(raw.attendanceDay, day, 9999),
     attendance,
+    napRewardedDays: validDays(raw.napRewardedDays),
+    napInterruptedDays: validDays(raw.napInterruptedDays),
     dayStartExperience: count(raw.dayStartExperience),
     dayStartCash: count(raw.dayStartCash),
     dayStartReputation: count(raw.dayStartReputation, 0, 1000),
@@ -265,6 +277,8 @@ export function lostFoundReward(seed: number, juiceTime: boolean, luckyMultiplie
   return { tier: "common", xp: 12, cash: 0 };
 }
 
-export function attendanceSatisfied(entry: AttendanceEntry) {
+export function attendanceSatisfied(entry: AttendanceEntry, activity?: RequiredActivityId) {
+  if (activity === 'nap') return entry.completed;
+  if (activity === 'breakfast' || activity === 'lunch') return entry.completed || entry.seconds >= MEAL_REQUIRED_REAL_SECONDS;
   return entry.completed || entry.seconds >= 20;
 }

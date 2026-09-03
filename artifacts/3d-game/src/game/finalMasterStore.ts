@@ -27,6 +27,9 @@ interface FinalMasterState {
   firstHeistComplete: boolean;
   firstRewardChoice: 'rb' | 'home' | null;
   lastReplayDay: number | null;
+  heistsCompleted: number;
+  successfulFinales: number;
+  totalHeistRbEarned: number;
   ownedStarterHome: boolean;
   homeVoucher: boolean;
   insideHome: boolean;
@@ -84,6 +87,9 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
   firstHeistComplete: false,
   firstRewardChoice: null,
   lastReplayDay: null,
+  heistsCompleted: 0,
+  successfulFinales: 0,
+  totalHeistRbEarned: 0,
   ownedStarterHome: false,
   homeVoucher: false,
   insideHome: false,
@@ -143,14 +149,14 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     if (next >= HEIST_STEPS.length) {
       if (!state.firstHeistComplete) {
         grantCoreReward(FIRST_HEIST_XP, FIRST_HEIST_CASH);
-        set({ heistStatus: 'reward-choice', heistStep: HEIST_STEPS.length, heistCompletedEvents: completed, companionCommand: 'finale' });
+        set({ heistStatus: 'reward-choice', heistStep: HEIST_STEPS.length, heistCompletedEvents: completed, companionCommand: 'finale', heistsCompleted: state.heistsCompleted + 1, successfulFinales: state.successfulFinales + 1 });
       } else {
         const dayNumber = useGameStore.getState().dayNumber;
         if (state.lastReplayDay !== dayNumber) {
           useStorybookLaneStore.getState().grantRibbonBucks(REPLAY_HEIST_RB);
           grantCoreReward(FIRST_HEIST_XP, FIRST_HEIST_CASH);
         }
-        set({ heistStatus: 'complete', heistStep: HEIST_STEPS.length, heistCompletedEvents: completed, companionCommand: 'finale', lastReplayDay: dayNumber });
+        set({ heistStatus: 'complete', heistStep: HEIST_STEPS.length, heistCompletedEvents: completed, companionCommand: 'finale', lastReplayDay: dayNumber, heistsCompleted: state.heistsCompleted + 1, successfulFinales: state.successfulFinales + 1, totalHeistRbEarned: state.totalHeistRbEarned + REPLAY_HEIST_RB });
       }
     } else set({ heistStep: next, heistCompletedEvents: completed, companionCommand: next === 2 ? 'wait' : next === 3 ? 'goto' : next === 4 ? 'interact' : next === 5 ? 'regroup' : 'follow' });
     return true;
@@ -159,7 +165,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     const state = get();
     if (state.heistStatus !== 'reward-choice' || state.firstRewardChoice) return false;
     if (choice === 'rb') useStorybookLaneStore.getState().grantRibbonBucks(FIRST_HEIST_RB);
-    set({ firstRewardChoice: choice, firstHeistComplete: true, heistStatus: 'complete', homeVoucher: choice === 'home' });
+    set({ firstRewardChoice: choice, firstHeistComplete: true, heistStatus: 'complete', homeVoucher: choice === 'home', totalHeistRbEarned: state.totalHeistRbEarned + (choice === 'rb' ? FIRST_HEIST_RB : 0) });
     return true;
   },
   claimReplayReward: (dayNumber) => {
@@ -200,7 +206,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     tutorialCompletedSteps: state.tutorialCompletedSteps, tutorialRewardedChapters: state.tutorialRewardedChapters, tutorialMovementDistance: state.tutorialMovementDistance,
     tutorialComplete: state.tutorialComplete, heistStatus: state.heistStatus, heistStep: state.heistStep, heistCompletedEvents: state.heistCompletedEvents,
     firstHeistComplete: state.firstHeistComplete, firstRewardChoice: state.firstRewardChoice,
-    lastReplayDay: state.lastReplayDay, ownedStarterHome: state.ownedStarterHome, homeVoucher: state.homeVoucher,
+    lastReplayDay: state.lastReplayDay, heistsCompleted: state.heistsCompleted, successfulFinales: state.successfulFinales, totalHeistRbEarned: state.totalHeistRbEarned, ownedStarterHome: state.ownedStarterHome, homeVoucher: state.homeVoucher,
     gems: state.gems,
   }),
   merge: (persisted, current) => {
@@ -209,7 +215,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     const rewarded = Array.isArray(saved.tutorialRewardedChapters)
       ? saved.tutorialRewardedChapters.filter((id) => TUTORIAL_CHAPTERS.some((item) => item.id === id))
       : TUTORIAL_CHAPTERS.slice(0, chapter).map((item) => item.id);
-    return { ...current, ...saved, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Math.max(0, Number(saved.tutorialMovementDistance) || 0), heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [] };
+    return { ...current, ...saved, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Math.max(0, Number(saved.tutorialMovementDistance) || 0), heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [], heistsCompleted: Math.max(0, Math.floor(saved.heistsCompleted ?? 0)), successfulFinales: Math.max(0, Math.floor(saved.successfulFinales ?? 0)), totalHeistRbEarned: Math.max(0, Math.floor(saved.totalHeistRbEarned ?? 0)) };
   },
 }));
 

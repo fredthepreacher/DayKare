@@ -7,12 +7,14 @@ import {
   TEACHER_PERSONAL_SPACE,
   advanceCarriedPlayer,
   beginEscapeRetrieval,
+  evaluateScheduleRetrieval,
   getEscapeRetrievalSnapshot,
   isDaycareEscape,
   markEscapePlayerCaught,
   resetEscapeRetrieval,
   updateEscapeGrace,
 } from './escapeRetrieval';
+import { SCHEDULE_DETECTION_GRACE_SECONDS, SCHEDULE_RECAPTURE_GRACE_SECONDS } from './schedulePolicy';
 
 resetEscapeRetrieval(true);
 assert.equal(isDaycareEscape([0, 0, 0], 'hub', false), false, 'ordinary daycare exploration never starts a chase');
@@ -48,6 +50,23 @@ for (let strike = 1; strike <= ESCAPE_PENALTY_STRIKE; strike += 1) {
   carried = advanceCarriedPlayer(now + 1.1, new THREE.Vector3(...ESCAPE_SAFE_POINT.toArray()), 0.1);
   assert.equal(carried.penalty, strike === ESCAPE_PENALTY_STRIKE, 'only the seventh capture triggers the lighthearted consequence');
   updateEscapeGrace(now + 1.1 + ESCAPE_GRACE_SECONDS + 0.1);
+}
+
+for (const free of ['pickup', 'recess', 'juice-club', 'storybook-lane'] as const) {
+  resetEscapeRetrieval(true);
+  assert.equal(evaluateScheduleRetrieval(0, free, 'hub', [15, 0, 15]).phase, 'idle', `${free} is free-roam`);
+  assert.equal(evaluateScheduleRetrieval(60, free, 'hub', [15, 0, 15]).phase, 'idle', `${free} never starts attendance retrieval`);
+}
+
+for (const mandatory of ['breakfast', 'show-and-tell', 'art-time', 'lunch', 'nap'] as const) {
+  resetEscapeRetrieval(true);
+  assert.equal(evaluateScheduleRetrieval(0, mandatory, 'hub', [15, 0, 15]).phase, 'idle', `${mandatory} begins with travel grace`);
+  const assigned = evaluateScheduleRetrieval(SCHEDULE_DETECTION_GRACE_SECONDS + .1, mandatory, 'hub', [15, 0, 15]);
+  assert.equal(assigned.phase, 'chasing', `${mandatory} assigns a retriever after grace`);
+  assert.equal(markEscapePlayerCaught(assigned.assignedTeacher!, SCHEDULE_DETECTION_GRACE_SECONDS + 1), true);
+  const returned = advanceCarriedPlayer(SCHEDULE_DETECTION_GRACE_SECONDS + 2, new THREE.Vector3(...assigned.returnTarget), .1);
+  assert.equal(returned.released, true);
+  assert.equal(getEscapeRetrievalSnapshot().graceUntil, SCHEDULE_DETECTION_GRACE_SECONDS + 2 + SCHEDULE_RECAPTURE_GRACE_SECONDS);
 }
 
 console.log('DayKare escape retrieval tests passed.');

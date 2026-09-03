@@ -31,7 +31,7 @@ assert.deepEqual(rankFromLifetimeXp(1_020), { rank: 11, xpIntoRank: 0, xpForNext
 useToastStore.getState().reset();
 assert.equal(useToastStore.getState().enqueue({ title: 'Saved' }, 1_000), true);
 assert.equal(useToastStore.getState().enqueue({ title: 'Saved' }, 1_000 + TOAST_DEDUPE_MS - 1), false, 'duplicate toast is suppressed');
-assert.deepEqual([TOAST_VISIBLE_MS, TOAST_FADE_MS], [1_750, 300]);
+assert.deepEqual([TOAST_VISIBLE_MS, TOAST_FADE_MS], [1_500, 300]);
 useToastStore.getState().dismiss();
 
 useGameStore.setState((state) => ({ juiceClubCash: 0, progression: { ...state.progression, experience: 0, reputation: 0 } }));
@@ -53,7 +53,7 @@ useGameStore.setState({ zone: 'hub', zoneTransitioning: false, pendingZone: null
 
 useStorybookLaneStore.setState({ ribbonBucks: 0, ownedItems: [], cribTier: 0 });
 useGameStore.setState((state) => ({ juiceClubCash: 0, dayNumber: 3, progression: { ...state.progression, experience: 0 } }));
-useFinalMasterStore.setState({ tutorialComplete: true, tutorialChapter: 7, heistStatus: 'available', heistStep: 0, firstHeistComplete: false, firstRewardChoice: null, lastReplayDay: null, ownedStarterHome: false, homeVoucher: false });
+useFinalMasterStore.setState({ tutorialComplete: true, tutorialChapter: 7, heistStatus: 'available', heistStep: 0, firstHeistComplete: false, firstRewardChoice: null, lastReplayDay: null, heistsCompleted: 0, successfulFinales: 0, totalHeistRbEarned: 0, ownedStarterHome: false, homeVoucher: false });
 assert.equal(interactWithMissLeslie(), 'available', 'the guaranteed first story is always offered');
 assert.equal(useGameStore.getState().activeDialogue?.options?.[0]?.label, 'Start Sticker Parade Heist');
 useGameStore.getState().activeDialogue?.options?.[0]?.action();
@@ -73,6 +73,7 @@ assert.equal(useStorybookLaneStore.getState().ribbonBucks, 14_000);
 assert.equal(useFinalMasterStore.getState().claimReplayReward(3), true);
 for (const step of HEIST_STEPS) for (const event of step.events) useFinalMasterStore.getState().recordHeistEvent(event);
 assert.equal(useStorybookLaneStore.getState().ribbonBucks, 19_000);
+assert.deepEqual([useFinalMasterStore.getState().heistsCompleted, useFinalMasterStore.getState().successfulFinales, useFinalMasterStore.getState().totalHeistRbEarned], [2, 2, 19_000], 'career heist stats persist separately from wallet balance');
 assert.equal(useGameStore.getState().juiceClubCash, 2_000);
 assert.equal(useFinalMasterStore.getState().claimReplayReward(3), false, 'same-day replay is blocked');
 useFinalMasterStore.setState({ ownedStarterHome: false, homeVoucher: true });

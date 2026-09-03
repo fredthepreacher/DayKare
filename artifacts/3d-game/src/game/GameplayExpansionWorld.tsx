@@ -1,6 +1,6 @@
 import { useFrame } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { getEscapeRetrievalSnapshot } from "./escapeRetrieval";
 import { COLLECTIBLE_DEFINITIONS, type CollectibleId, type RequiredActivityId } from "./gameplayExpansion";
@@ -26,6 +26,7 @@ function Marker({ id, position, color, label, valid = true, priority = 60, range
       <mesh position={[0, 0.91, -0.05]}><planeGeometry args={[1.18, 0.23]} /><meshBasicMaterial color={color} /></mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.035, 0]}><torusGeometry args={[0.92, 0.04, 8, 24]} /><meshBasicMaterial color={color} transparent opacity={active ? 0.92 : 0.22} /></mesh>
       <Text position={[0, 0.92, -0.1]} rotation={[0, Math.PI, 0]} fontSize={0.13} color="#4f3424" anchorX="center" anchorY="middle" maxWidth={1.2}>{label}</Text>
+      <Text position={[0, 0.92, 0.1]} fontSize={0.13} color="#4f3424" anchorX="center" anchorY="middle" maxWidth={1.2}>{label}</Text>
     </group>
   );
 }
@@ -72,9 +73,9 @@ export function GameplayExpansionWorld() {
       {zone === "hub" && (
         <>
           <Marker id="lost-found-desk" position={[-6.8, 0, -4.7]} color="#e88b57" label="Lost & Found Job Board" />
-          <Marker id="art-mini-activity" position={[-12.2, 0, -11.7]} color="#e76f8c" label="Art Activity" priority={96} range={3.2} forcePriority />
+          <Marker id="art-mini-activity" position={[-10.1, 0, -11.7]} color="#e76f8c" label="Art Activity" priority={96} range={3.2} forcePriority />
           <Marker id="show-and-tell-spot" position={[0, 0, 2.3]} color="#8a63c7" label="Show & Tell" />
-          <Marker id="tech-market" position={[11.8, 0, 11.7]} color="#38b6c8" label="Tech Market" />
+          <Marker id="tech-market" position={[9.3, 0, 14]} color="#38b6c8" label="Tech Market" />
           <Marker id="snack-window" position={[4.8, 0, -3]} color="#f2b85b" label="Juice & Crackers" />
         </>
       )}
@@ -90,6 +91,7 @@ export function GameplayExpansionDirector() {
   const zone = useGameStore((state) => state.zone);
   const rotateExpansionContent = useGameStore((state) => state.rotateExpansionContent);
   const recordAttendance = useGameStore((state) => state.recordAttendance);
+  const previousSchedule = useRef(schedule);
 
   useEffect(() => {
     rotateExpansionContent();
@@ -98,14 +100,30 @@ export function GameplayExpansionDirector() {
   }, [day, rotateExpansionContent]);
 
   useEffect(() => {
-    if (schedule !== "show-and-tell" && schedule !== "art-time") return;
+    if (!["breakfast", "show-and-tell", "art-time", "lunch", "nap"].includes(schedule)) return;
     const activity = schedule as RequiredActivityId;
     const timer = window.setInterval(() => {
       const state = useGameStore.getState();
-      if (playerFollowsSchedule(activity, state.zone, state.playerPosition)) recordAttendance(activity, 1);
+      const participating = activity === 'breakfast' || activity === 'lunch'
+        ? Boolean(state.seatedSeatId)
+        : activity === 'nap'
+          ? state.isNapping
+          : playerFollowsSchedule(activity, state.zone, state.playerPosition);
+      if (participating) recordAttendance(activity, 1);
     }, 1000);
     return () => window.clearInterval(timer);
   }, [schedule, zone, recordAttendance]);
+
+  useEffect(() => {
+    if (previousSchedule.current === 'nap' && schedule !== 'nap') {
+      const awarded = useGameStore.getState().completeNapSession();
+      if (awarded > 0) useGameStore.getState().setAmbientMessage(`NAP COMPLETE +${awarded} XP`);
+    }
+    if ((previousSchedule.current === 'breakfast' || previousSchedule.current === 'lunch') && schedule !== previousSchedule.current) {
+      useGameStore.getState().standUp();
+    }
+    previousSchedule.current = schedule;
+  }, [schedule]);
 
   useEffect(() => {
     // Touching this snapshot here keeps escape statistics available to the

@@ -42,6 +42,7 @@ import { useFinalMasterStore } from './finalMasterStore';
 import { STARTER_HOME_PRICE, TUTORIAL_CHAPTERS } from './finalMaster';
 import { interactWithHeistTarget, interactWithMissLeslie } from './missLeslieInteraction';
 import { useToastStore } from './toastStore';
+import { PLAYER_NAP_POSITION, seatPositionForId } from './DaycareRoutineWorld';
 
 const Journal = lazy(() => import('./Journal').then(({ Journal }) => ({ default: Journal })));
 
@@ -89,6 +90,11 @@ export function UI() {
     addWaitingCustomer,
     setIsRiding,
     isRiding,
+    seatedSeatId,
+    isNapping,
+    sitAtSeat,
+    standUp,
+    beginNap,
     progression,
     quests,
     advanceQuestObjective,
@@ -331,6 +337,16 @@ export function UI() {
     if (activeDialogue) playGameSound('dialogue', 'dialogue');
   }, [activeDialogue?.name, activeDialogue?.text]);
 
+  useEffect(() => {
+    const cancelSeat = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || (!seatedSeatId && !isNapping) || activeDialogue || journalOpen) return;
+      event.preventDefault();
+      standUp(isNapping);
+    };
+    window.addEventListener('keydown', cancelSeat);
+    return () => window.removeEventListener('keydown', cancelSeat);
+  }, [seatedSeatId, isNapping, activeDialogue, journalOpen, standUp]);
+
   const activeReward = rewardEvents[0] ?? null;
   useEffect(() => {
     if (!activeReward) return;
@@ -398,13 +414,39 @@ export function UI() {
         return;
       }
 
+      if (isNapping) {
+        standUp(true);
+        useToastStore.getState().enqueue({ title: 'Nap ended early', detail: 'Complete the full next Nap session to earn XP.' });
+        return;
+      }
+
+      if (seatedSeatId) {
+        standUp();
+        return;
+      }
+
       if (isRiding) {
         setIsRiding(false);
         return;
       }
 
       if (activeInteractable) {
-        if (activeInteractable === 'final-miss-leslie') {
+        if (activeInteractable === 'final-home-exit') {
+          useFinalMasterStore.getState().leaveHome();
+          useGameStore.getState().setPlayerPosition([-13, 0, -8.7]);
+          useGameStore.getState().triggerTeleport();
+        } else if (activeInteractable.startsWith('cafeteria-seat-')) {
+          const position = seatPositionForId(activeInteractable);
+          if (position && sitAtSeat(activeInteractable)) {
+            useGameStore.getState().setPlayerPosition(position);
+            useGameStore.getState().triggerTeleport();
+          }
+        } else if (activeInteractable === 'player-nap-mat') {
+          if (beginNap()) {
+            useGameStore.getState().setPlayerPosition(PLAYER_NAP_POSITION);
+            useGameStore.getState().triggerTeleport();
+          }
+        } else if (activeInteractable === 'final-miss-leslie') {
           interactWithMissLeslie();
         } else if (activeInteractable.startsWith('final-heist-')) {
           interactWithHeistTarget(activeInteractable);
@@ -945,7 +987,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, collectibles, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, gummyCrop2, expansion, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, startGardenActivity, advanceGardenActivity, resetGardenActivity, completeActivity, castFishingLine, catchSwedishFish, sellSwedishFish, completeArtActivity, completeShowAndTell, takeAfternoonSnack, collectExpansionCollectible, acceptLostFoundJob, collectLostFoundItem, turnInLostFoundJob, advanceTechHeist, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, seatedSeatId, isNapping, sitAtSeat, standUp, beginNap, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, collectibles, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, gummyCrop2, expansion, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, startGardenActivity, advanceGardenActivity, resetGardenActivity, completeActivity, castFishingLine, catchSwedishFish, sellSwedishFish, completeArtActivity, completeShowAndTell, takeAfternoonSnack, collectExpansionCollectible, acceptLostFoundJob, collectLostFoundItem, turnInLostFoundJob, advanceTechHeist, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
@@ -1130,9 +1172,14 @@ export function UI() {
   const getInteractionLabel = () => {
     if (activeDialogue?.options) return null;
     if (activeDialogue) return 'Continue';
+    if (isNapping) return 'Wake Up Early';
+    if (seatedSeatId) return 'Stand Up';
     if (isRiding) return 'Dismount';
     if (!activeInteractable) return null;
     if (activeInteractable === 'binky') return 'Pick up Binky';
+    if (activeInteractable === 'final-home-exit') return 'Exit Home';
+    if (activeInteractable.startsWith('cafeteria-seat-')) return 'Sit for Meal';
+    if (activeInteractable === 'player-nap-mat') return 'Lie Down / Nap';
     if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
@@ -1207,6 +1254,8 @@ export function UI() {
   const interactionLabel = getInteractionLabel();
   const getInteractionDetail = () => {
     if (activeDialogue) return null;
+    if (isNapping) return 'Early exit forfeits Nap completion XP';
+    if (seatedSeatId) return 'Meal participation counts only while seated';
     if (!activeInteractable) return null;
     if (activeInteractable === 'activity-rainbow-tidy-up') return 'Physical quest · sort one toy at a time';
     if (activeInteractable === 'garden-return') return 'Connected route · daycare hub';
@@ -1365,7 +1414,7 @@ export function UI() {
           disabled={Boolean(activeDialogue) || zoneTransitioning}
           className="bg-card/90 backdrop-blur border-2 border-primary/20 p-3 rounded-xl shadow-lg flex items-center gap-3 hover:scale-105 transition-transform"
         >
-          <span className="font-bold hidden sm:block">Journal (J)</span>
+          <span className="font-bold hidden sm:block">Tablet (J)</span>
           <Book className="w-6 h-6 text-primary" />
         </button>
 

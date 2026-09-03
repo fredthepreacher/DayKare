@@ -27,7 +27,6 @@ export function HubDetails() {
       <SuppliedArtwork fileName="03_wall_decals_set.png" surfaceAnchor={{ solidId: 'hall-divider-south', face: 'east', height: 1.6, along: 4.5 }} size={[2.15, 1.6]} support="corkboard" />
       <SuppliedArtwork fileName="06_posters_charts.png" surfaceAnchor={{ solidId: 'north-boundary', face: 'south', height: 1.72, along: -12 }} size={[2.5, 1.88]} semanticRole="wayfinding" support="corkboard" />
       <SuppliedArtwork fileName="17_motivational_banner.png" surfaceAnchor={{ solidId: 'west-boundary', face: 'east', height: 1.65, along: 0 }} size={[2.55, 1.9]} semanticRole="wayfinding" support="rail" />
-      <SuppliedArtwork fileName="18_door_sign.png" surfaceAnchor={{ solidId: 'hall-divider-north', face: 'east', height: 1.7, along: -6.65 }} size={[1.35, 1]} semanticRole="wayfinding" support="signboard" />
       <SuppliedArtwork fileName="04_classroom_scene.png" surfaceAnchor={{ solidId: 'main-south-wall', face: 'north', height: 1.72, along: 4.6 }} size={[2.55, 1.9]} support="frame" />
       <SuppliedArtwork fileName="05_playground_equipment.png" surfaceAnchor={{ solidId: 'east-boundary', face: 'west', height: 1.65, along: -4.2 }} size={[2.55, 1.9]} semanticRole="wayfinding" support="corkboard" />
       <SuppliedArtwork fileName="09_cubby_labels.png" surfaceAnchor={{ solidId: 'cubbies', face: 'north', height: 1.18, along: -5.7 }} size={[2.95, 0.72]} semanticRole="wayfinding" support="rail" />

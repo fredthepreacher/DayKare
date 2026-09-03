@@ -9,13 +9,18 @@ export interface SchedulePolicy {
   instruction: string;
 }
 
+export const SCHEDULE_DETECTION_GRACE_SECONDS = 12;
+export const SCHEDULE_RECAPTURE_GRACE_SECONDS = 30;
+export const MANDATORY_SCHEDULES = new Set<ScheduleBlockId>(['breakfast', 'show-and-tell', 'art-time', 'lunch', 'nap']);
+export const FREE_SCHEDULES = new Set<ScheduleBlockId>(['morning-play', 'juice-club', 'recess', 'outdoor-play', 'pickup', 'storybook-lane']);
+
 const POLICIES: Partial<Record<ScheduleBlockId, SchedulePolicy>> = {
   breakfast: {
     zone: 'hub',
-    anchor: [3.7, 0, -1.4],
-    radius: 5,
+    anchor: [9.4, 0, 3.5],
+    radius: 4.6,
     teacher: 'Mr. Davis',
-    instruction: 'Breakfast is together at the classroom tables.',
+    instruction: 'Breakfast is together in the Cafeteria.',
   },
   'morning-play': {
     zone: 'hub',
@@ -33,17 +38,17 @@ const POLICIES: Partial<Record<ScheduleBlockId, SchedulePolicy>> = {
   },
   'art-time': {
     zone: 'hub',
-    anchor: [-12, 0, -12],
-    radius: 5.5,
+    anchor: [-12.1, 0, -9.25],
+    radius: 4.2,
     teacher: 'Ms. Harper',
     instruction: 'Art Time is in the art room.',
   },
   lunch: {
     zone: 'hub',
-    anchor: [3.7, 0, -1.4],
-    radius: 5,
+    anchor: [9.4, 0, 3.5],
+    radius: 4.6,
     teacher: 'Mr. Davis',
-    instruction: 'Lunch is together at the classroom tables.',
+    instruction: 'Lunch is together in the Cafeteria.',
   },
   'juice-club': {
     zone: 'hub',
@@ -54,7 +59,7 @@ const POLICIES: Partial<Record<ScheduleBlockId, SchedulePolicy>> = {
   },
   nap: {
     zone: 'hub',
-    anchor: [0, 0, 4.8],
+    anchor: [5.2, 0, 6.1],
     radius: 6.2,
     teacher: 'Ms. Harper',
     instruction: 'Nap Time is on the quiet mats.',
@@ -79,6 +84,14 @@ export function schedulePolicy(id: ScheduleBlockId): SchedulePolicy | null {
   return POLICIES[id] ?? null;
 }
 
+export function isMandatorySchedule(id: ScheduleBlockId) {
+  return MANDATORY_SCHEDULES.has(id);
+}
+
+export function isFreeSchedule(id: ScheduleBlockId) {
+  return FREE_SCHEDULES.has(id) || !MANDATORY_SCHEDULES.has(id);
+}
+
 export function playerFollowsSchedule(id: ScheduleBlockId, zone: GameZone, position: readonly number[]) {
   const policy = schedulePolicy(id);
   if (!policy || zone !== policy.zone) return policy ? false : true;
@@ -87,15 +100,8 @@ export function playerFollowsSchedule(id: ScheduleBlockId, zone: GameZone, posit
   return dx * dx + dz * dz <= policy.radius * policy.radius;
 }
 
-const GUIDED_ACTIVITIES = new Set<ScheduleBlockId>(['breakfast', 'show-and-tell', 'art-time', 'lunch', 'nap']);
-
-/** A small, breakable nudge: 0.45 units/s against a 4–8 units/s player. */
+/** Attendance is enforced by a physical teacher catch, never an invisible tug. */
 export function softActivityGuidance(id: ScheduleBlockId, zone: GameZone, position: readonly number[]): [number, number] {
-  const policy = schedulePolicy(id);
-  if (!policy || !GUIDED_ACTIVITIES.has(id) || zone !== policy.zone) return [0, 0];
-  const dx = policy.anchor[0] - (position[0] ?? 0);
-  const dz = policy.anchor[2] - (position[2] ?? 0);
-  const distance = Math.hypot(dx, dz);
-  if (distance <= policy.radius + 1.5 || distance < 0.001) return [0, 0];
-  return [dx / distance * 0.45, dz / distance * 0.45];
+  void id; void zone; void position;
+  return [0, 0];
 }

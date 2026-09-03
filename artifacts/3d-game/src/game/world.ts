@@ -183,7 +183,7 @@ export const WORLD_SOLIDS: WorldSolid[] = [
     minY: 0.78,
     maxY: 2.22,
   }),
-  box('art-table', 'table', -13.7, -10.3, -13.7, -10.3, { cameraRole: 'substantial', maxY: 1 }),
+  box('art-table', 'table', -11.7, -8.3, -13.7, -10.3, { cameraRole: 'substantial', maxY: 1 }),
   // Entirely inside art-table's footprint, so it only ever added a second
   // push-out inside a single-pass resolver. The table already blocks here.
   box('art-easel', 'furniture', -13.1, -11.9, -13.2, -12.8, { collision: false, cameraRole: 'substantial' }),
@@ -379,7 +379,7 @@ export const STORYBOOK_SPAWN: [number, number, number] = [0, 0, 19.5];
 
 export const WORLD_ANCHORS: WorldAnchor[] = [
   { id: 'classroom-circle', position: [0, 0, 0], room: 'classroom', activity: 'morning-play' },
-  { id: 'art-table', position: [-12, 0, -12], room: 'art-room', activity: 'art-time' },
+  { id: 'art-table', position: [-10, 0, -12], room: 'art-room', activity: 'art-time' },
   { id: 'storage-shelves', position: [-13, 0, 12], room: 'storage', activity: 'storage' },
   { id: 'juice-counter', position: [3, 0, -3], room: 'classroom', activity: 'juice-club' },
   { id: 'playground-loop', position: [12, 0, 0], room: 'playground', activity: 'outdoor-play' },

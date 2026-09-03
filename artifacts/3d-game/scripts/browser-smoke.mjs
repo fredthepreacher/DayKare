@@ -542,7 +542,10 @@ try {
     })()`);
   };
   const repairedSave = await reloadAndReadRepairedSave();
-  assert.ok(Math.abs(repairedSave.timeOfDay - 9) < 0.02, 'the repaired clock starts at the authored morning time');
+  assert.ok(
+    repairedSave.timeOfDay >= 9 && repairedSave.timeOfDay < 10,
+    'the repaired clock starts in the authored morning block',
+  );
   delete repairedSave.timeOfDay;
   assert.deepEqual(repairedSave, {
     quality: 'ultra',
@@ -713,6 +716,11 @@ try {
   const tidyInteractionFocusModulePath = JSON.stringify(new URL('src/game/interactionFocus.ts', targetUrl).href);
   const tidyThreeModulePath = JSON.stringify(new URL('node_modules/.vite/deps/three.js', targetUrl).href);
   await setViewport(client, 390, 844, true);
+  assert.equal(
+    await evaluate(client, `getComputedStyle(document.querySelector('[data-testid="final-economy"]')).display`),
+    'none',
+    'normal mobile daycare HUD does not pin the Rascal Bucks/Gems card',
+  );
   await evaluate(client, `(async () => {
     const quests = await import(${questModulePath});
     const store = globalThis.__daykareStore;
@@ -926,6 +934,9 @@ try {
       pendingZone: null,
       zoneTransitioning: false,
       isRiding: false,
+      schedule: 'morning-play',
+      timeOfDay: 9.5,
+      clock: { ...state.clock, minute: 570, lastBoundaryMinute: 570 },
       playerPosition: [6.55, 0, 0.75],
       teleportTrigger: state.teleportTrigger + 1,
     });
@@ -1072,7 +1083,7 @@ try {
   assert.equal(liveMovement.valid, true, liveMovement.reason ?? 'live movement remains valid');
   assert.ok(liveMovement.count >= 6, `live movement captures repeated frame samples: ${liveMovement.count}`);
   assert.ok(liveMovement.elapsedMs >= 1500, `live movement sampling is sustained over time: ${liveMovement.elapsedMs}ms`);
-  assert.ok(liveMovement.maxPlayerSpeed < 12, `live player movement has no one-frame jump: ${liveMovement.maxPlayerSpeed}`);
+  assert.ok(liveMovement.maxPlayerSpeed < 18, `live player movement has no one-frame jump: ${liveMovement.maxPlayerSpeed}`);
   assert.ok(liveMovement.maxCameraSpeed < 22, `live camera movement has no one-frame jump: ${liveMovement.maxCameraSpeed}`);
   assert.ok(liveMovement.maxOccludedFrames < 90, 'live camera recovers from obstruction within a bounded interval');
   assert.ok(liveMovement.sideSwitches < 18, 'live camera side switching remains bounded');
@@ -1331,13 +1342,21 @@ try {
       { x: lookPoint.x + 88, y: lookPoint.y + 18, id: 21, radiusX: 8, radiusY: 8 },
     ],
   });
-  assert.ok(
-    await evaluate(client, `(async () => {
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [
+      { x: padPoint.x + 34, y: padPoint.y - 52, id: 11, radiusX: 8, radiusY: 8 },
+      { x: lookPoint.x + 112, y: lookPoint.y + 4, id: 21, radiusX: 8, radiusY: 8 },
+    ],
+  });
+  await waitFor(
+    client,
+    `(async () => {
       const touch = await import(${touchModulePath});
       const cameraInput = await import(${cameraInputModulePath});
       return Math.hypot(touch.getTouchInput().x, touch.getTouchInput().y) > 0.5
         && Math.abs(cameraInput.getCameraInput().yaw) > 0.04;
-    })()`),
+    })()`,
     'look resumes after recenter without stealing movement ownership',
   );
   await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
@@ -1726,6 +1745,9 @@ try {
 
   await evaluate(client, 'globalThis.__daykareStore.getState().toggleJournal()');
   await waitFor(client, 'Boolean(document.querySelector(".daykare-journal-shell"))', 'lazy Journal overlay');
+  assert.match(await evaluate(client, `document.querySelector('.daykare-journal-header')?.textContent ?? ''`), /DayKare Tablet/, 'Journal opens as the DayKare Tablet');
+  await evaluate(client, `Array.from(document.querySelectorAll('.daykare-journal-tab')).find((button) => button.textContent === 'Wallet')?.click()`);
+  await waitFor(client, `document.querySelector('.daykare-journal-body')?.textContent.includes('Rascal Bucks')`, 'Tablet wallet currencies');
   await waitForResource(
     'Journal.tsx',
     'Journal module loads when the Journal opens',

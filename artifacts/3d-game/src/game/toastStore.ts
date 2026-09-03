@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export const TOAST_VISIBLE_MS = 1_750;
+export const TOAST_VISIBLE_MS = 1_500;
 export const TOAST_FADE_MS = 300;
 export const TOAST_DEDUPE_MS = 4_000;
 export const TOAST_QUEUE_LIMIT = 5;

@@ -29,6 +29,7 @@ import { FinalMasterWorld, StarterHomeInterior } from './FinalMasterWorld';
 import { FinalMasterOverlay } from './FinalMasterUI';
 import { ToastViewport } from './ToastViewport';
 import { useFinalMasterStore } from './finalMasterStore';
+import { DaycareRoutineWorld } from './DaycareRoutineWorld';
 
 const Garden = lazy(() => import('./Garden').then(({ Garden }) => ({ default: Garden })));
 const StorybookLane = lazy(() => import('./StorybookLane').then(({ StorybookLane }) => ({ default: StorybookLane })));
@@ -100,6 +101,7 @@ function GameScene() {
           <Interactables playerRef={playerRef} />
           <NPCs playerRef={playerRef} />
           <FinalMasterWorld />
+          <DaycareRoutineWorld />
         </>
       ) : zone === 'garden' ? (
         <Suspense fallback={null}>

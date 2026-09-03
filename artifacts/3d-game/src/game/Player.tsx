@@ -14,11 +14,11 @@ import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, r
 import { CameraRig, advanceCameraPosition } from './cameraRig';
 import { useModeStore } from './modeStore';
 import { useStorybookLaneStore } from './storybookLaneStore';
-import { ESCAPE_GRACE_SECONDS, advanceCarriedPlayer, beginEscapeRetrieval, getEscapeRetrievalSnapshot, isDaycareEscape, updateEscapeGrace } from './escapeRetrieval';
+import { ESCAPE_GRACE_SECONDS, advanceCarriedPlayer, beginEscapeRetrieval, evaluateScheduleRetrieval, getEscapeRetrievalSnapshot, isDaycareEscape, resetEscapeRetrieval, updateEscapeGrace } from './escapeRetrieval';
 import { objectiveIsActive } from './quests';
 import { playGameSound } from './audio';
 import { playVoice } from './audioDirector';
-import { softActivityGuidance } from './schedulePolicy';
+import { SCHEDULE_RECAPTURE_GRACE_SECONDS } from './schedulePolicy';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
   const localRef = useRef<THREE.Group>(null);
@@ -28,6 +28,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   const { camera, gl, size } = useThree();
   const isImaginationMode = useGameStore((s) => s.isImaginationMode);
   const isRiding = useGameStore((s) => s.isRiding);
+  const seatedSeatId = useGameStore((s) => s.seatedSeatId);
+  const isNapping = useGameStore((s) => s.isNapping);
   const tricycleColorIndex = useGameStore((s) => s.tricycleColorIndex);
   const teleportTrigger = useGameStore((s) => s.teleportTrigger);
   const activeDialogue = useGameStore((s) => s.activeDialogue);
@@ -121,6 +123,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     if (!localRef.current) return;
     
     if (teleportTrigger !== lastTeleport.current) {
+      resetEscapeRetrieval();
       localRef.current.position.set(...playerPosition);
       velocity.current.set(0, 0, 0);
       desiredVelocity.current.set(0, 0, 0);
@@ -161,7 +164,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     desiredVelocity.current.set(0, 0, 0);
 
     const blocked = gameplayBlocked.current;
-    const movementLocked = useStorybookLaneStore.getState().recoveringUntil > Date.now();
+    const movementLocked = useStorybookLaneStore.getState().recoveringUntil > Date.now() || Boolean(seatedSeatId) || isNapping;
     if (!blocked && !movementLocked) {
       if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);
       if (keys.back) desiredVelocity.current.addScaledVector(forward.current, -speed);
@@ -171,10 +174,6 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
         desiredVelocity.current.addScaledVector(right.current, touch.x * speed);
         desiredVelocity.current.addScaledVector(forward.current, -touch.y * speed);
       }
-      const live = useGameStore.getState();
-      const [guideX, guideZ] = softActivityGuidance(live.schedule, live.zone, localRef.current.position.toArray());
-      desiredVelocity.current.x += guideX;
-      desiredVelocity.current.z += guideZ;
     }
 
     if (desiredVelocity.current.length() > speed) {
@@ -229,13 +228,31 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       || ((liveGame.caper.step === 'retrieve' || liveGame.caper.step === 'escape')
         && liveGame.caper.teacherApproved && liveGame.caper.patrolObserved && liveGame.caper.setupReady);
     let retrieval = updateEscapeGrace(state.clock.elapsedTime);
+    if (!blocked) {
+      const heistOverride = useFinalMasterStore.getState().heistStatus === 'active'
+        || (liveGame.caper.step !== 'idle' && liveGame.caper.step !== 'complete');
+      retrieval = evaluateScheduleRetrieval(
+        state.clock.elapsedTime,
+        liveGame.schedule,
+        liveGame.zone,
+        localRef.current.position.toArray(),
+        {
+          tutorial: !useFinalMasterStore.getState().tutorialComplete,
+          storyMission: heistOverride,
+          transitioning: liveGame.zoneTransitioning,
+          authorizedQuest: storageAuthorized,
+        },
+      );
+    }
     if (!blocked && isDaycareEscape(localRef.current.position.toArray(), liveGame.zone, storageAuthorized)) {
       retrieval = beginEscapeRetrieval(state.clock.elapsedTime, localRef.current.position.toArray());
-      if (retrieval.phase === 'chasing' && retrieval.sequence !== retrievalNoticeSequence.current) {
-        retrievalNoticeSequence.current = retrieval.sequence;
-        playVoice('teacher-chase', { force: true });
-        liveGame.setAmbientMessage(`${retrieval.assignedTeacher}: “Oh no you don’t!”`);
-      }
+    }
+    if (retrieval.phase === 'chasing' && retrieval.sequence !== retrievalNoticeSequence.current) {
+      retrievalNoticeSequence.current = retrieval.sequence;
+      playVoice('teacher-chase', { force: true });
+      liveGame.setAmbientMessage(retrieval.reason === 'schedule'
+        ? `${retrieval.assignedTeacher}: “${retrieval.scheduleId === 'nap' ? 'Nap time, kiddo!' : 'Come on, back this way.'}”`
+        : `${retrieval.assignedTeacher}: “Oh no you don’t!”`);
     }
     const carried = advanceCarriedPlayer(state.clock.elapsedTime, localRef.current.position, delta);
     if (getEscapeRetrievalSnapshot().phase === 'carrying' || carried.released) {
@@ -244,7 +261,11 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       desiredVelocity.current.set(0, 0, 0);
     }
     if (carried.released) {
-      liveGame.setAmbientMessage(`Back inside — escape catch ${carried.strikes}. You have ${ESCAPE_GRACE_SECONDS} seconds of free-movement grace.`);
+      const completedRetrieval = retrieval.reason;
+      const graceSeconds = completedRetrieval === 'schedule' ? SCHEDULE_RECAPTURE_GRACE_SECONDS : ESCAPE_GRACE_SECONDS;
+      liveGame.setAmbientMessage(completedRetrieval === 'schedule'
+        ? `Returned to ${retrieval.scheduleId?.replaceAll('-', ' ') ?? 'the activity'} — controls restored. ${graceSeconds} seconds before another attendance check.`
+        : `Back inside — escape catch ${carried.strikes}. You have ${graceSeconds} seconds of free-movement grace.`);
       if (carried.penalty) {
         liveGame.setActiveDialogue({
           name: 'Escape Artist Headcount',
@@ -403,7 +424,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
           imaginationMode={isImaginationMode}
           motionSeed={1.3}
           idleEnergy={1.05}
-          activityMode={recoveringUntil > Date.now() ? 'napping' : 'standing'}
+          activityMode={isNapping || recoveringUntil > Date.now() ? 'napping' : seatedSeatId ? 'sitting' : 'standing'}
         />
         {/* Hat and shoes have no slot in the rig, so they are drawn here as
             simple shapes rather than left invisible. */}

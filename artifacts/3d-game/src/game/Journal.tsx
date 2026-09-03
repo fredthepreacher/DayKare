@@ -13,7 +13,7 @@ import {
   Target,
   Trophy,
 } from 'lucide-react';
-import { HUB_ROUTES, isRouteUnlocked, requirementLabel } from './progression';
+import { HUB_ROUTES, isRouteUnlocked, rankFromLifetimeXp, requirementLabel } from './progression';
 import { RIVAL_CHAPTERS } from './storyProgression';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -28,6 +28,10 @@ import {
 import { WorldMap } from './WorldMapView';
 import { DripPanel } from './DripPanel';
 import { COLLECTIBLE_DEFINITIONS } from './gameplayExpansion';
+import { useFinalMasterStore } from './finalMasterStore';
+import { useStorybookLaneStore } from './storybookLaneStore';
+import { HEIST_STEPS, STARTER_HOME_PRICE, TUTORIAL_CHAPTERS } from './finalMaster';
+import { useToastStore } from './toastStore';
 
 /**
  * The Journal.
@@ -44,17 +48,17 @@ import { COLLECTIBLE_DEFINITIONS } from './gameplayExpansion';
  * longer describe themselves in three different vocabularies.
  */
 
-type TabId = 'active' | 'story' | 'activities' | 'business' | 'drip' | 'completed' | 'map' | 'kit';
+type TabId = 'home' | 'progress' | 'wallet' | 'backpack' | 'activities' | 'heists' | 'property' | 'help';
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: 'active', label: 'Active' },
-  { id: 'story', label: 'Story' },
+  { id: 'home', label: 'Home' },
+  { id: 'progress', label: 'Progress' },
+  { id: 'wallet', label: 'Wallet' },
+  { id: 'backpack', label: 'Backpack' },
   { id: 'activities', label: 'Activities' },
-  { id: 'business', label: 'Business' },
-  { id: 'drip', label: 'Drip' },
-  { id: 'completed', label: 'Completed' },
-  { id: 'map', label: 'Map' },
-  { id: 'kit', label: 'Backpack' },
+  { id: 'heists', label: 'Heists' },
+  { id: 'property', label: 'Property' },
+  { id: 'help', label: 'Help' },
 ];
 
 const STATUS_STYLE: Record<BoardStatus, string> = {
@@ -190,9 +194,22 @@ export function Journal() {
     activateOptionalRewardBoost,
   } = useGameStore();
 
-  const [tab, setTab] = useState<TabId>('active');
+  const final = useFinalMasterStore();
+  const ribbonBucks = useStorybookLaneStore((state) => state.ribbonBucks);
+  const [tab, setTab] = useState<TabId>('home');
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [boostNow, setBoostNow] = useState(() => Date.now());
   const boostRemaining = Math.max(0, Math.ceil((optionalRewardBoostUntil - boostNow) / 1000));
+  const rank = rankFromLifetimeXp(progression.experience ?? 0);
+  const manualSave = () => {
+    setSaveState('saving');
+    useGameStore.setState((state) => ({ dayNumber: state.dayNumber }));
+    useFinalMasterStore.setState((state) => ({ gems: state.gems }));
+    useStorybookLaneStore.setState((state) => ({ ribbonBucks: state.ribbonBucks }));
+    window.setTimeout(() => setSaveState('saved'), 120);
+    window.setTimeout(() => setSaveState('idle'), 1600);
+    useToastStore.getState().enqueue({ title: 'Game Saved' });
+  };
 
   useEffect(() => {
     if (boostRemaining <= 0) return;
@@ -229,16 +246,15 @@ export function Journal() {
   const storyEntries = boardSection(board, 'story');
   const activityEntries = boardSection(board, 'activities');
   const businessEntries = boardSection(board, 'businesses');
-  const completedEntries = boardSection(board, 'completed');
 
   return (
     <div className="daykare-journal-shell absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-auto z-50 p-4">
-      <div className="daykare-journal-book bg-[#fcf8f2] w-full max-w-3xl rounded-3xl shadow-2xl border-8 border-[#8b5a2b]">
+      <div className="daykare-journal-book daykare-tablet bg-[#fcf8f2] w-full max-w-3xl rounded-3xl shadow-2xl border-8 border-[#5f4f86]">
         {/* The frame header stays put on every tab and at every screen size, so
             the way out is always one tap away. */}
         <header className="daykare-journal-header">
           <div className="min-w-0">
-            <h2 className="font-serif text-3xl font-bold text-[#5c3a21] leading-none">My Journal</h2>
+            <h2 className="font-serif text-3xl font-bold text-[#5c3a21] leading-none">My DayKare Tablet</h2>
             <div className="text-[10px] font-black uppercase tracking-widest text-[#8b5a2b]/60 mt-1">
               Day {dayNumber} · Auto-Saved
             </div>
@@ -263,7 +279,7 @@ export function Journal() {
         </nav>
 
         <div className="daykare-journal-body">
-          {tab === 'active' && (
+          {tab === 'home' && (
             <div className="space-y-4">
               <div>
                 <h3 className="daykare-section-head"><Target className="w-5 h-5 text-orange-600" /> Right now</h3>
@@ -315,8 +331,13 @@ export function Journal() {
             </div>
           )}
 
-          {tab === 'story' && (
+          {tab === 'progress' && (
             <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-violet-50 p-2 rounded-xl"><strong>Rank {rank.rank}</strong><small className="block">{rank.xpIntoRank}/{rank.xpForNextRank} XP</small></div>
+                <div className="bg-amber-50 p-2 rounded-xl"><strong>{progression.reputation}</strong><small className="block">REP</small></div>
+                <div className="bg-sky-50 p-2 rounded-xl"><strong>{final.tutorialChapter}/{TUTORIAL_CHAPTERS.length}</strong><small className="block">Orientation</small></div>
+              </div>
               <div>
                 <h3 className="daykare-section-head"><BookOpen className="w-5 h-5 text-violet-600" /> Story</h3>
                 <div className="space-y-2">
@@ -379,9 +400,14 @@ export function Journal() {
             </div>
           )}
 
-          {tab === 'business' && (
+          {tab === 'wallet' && (
             <div className="space-y-3">
-              <h3 className="daykare-section-head"><DollarSign className="w-5 h-5 text-green-600" /> Juice Club</h3>
+              <h3 className="daykare-section-head"><DollarSign className="w-5 h-5 text-green-600" /> Wallet</h3>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-green-50 p-3 rounded-xl"><strong>${juiceClubCash}</strong><small className="block">Cash · supplies and everyday items</small></div>
+                <div className="bg-violet-50 p-3 rounded-xl"><strong>{ribbonBucks.toLocaleString()} RB</strong><small className="block">Rascal Bucks · heists, homes and Stony Brook</small></div>
+                <div className="bg-sky-50 p-3 rounded-xl"><strong>{final.gems} Gems</strong><small className="block">Special collectibles and redesigns</small></div>
+              </div>
               {businessEntries.map((entry) => <EntryCard key={entry.id} entry={entry} />)}
 
               <div className="bg-white/60 p-3 rounded-xl border border-[#e5d8cc] space-y-2">
@@ -417,19 +443,26 @@ export function Journal() {
             </div>
           )}
 
-          {tab === 'drip' && <DripPanel />}
-
-          {tab === 'completed' && (
+          {tab === 'heists' && (
             <div className="space-y-3">
-              <h3 className="daykare-section-head"><CheckCircle2 className="w-5 h-5 text-green-600" /> Completed</h3>
-              {completedEntries.length === 0
-                ? <EmptyNote>Nothing finished yet. Your first completed quest will be kept here.</EmptyNote>
-                : completedEntries.map((entry) => <EntryCard key={entry.id} entry={entry} />)}
+              <h3 className="daykare-section-head"><Target className="w-5 h-5 text-violet-600" /> Miss Leslie Heists</h3>
+              <div className="daykare-entry-card">
+                <strong>{final.heistStatus === 'active' ? HEIST_STEPS[Math.min(final.heistStep, HEIST_STEPS.length - 1)].title : final.firstHeistComplete ? 'Daily Sticker Parade Replay' : 'A new plan is waiting'}</strong>
+                <p>{final.heistStatus === 'active' ? HEIST_STEPS[Math.min(final.heistStep, HEIST_STEPS.length - 1)].objective : 'Visit Miss Leslie in her Heist Room to begin or resume.'}</p>
+                {HEIST_STEPS.map((step, index) => <div key={step.id} className="flex justify-between text-xs py-1"><span>{step.title}</span><b>{index < final.heistStep ? '✓' : index === final.heistStep && final.heistStatus === 'active' ? `${final.heistCompletedEvents.length}/${step.events.length}` : '□'}</b></div>)}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-violet-50 p-2 rounded-xl"><strong>{final.heistsCompleted}</strong><small className="block">Heists</small></div>
+                <div className="bg-green-50 p-2 rounded-xl"><strong>{final.successfulFinales}</strong><small className="block">Finales</small></div>
+                <div className="bg-amber-50 p-2 rounded-xl"><strong>{final.totalHeistRbEarned.toLocaleString()}</strong><small className="block">RB earned</small></div>
+              </div>
             </div>
           )}
 
-          {tab === 'map' && (
+          {tab === 'property' && (
             <div>
+              <h3 className="daykare-section-head"><Trophy className="w-5 h-5 text-purple-600" /> Property</h3>
+              <div className="daykare-entry-card mb-3"><strong>{final.ownedStarterHome ? 'Starter Home · Owned' : `Starter Home · ${STARTER_HOME_PRICE.toLocaleString()} RB`}</strong><p>{final.ownedStarterHome ? 'Enter through your front door in Stony Brook. The decorated interior and exit are ready.' : `${ribbonBucks.toLocaleString()} RB available${final.homeVoucher ? ' · free-home voucher ready' : ''}.`}</p></div>
               <h3 className="daykare-section-head"><MapIcon className="w-5 h-5 text-[#8b5a2b]" /> Map</h3>
               <WorldMap />
 
@@ -464,7 +497,7 @@ export function Journal() {
             </div>
           )}
 
-          {tab === 'kit' && (
+          {tab === 'backpack' && (
             <div className="space-y-4">
               <div>
                 <h3 className="daykare-section-head"><Backpack className="w-5 h-5 text-orange-600" /> Backpack</h3>
@@ -560,6 +593,15 @@ export function Journal() {
                   Reset Save Data
                 </button>
               </div>
+              <DripPanel />
+            </div>
+          )}
+          {tab === 'help' && (
+            <div className="space-y-4">
+              <h3 className="daykare-section-head"><BookOpen className="w-5 h-5 text-sky-600" /> Help &amp; Save</h3>
+              <div className="daykare-entry-card"><strong>Controls</strong><p>Desktop: WASD move, Shift sprint, C crouch, E interact, J/Tab Tablet. Controller: left stick move, A/✕ interact. Mobile: left joystick moves only; use the separate Sprint, Crouch and ACT buttons.</p></div>
+              <div className="daykare-entry-card"><strong>Schedule</strong><p>Breakfast, Show &amp; Tell, Art, Lunch and Nap are structured periods. Pickup, Recess, Juice Club and social time are free-roam.</p></div>
+              <button type="button" className="daykare-journal-action bg-violet-600" onClick={manualSave} disabled={saveState === 'saving'} data-testid="button-save-game">{saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Save Game'}</button>
             </div>
           )}
         </div>

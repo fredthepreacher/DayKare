@@ -51,7 +51,7 @@ assert.equal(normalized.seedPackets, 0);
 assert.equal(normalizeGameplayExpansion({ seedQuality: "premium", seedInspectionDay: 8 }, 9).seedQuality, "premium", "seed quality persists without rerolling");
 
 const tug = softActivityGuidance("art-time", "hub", [0, 0, 0]);
-assert.ok(Math.hypot(...tug) > 0 && Math.hypot(...tug) <= 0.451, "guidance is present but far weaker than player speed");
+assert.deepEqual(tug, [0, 0], "structured periods never apply an invisible tether before a teacher catches the player");
 assert.deepEqual(softActivityGuidance("recess", "garden", [14, 0, 14]), [0, 0], "recess remains free movement");
 assert.deepEqual(softActivityGuidance("juice-club", "hub", [-14, 0, 14]), [0, 0], "Juice Club remains flexible");
 
@@ -144,5 +144,26 @@ useGameStore.getState().resetGame();
 useGameStore.getState().setTimeOfDay(10.25);
 assert.equal(useGameStore.getState().completeShowAndTell(), true, "starter seed packets are eligible for Show & Tell");
 assert.equal(useGameStore.getState().completeShowAndTell(), false, "Show & Tell rewards once per day");
+
+useGameStore.getState().resetGame();
+assert.equal(useGameStore.getState().sitAtSeat('cafeteria-seat-0'), true);
+assert.equal(useGameStore.getState().sitAtSeat('cafeteria-seat-1'), false, 'the occupied player seat remains reserved');
+useGameStore.getState().recordAttendance('breakfast', 10);
+assert.equal(useGameStore.getState().expansion.attendance.breakfast.completed, true, 'meal attendance requires seated participation');
+useGameStore.getState().standUp();
+assert.equal(useGameStore.getState().seatedSeatId, null);
+
+useGameStore.getState().setTimeOfDay(13);
+assert.equal(useGameStore.getState().beginNap(), true);
+useGameStore.getState().recordAttendance('nap', 120);
+const napXpBefore = useGameStore.getState().progression.experience;
+assert.equal(useGameStore.getState().completeNapSession(), 4, 'two real minutes award 4 XP at the centralized rate');
+assert.equal(useGameStore.getState().progression.experience, napXpBefore + 4);
+assert.equal(useGameStore.getState().completeNapSession(), 0, 'the same nap cannot reward twice');
+useGameStore.setState((state) => ({ dayNumber: 2, schedule: 'nap', isNapping: false, expansion: { ...state.expansion, attendanceDay: 2, attendance: { ...state.expansion.attendance, nap: { seconds: 0, completed: false } } } }));
+assert.equal(useGameStore.getState().beginNap(), true);
+useGameStore.getState().recordAttendance('nap', 120);
+useGameStore.getState().standUp(true);
+assert.equal(useGameStore.getState().completeNapSession(), 0, 'getting up early forfeits the completion reward');
 
 console.log("DayKare gameplay expansion tests passed.");

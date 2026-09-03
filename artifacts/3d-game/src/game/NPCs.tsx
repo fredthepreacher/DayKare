@@ -165,17 +165,17 @@ function scheduleDestination(
 ) {
   const slot = (Math.abs(Math.floor(phase * 10)) + cycle) % 6;
   const activitySpots: Record<string, [number, number, number][]> = {
-    breakfast: [[-4,0,-1],[-2,0,-1],[0,0,-1],[2,0,-1],[4,0,-1],[-3,0,1]],
+    breakfast: [[9.1,0,3.2],[11,0,3.2],[12.9,0,3.2],[9.1,0,6.4],[11,0,6.4],[12.9,0,6.4]],
     'morning-play': [
       [-3.4, 0, -0.8], [-2.2, 0, 2.4], [0, 0, 3.4],
       [2.5, 0, 2.2], [3.5, 0, 0.2], [1.8, 0, -1.8],
     ],
     'art-time': [
-      [-15, 0, -11.5], [-14.5, 0, -10.4], [-12.8, 0, -9.2],
-      [-10.4, 0, -9.2], [-9.2, 0, -11.2], [-9.2, 0, -14.4],
+      [-11.5, 0, -9.4], [-9.2, 0, -9.4], [-11.5, 0, -11.2],
+      [-9.2, 0, -11.2], [-11.5, 0, -14.3], [-9.2, 0, -14.3],
     ],
     'show-and-tell': [[-2,0,2.3],[-1,0,0.6],[1,0,0.6],[2,0,2.3],[1,0,4],[-1,0,4]],
-    lunch: [[-4,0,-1],[-2,0,-1],[0,0,-1],[2,0,-1],[4,0,-1],[-3,0,1]],
+    lunch: [[9.1,0,3.2],[11,0,3.2],[12.9,0,3.2],[9.1,0,6.4],[11,0,6.4],[12.9,0,6.4]],
     'juice-club': [
       [0.9, 0, -3.0], [0.6, 0, -1.7], [-0.6, 0, -2.2],
       [-1.6, 0, -1.0], [0.8, 0, 0.2], [-2.2, 0, 0.5],
@@ -553,18 +553,18 @@ export function teacherPatrolSpots(
   defaultPos: [number, number, number],
 ): [number, number, number][] {
   if (name === 'Ms. Harper') {
-    if (schedule === 'breakfast' || schedule === 'lunch') return [[-1, 0, -2.8], [4.8, 0, -2.8]];
+    if (schedule === 'breakfast' || schedule === 'lunch') return [[8.7, 0, 2.2], [8.7, 0, 7.2]];
     if (schedule === 'show-and-tell') return [[0, 0, 0.2], [0, 0, 4.8]];
     if (schedule === 'nap') return [[-5.8, 0, 4.8], [5.8, 0, 4.8]];
-    if (schedule === 'art-time') return [[-9.7, 0, -10], [-9.2, 0, -13.8]];
+    if (schedule === 'art-time') return [[-12.35, 0, -10], [-12.35, 0, -13.8]];
     if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, -2], [12, 0, 10.8]];
     if (schedule === 'pickup') return [[-6, 0, -1.6], [-6, 0, 2]];
     return [defaultPos, [-4.5, 0, 2.8]];
   }
-  if (schedule === 'breakfast' || schedule === 'lunch') return [[4.8, 0, -2.8], [-1, 0, -2.8]];
+  if (schedule === 'breakfast' || schedule === 'lunch') return [[8.7, 0, 7.2], [8.7, 0, 2.2]];
   if (schedule === 'show-and-tell') return [[0, 0, 0.2], [2.8, 0, 2.3]];
   if (schedule === 'nap') return [[5.8, 0, 4.8], [-5.8, 0, 4.8]];
-  if (schedule === 'art-time') return [[-9.4, 0, -9.8], [-9.4, 0, -14.2], [-12, 0, -7]];
+  if (schedule === 'art-time') return [[-12.35, 0, -9.8], [-12.35, 0, -14.2], [-12, 0, -7]];
   if (schedule === 'juice-club') return [[5.2, 0, -3], [5.2, 0, -0.8], [1.2, 0, 1.5]];
   if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, 10], [14.8, 0, 5.5], [14, 0, -8.5], [10, 0, -12]];
   if (schedule === 'outdoor-play') return [[2, 0, -5.2], [2.2, 0, -5.8], [-2, 0, -5.6]];
@@ -1098,7 +1098,7 @@ export function kidDestination(
     const pair = Math.floor(castIndex / 2);
     const groupSpots: Partial<Record<string, [number, number, number][]>> = {
       'morning-play': [[-2.7, 0, 1.4], [0.5, 0, 3.1], [2.8, 0, 0.5], [-0.2, 0, -1.8], [3.1, 0, 2.6], [-5, 0, -1.8]],
-      'art-time': [[-15, 0, -11.5], [-12.6, 0, -9.5], [-9.7, 0, -10.6], [-9.7, 0, -13.5], [-12.2, 0, -14.6], [-12.1, 0, -9.1]],
+      'art-time': [[-12.45, 0, -10.5], [-12.45, 0, -12], [-12.45, 0, -13.5], [-11, 0, -14.65], [-9.35, 0, -14.65], [-12.25, 0, -14.65]],
       'juice-club': [[0.8, 0, -2.2], [-1.4, 0, -1], [1.1, 0, 1.9], [-2.2, 0, 0.5], [4.8, 0, 4], [-4.8, 0, 1.8]],
       'outdoor-play': rainy
         ? [[3.4, 0, -6.2], [1.5, 0, -5.2], [-1.4, 0, -5.5], [2.5, 0, -4.6], [-3.1, 0, -5.5], [0, 0, -6.7]]

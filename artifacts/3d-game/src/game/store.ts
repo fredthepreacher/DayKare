@@ -115,6 +115,8 @@ import {
   FISHING_RODS,
   LOST_FOUND_INTERVAL_MINUTES,
   MISSED_ACTIVITY_REP,
+  NAP_FULL_SESSION_REAL_SECONDS,
+  NAP_XP_PER_REAL_MINUTE,
   PLANTING_XP,
   attendanceSatisfied,
   collectibleRotation,
@@ -176,6 +178,8 @@ export interface GameState {
   inventory: string[];
   collectibles: string[];
   isRiding: boolean;
+  seatedSeatId: string | null;
+  isNapping: boolean;
   
   // NPCs & Social
   friends: Record<string, FriendState>;
@@ -260,6 +264,10 @@ export interface GameState {
   collectShinyRock: () => boolean;
   tradeShinyRock: () => boolean;
   setIsRiding: (r: boolean) => void;
+  sitAtSeat: (seatId: string) => boolean;
+  standUp: (interruptedNap?: boolean) => void;
+  beginNap: () => boolean;
+  completeNapSession: () => number;
   
   updateFriend: (name: string, updates: Partial<FriendState>) => void;
   setTeacherSuspicion: (s: number | ((prev: number) => number)) => void;
@@ -376,8 +384,11 @@ const withExperience = (progression: ProgressionState, amount: number): Progress
 });
 
 function closeExpansionDay(state: GameState) {
-  const required = ['show-and-tell', 'art-time'] as const;
-  const attended = required.filter((id) => attendanceSatisfied(state.expansion.attendance[id]));
+  // Preserve the established daily REP contract: meals and Nap record their
+  // own participation/rewards, while only the two classroom activities apply
+  // the existing missed-activity REP penalty.
+  const required: RequiredActivityId[] = ['show-and-tell', 'art-time'];
+  const attended = required.filter((id) => attendanceSatisfied(state.expansion.attendance[id], id));
   const missed = required.filter((id) => !attended.includes(id));
   const reputationLost = missed.length * MISSED_ACTIVITY_REP;
   const nextReputation = Math.max(0, state.progression.reputation - reputationLost);
@@ -401,8 +412,11 @@ function closeExpansionDay(state: GameState) {
       ...state.expansion,
       attendanceDay: nextDay,
       attendance: {
+        'breakfast': { seconds: 0, completed: false },
         'show-and-tell': { seconds: 0, completed: false },
         'art-time': { seconds: 0, completed: false },
+        'lunch': { seconds: 0, completed: false },
+        'nap': { seconds: 0, completed: false },
       },
       dayStartExperience: state.progression.experience ?? 0,
       dayStartCash: state.juiceClubCash,
@@ -446,6 +460,8 @@ const initialState = {
   inventory: [],
   collectibles: [],
   isRiding: false,
+  seatedSeatId: null,
+  isNapping: false,
   
   friends: initialFriends,
   teacherSuspicion: 0,
@@ -1282,6 +1298,53 @@ export const useGameStore = create<GameState>()(
             }
           : state.progression,
       })),
+      sitAtSeat: (seatId) => {
+        let changed = false;
+        set((state) => {
+          if (state.seatedSeatId || state.isNapping || !seatId) return state;
+          changed = true;
+          return { seatedSeatId: seatId, isNapping: false };
+        });
+        return changed;
+      },
+      standUp: (interruptedNap = false) => set((state) => ({
+        seatedSeatId: null,
+        isNapping: false,
+        expansion: interruptedNap && state.isNapping && !state.expansion.napInterruptedDays.includes(state.dayNumber)
+          ? { ...state.expansion, napInterruptedDays: [...state.expansion.napInterruptedDays, state.dayNumber].slice(-60) }
+          : state.expansion,
+      })),
+      beginNap: () => {
+        let changed = false;
+        set((state) => {
+          if (state.schedule !== 'nap' || state.isNapping || state.expansion.napInterruptedDays.includes(state.dayNumber)) return state;
+          changed = true;
+          return { isNapping: true, seatedSeatId: null };
+        });
+        return changed;
+      },
+      completeNapSession: () => {
+        let awarded = 0;
+        set((state) => {
+          const seconds = state.expansion.attendance.nap.seconds;
+          const eligible = state.isNapping
+            && seconds >= NAP_FULL_SESSION_REAL_SECONDS
+            && !state.expansion.napInterruptedDays.includes(state.dayNumber)
+            && !state.expansion.napRewardedDays.includes(state.dayNumber);
+          if (!eligible) return { isNapping: false };
+          awarded = Math.max(1, Math.round(seconds / 60 * NAP_XP_PER_REAL_MINUTE));
+          return {
+            isNapping: false,
+            progression: withExperience(state.progression, awarded),
+            expansion: {
+              ...state.expansion,
+              napRewardedDays: [...state.expansion.napRewardedDays, state.dayNumber].slice(-60),
+              attendance: { ...state.expansion.attendance, nap: { ...state.expansion.attendance.nap, completed: true } },
+            },
+          };
+        });
+        return awarded;
+      },
       
       updateFriend: (name, updates) => set((state) => {
         if (!AUTHORED_FRIEND_NAMES.has(name) || !state.friends[name] || !updates || typeof updates !== 'object') {
@@ -1979,7 +2042,9 @@ export const useGameStore = create<GameState>()(
       recordAttendance: (activity, seconds) => set((state) => {
         if (state.schedule !== activity || state.expansion.attendanceDay !== state.dayNumber) return state;
         const current = state.expansion.attendance[activity];
-        return { expansion: { ...state.expansion, attendance: { ...state.expansion.attendance, [activity]: { ...current, seconds: Math.min(600, current.seconds + Math.max(0, seconds)) } } } };
+        const nextSeconds = Math.min(600, current.seconds + Math.max(0, seconds));
+        const completed = current.completed || ((activity === 'breakfast' || activity === 'lunch') && attendanceSatisfied({ seconds: nextSeconds, completed: false }, activity));
+        return { expansion: { ...state.expansion, attendance: { ...state.expansion.attendance, [activity]: { seconds: nextSeconds, completed } } } };
       }),
       dismissDayReport: () => set((state) => ({ expansion: { ...state.expansion, lastDayReport: null } })),
       rotateExpansionContent: () => set((state) => {

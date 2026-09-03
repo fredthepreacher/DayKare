@@ -782,7 +782,7 @@ assert.deepEqual(
 );
 
 const artTable = getWorldSolidTransform('art-table', 1);
-assert.deepEqual(artTable.position, [-12, 0.5, -12]);
+assert.deepEqual(artTable.position, [-10, 0.5, -12]);
 assert.deepEqual(artTable.size, [3.3999999999999986, 1, 3.3999999999999986]);
 assert.ok(PLAY_SLIDE_RAMP.solid.minZ <= PLAY_SLIDE_RAMP.position[2] - 1);
 // The ramp is a 3-long box rotated -45 degrees about X, so it crosses y = 0 at
@@ -1307,7 +1307,7 @@ for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-t
 }
 for (const [scheduleName, expectedPosition, expectedFocus] of [
   ['morning-play', [-2.8, 0, 1.4], [-1.8, 0, 1.4]],
-  ['art-time', [-14.5, 0, -10.5], [-13.5, 0, -10.5]],
+  ['art-time', [-12.4, 0, -10], [-11.4, 0, -10.8]],
   ['juice-club', [5.2, 0, -3.8], [4.4, 0, -3.2]],
   ['outdoor-play', [10.3, 0, -10.7], [11.2, 0, -10.7]],
   ['pickup', [-9.2, 0, -5.2], [-10.2, 0, -5.2]],
@@ -1346,8 +1346,8 @@ const artPairB = kidDestination('Mia', 'art-time', false, [0, 0, 0], 1, 0, []);
 assert.ok(Math.abs(artPairA.distanceTo(artPairB) - 0.76) < 1e-6, 'paired children keep personal space within one art-session area');
 assert.deepEqual(
   artPairA.clone().add(artPairB).multiplyScalar(0.5).toArray(),
-  [-15, 0, -11.5],
-  'pair offsets preserve the reserved-player Art anchor spacing',
+  [-12.45, 0, -10.5],
+  'pair offsets preserve player space while keeping the Stony Brook route clear',
 );
 
 const crowdTeachers = [
@@ -1651,7 +1651,6 @@ const anchoredArtwork: Array<{
   { fileName: '12_garden_signage.png', anchor: { solidId: 'garden-sign', face: 'south', height: 0.98 }, size: [3.55, 1.3] },
   { fileName: '14_environment_props.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.65, along: 4.4 }, size: [2.35, 1.75] },
   { fileName: '17_motivational_banner.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.65, along: 0 }, size: [2.55, 1.9] },
-  { fileName: '18_door_sign.png', anchor: { solidId: 'hall-divider-north', face: 'east', height: 1.7, along: -6.65 }, size: [1.35, 1] },
   { fileName: '19_attendance_chart.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.7, along: -4.5 }, size: [2.3, 1.72] },
 ];
 for (const artwork of anchoredArtwork) {

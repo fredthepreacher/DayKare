@@ -24,7 +24,7 @@ import { AvatarCreator } from './FinalMasterUI';
 const panelCopy: Record<Exclude<FrontEndPanel, 'menu'>, { title: string; eyebrow: string }> = {
   shop: { eyebrow: 'Play first · extras optional', title: 'Kare Shop' },
   customize: { eyebrow: 'Make it yours', title: 'Customize' },
-  progress: { eyebrow: 'Your DayKare story', title: 'Journal & Map' },
+  progress: { eyebrow: 'Your DayKare story', title: 'DayKare Tablet' },
   settings: { eyebrow: 'Play your way', title: 'Settings' },
   accessibility: { eyebrow: 'Everyone belongs here', title: 'Accessibility' },
 };
@@ -71,7 +71,7 @@ function ProgressPanel() {
       </div>
       <button type="button" className="daykare-front-action is-primary" onClick={() => { toggleJournal(); useModeStore.getState().closeMenu(); }} data-testid="button-open-full-journal">
         <BookMarkIcon />
-        <span><strong>Open full Kid Journal</strong><small>Quests, friends, business, and route notes</small></span>
+        <span><strong>Open DayKare Tablet</strong><small>Schedule, progress, wallet, activities, heists, property, and help</small></span>
         <span aria-hidden="true">Open</span>
       </button>
     </div>

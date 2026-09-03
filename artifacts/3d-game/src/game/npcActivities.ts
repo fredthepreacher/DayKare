@@ -52,7 +52,7 @@ export const MIN_CHILD_ACTIVITY_DWELL_SECONDS = 7.2;
 export const MAX_CHILD_ACTIVITY_DWELL_SECONDS = 8.5;
 
 const HUB_STATIONS: Record<string, Station[]> = {
-  breakfast: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [-4.5 + (index % 6) * 1.7, 0, -0.4 + Math.floor(index / 6) * 1.8], focus: [0, 0, -1.4], duration: 6.4 })),
+  breakfast: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [9.1 + (index % 3) * 1.9, 0, 3.1 + Math.floor(index / 3) * 1.2], focus: [11.5, 0, 4.8], duration: 6.4 })),
   'morning-play': [
     { activity: 'blocks', mode: 'toy-play', position: [-2.8, 0, 1.4], focus: [-1.8, 0, 1.4], duration: 6.2 },
     { activity: 'picture-books', mode: 'reading', position: [4.05, 0, -5.05], focus: [4.8, 0, -5.5], duration: 6 },
@@ -67,20 +67,20 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'blocks', mode: 'toy-play', position: [-5.1, 0, -1.8], focus: [-4.1, 0, -1.8], duration: 6 },
   ],
   'art-time': [
-    { activity: 'coloring', mode: 'coloring', position: [-14.5, 0, -10.5], focus: [-13.5, 0, -10.5], duration: 6.2 },
-    { activity: 'drawing', mode: 'coloring', position: [-14.1, 0, -11.5], focus: [-13.3, 0, -11.5], duration: 6.4 },
-    { activity: 'parallel-play', mode: 'playing', position: [-14.5, 0, -11.6], focus: [-13.6, 0, -11.6], duration: 5.7 },
-    { activity: 'pretend-play', mode: 'pretend-play', position: [-14.4, 0, -15], focus: [-13.5, 0, -14.6], duration: 5.5 },
-    { activity: 'picture-books', mode: 'reading', position: [-9.35, 0, -10.6], focus: [-10.2, 0, -10.6], duration: 5.8 },
-    { activity: 'drawing', mode: 'coloring', position: [-9.35, 0, -11.8], focus: [-10.25, 0, -11.8], duration: 6.1 },
-    { activity: 'parallel-play', mode: 'playing', position: [-9.5, 0, -13], focus: [-10.4, 0, -13], duration: 5.6 },
-    { activity: 'singing', mode: 'singing', position: [-9.5, 0, -14.2], focus: [-10.4, 0, -14.2], duration: 5.2 },
-    { activity: 'conversation', mode: 'conversation', position: [-12.8, 0, -14.7], focus: [-11.8, 0, -14.5], duration: 5.3 },
-    { activity: 'picture-books', mode: 'reading', position: [-11.2, 0, -14.7], focus: [-12.1, 0, -14.45], duration: 5.9 },
-    { activity: 'drawing', mode: 'coloring', position: [-12.1, 0, -9.05], focus: [-12.1, 0, -10.05], duration: 6.1 },
+    { activity: 'coloring', mode: 'coloring', position: [-12.4, 0, -10], focus: [-11.4, 0, -10.8], duration: 6.2 },
+    { activity: 'drawing', mode: 'coloring', position: [-12.4, 0, -11.5], focus: [-11.4, 0, -11.5], duration: 6.4 },
+    { activity: 'parallel-play', mode: 'playing', position: [-12.4, 0, -13], focus: [-11.4, 0, -13], duration: 5.7 },
+    { activity: 'pretend-play', mode: 'pretend-play', position: [-12.4, 0, -14.5], focus: [-11.4, 0, -14], duration: 5.5 },
+    { activity: 'picture-books', mode: 'reading', position: [-12.45, 0, -10.5], focus: [-11.45, 0, -10.5], duration: 5.8 },
+    { activity: 'drawing', mode: 'coloring', position: [-12.45, 0, -12], focus: [-11.45, 0, -12], duration: 6.1 },
+    { activity: 'parallel-play', mode: 'playing', position: [-10.8, 0, -14.5], focus: [-10.5, 0, -13.5], duration: 5.6 },
+    { activity: 'singing', mode: 'singing', position: [-9.2, 0, -14.5], focus: [-9.5, 0, -13.5], duration: 5.2 },
+    { activity: 'conversation', mode: 'conversation', position: [-12.4, 0, -9], focus: [-11.4, 0, -9.6], duration: 5.3 },
+    { activity: 'picture-books', mode: 'reading', position: [-11.8, 0, -15], focus: [-10.8, 0, -14], duration: 5.9 },
+    { activity: 'drawing', mode: 'coloring', position: [-9.8, 0, -15], focus: [-9.8, 0, -14], duration: 6.1 },
   ],
   'show-and-tell': CHILD_ORDER.map((_, index) => { const angle = index / CHILD_ORDER.length * Math.PI * 2; return { activity: 'circle-time', mode: 'circle-time', position: [Math.cos(angle) * 2.1, 0, 2.3 + Math.sin(angle) * 2.1], focus: [0, 0, 2.3], duration: 6.4 }; }),
-  lunch: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [-4.5 + (index % 6) * 1.7, 0, -0.4 + Math.floor(index / 6) * 1.8], focus: [0, 0, -1.4], duration: 6.4 })),
+  lunch: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [9.1 + (index % 3) * 1.9, 0, 3.1 + Math.floor(index / 3) * 1.2], focus: [11.5, 0, 4.8], duration: 6.4 })),
   'juice-club': [
     { activity: 'snacking', mode: 'snacking', position: [5.2, 0, -3.8], focus: [4.4, 0, -3.2], duration: 4.6 },
     { activity: 'conversation', mode: 'conversation', position: [4.8, 0, -0.7], focus: [3.8, 0, -0.7], duration: 4.2 },

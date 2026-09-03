@@ -110,7 +110,7 @@ export function GameMenu({
     },
     { 
       id: 'progress', 
-      label: 'Journal & Map', 
+      label: 'DayKare Tablet',
       icon: BookOpen, 
       onClick: onProgress, 
       bgClass: 'bg-[#ff8566]', 

@@ -51,13 +51,8 @@ export function TouchControls({
 }: TouchControlsProps) {
   const touchUiRef = useRef<HTMLDivElement>(null);
   const padRef = useRef<HTMLDivElement>(null);
-  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pointerOwnership = useRef(new TouchPointerOwnership());
   const lookPoint = useRef({ x: 0, y: 0 });
-  const startPoint = useRef({ x: 0, y: 0 });
-  const maxTravel = useRef(0);
-  const lastTapAt = useRef(0);
-  const holdTriggered = useRef(false);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [runEnabled, setRunEnabled] = useState(false);
   const [crouchEnabled, setCrouchEnabled] = useState(false);
@@ -156,14 +151,8 @@ export function TouchControls({
 
   useEffect(() => {
     if (!movementEnabled) {
-      if (holdTimer.current) {
-        clearTimeout(holdTimer.current);
-        holdTimer.current = null;
-      }
       pointerOwnership.current.reset();
       resetTouchInput();
-      holdTriggered.current = false;
-      lastTapAt.current = 0;
       setKnob({ x: 0, y: 0 });
       setRunEnabled(false);
       setCrouchEnabled(false);
@@ -243,7 +232,6 @@ export function TouchControls({
 
   useEffect(() => {
     return () => {
-      if (holdTimer.current) clearTimeout(holdTimer.current);
       resetTouchInput();
       pointerOwnership.current.reset();
     };
@@ -251,13 +239,7 @@ export function TouchControls({
 
   useEffect(() => {
     const resetAfterBlur = () => {
-      if (holdTimer.current) {
-        clearTimeout(holdTimer.current);
-        holdTimer.current = null;
-      }
       pointerOwnership.current.reset();
-      holdTriggered.current = false;
-      lastTapAt.current = 0;
       resetTouchInput();
       setKnob({ x: 0, y: 0 });
       setRunEnabled(false);
@@ -304,78 +286,28 @@ export function TouchControls({
       // Synthetic checks and a few webviews can reject capture while still
       // delivering a valid pointer stream to the owning control.
     }
-    startPoint.current = { x: event.clientX, y: event.clientY };
-    maxTravel.current = 0;
-    holdTriggered.current = false;
     updateMovement(event.clientX, event.clientY);
-
-    holdTimer.current = setTimeout(() => {
-      if (maxTravel.current <= TAP_MOVEMENT_LIMIT) {
-        holdTriggered.current = true;
-        setCrouchEnabled((previous) => {
-          const next = !previous;
-          setTouchCrouch(next);
-          return next;
-        });
-        if ('vibrate' in navigator) navigator.vibrate(35);
-      }
-    }, HOLD_DELAY_MS);
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerId !== pointerOwnership.current.movementPointer) return;
     event.preventDefault();
-    const travel = Math.hypot(
-      event.clientX - startPoint.current.x,
-      event.clientY - startPoint.current.y,
-    );
-    maxTravel.current = Math.max(maxTravel.current, travel);
-    if (maxTravel.current > TAP_MOVEMENT_LIMIT && holdTimer.current) {
-      clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
     updateMovement(event.clientX, event.clientY);
   };
 
   const finishPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerId !== pointerOwnership.current.movementPointer) return;
     event.preventDefault();
-    if (holdTimer.current) {
-      clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
     pointerOwnership.current.releaseMovement(event.pointerId);
-    const wasHold = holdTriggered.current;
     clearTouchMove();
     setKnob({ x: 0, y: 0 });
-
-    if (isTouchTap(wasHold, maxTravel.current)) {
-      const now = performance.now();
-      if (isTouchDoubleTap(lastTapAt.current, now)) {
-        const next = toggleTouchRun();
-        setRunEnabled(next);
-        lastTapAt.current = 0;
-        if ('vibrate' in navigator) navigator.vibrate([20, 30, 20]);
-      } else {
-        lastTapAt.current = now;
-      }
-    }
-    holdTriggered.current = false;
   };
 
   const cancelPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerId !== pointerOwnership.current.movementPointer) return;
-    if (holdTimer.current) {
-      clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
     pointerOwnership.current.releaseMovement(event.pointerId);
-    holdTriggered.current = false;
-    lastTapAt.current = 0;
-    resetTouchInput();
+    clearTouchMove();
     setKnob({ x: 0, y: 0 });
-    setRunEnabled(false);
-    setCrouchEnabled(false);
   };
 
   return (
@@ -409,7 +341,7 @@ export function TouchControls({
             onPointerCancel={cancelPointer}
             onLostPointerCapture={cancelPointer}
             role="application"
-            aria-label="Drag to move. Double tap to toggle run. Tap and hold to toggle crouch."
+            aria-label="Drag to move"
           >
             <div className="daykare-touch-pad-ring" />
             <div
@@ -428,7 +360,7 @@ export function TouchControls({
           handler's LOOK_BLOCKING_SELECTOR already excludes them, so a tap here
           cannot orbit the camera and cannot take the joystick's pointer: the
           ownership model has slots for movement and look only, and a button
-          claims neither. The gestures still work for anyone used to them. */}
+          claims neither. The joystick now controls movement only. */}
       {movementEnabled && (
         <div className="daykare-touch-actions">
           <button
