@@ -166,7 +166,8 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
 
     desiredVelocity.current.set(0, 0, 0);
 
-    const blocked = gameplayBlocked.current || useFinalMasterStore.getState().heistBoardOpen;
+    const finalUi = useFinalMasterStore.getState();
+    const blocked = gameplayBlocked.current || finalUi.heistBoardOpen || finalUi.rallyGameOpen;
     const movementLocked = useStorybookLaneStore.getState().recoveringUntil > Date.now() || Boolean(seatedSeatId) || isNapping;
     if (!blocked && !movementLocked) {
       if (keys.forward) desiredVelocity.current.addScaledVector(forward.current, speed);

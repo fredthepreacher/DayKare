@@ -369,13 +369,13 @@ export function UI() {
     return subscribe(
       (state) => state.journal,
       (pressed) => {
-        if (pressed && !activeDialogue && !zoneTransitioning && !frontEndBlocked) {
+        if (pressed && !activeDialogue && !zoneTransitioning && !frontEndBlocked && !rallyGame) {
           if (!journalOpen) recordTutorialEvent('open-backpack');
           toggleJournal();
         }
       }
     );
-  }, [subscribe, toggleJournal, activeDialogue, zoneTransitioning, frontEndBlocked]);
+  }, [subscribe, toggleJournal, activeDialogue, zoneTransitioning, frontEndBlocked, rallyGame]);
 
   // Juice Club Customers Simulation
   useEffect(() => {
@@ -412,7 +412,7 @@ export function UI() {
 
   useEffect(() => {
     const runInteraction = () => {
-      if (zoneTransitioning || frontEndBlocked) return;
+      if (zoneTransitioning || frontEndBlocked || rallyGame) return;
       unlockGameAudio();
       if (activeDialogue || isRiding || activeInteractable) {
         playGameSound('interaction', 'interaction');
@@ -1217,7 +1217,7 @@ export function UI() {
         if (pressed) runInteraction();
       },
     );
-  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, seatedSeatId, isNapping, sitAtSeat, standUp, beginNap, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, collectibles, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, gummyCrop2, expansion, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, startGardenActivity, advanceGardenActivity, resetGardenActivity, completeActivity, castFishingLine, catchSwedishFish, sellSwedishFish, completeArtActivity, completeShowAndTell, takeAfternoonSnack, collectExpansionCollectible, acceptLostFoundJob, collectLostFoundItem, turnInLostFoundJob, advanceTechHeist, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
+  }, [subscribe, activeInteractable, schedule, activeDialogue, isRiding, seatedSeatId, isNapping, sitAtSeat, standUp, beginNap, juiceStock, crackerStock, waitingCustomers, juiceClubCustomerPhase, juiceClubActiveCustomer, inventory, collectibles, progression, quests, zoneTransitioning, gardenActivityStep, gummyCrop, gummyCrop2, expansion, dayNumber, collectShinyRock, rivalStory.beat, caper, districtProgress, frontEndBlocked, rallyGame, plantGummyDrops, harvestGummyDrops, eatGummyDrop, feedGummyDrop, sellGummyCrop, startGardenActivity, advanceGardenActivity, resetGardenActivity, completeActivity, castFishingLine, catchSwedishFish, sellSwedishFish, completeArtActivity, completeShowAndTell, takeAfternoonSnack, collectExpansionCollectible, acceptLostFoundJob, collectLostFoundItem, turnInLostFoundJob, advanceTechHeist, storybook.ribbonBucks, storybook.ownedItems, enterStorybookLane, leaveStorybookLane]);
 
   const handleTeacherInteraction = (name: string) => {
     if (name === 'Ms. Harper' && caper.step === 'teacher-check') {
@@ -1568,7 +1568,7 @@ export function UI() {
     } catch { /* local save warning already explains unavailable storage */ }
     useToastStore.getState().enqueue({ title: 'Optional Job Discovered', detail: 'Rainbow Tidy-Up earns XP and money whenever you want to play.' });
   }, [activeQuest?.id]);
-  const gameplayBlocked = journalOpen || heistBoardOpen || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked || Boolean(expansion.lastDayReport);
+  const gameplayBlocked = journalOpen || heistBoardOpen || Boolean(rallyGame) || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked || Boolean(expansion.lastDayReport);
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">

@@ -56,6 +56,8 @@ interface FinalMasterState {
   neighborhoodDone: string[];
   /** The heist-completion reward outfit, once earned. */
   heroOutfitUnlocked: boolean;
+  /** Transient modal gate shared by the rally UI, player and clock. */
+  rallyGameOpen: boolean;
   heistBoardOpen: boolean;
   leoHeistHintCount: number;
   leoHeistIntroCompleted: boolean;
@@ -88,6 +90,7 @@ interface FinalMasterState {
   recordRallyResult: (id: string, bestRally: number, xp: number) => boolean;
   completeNeighborhoodSpot: (spotId: string) => 'done' | 'already' | 'unknown';
   claimHeroOutfit: () => boolean;
+  setRallyGameOpen: (open: boolean) => void;
   requestLeoHeistApproach: (absoluteMinute: number, eligible: boolean, leoStoryComplete: boolean) => boolean;
   completeLeoHeistHint: (absoluteMinute: number) => 1 | 2 | null;
   buyStarterHome: () => 'purchased' | 'owned' | 'insufficient';
@@ -160,6 +163,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
   rallyBest: {},
   neighborhoodDone: [],
   heroOutfitUnlocked: false,
+  rallyGameOpen: false,
   heistBoardOpen: false,
   leoHeistHintCount: 0,
   leoHeistIntroCompleted: false,
@@ -298,11 +302,6 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     }
     set({
       homeRewardRecoveryPending: false,
-  homeThemeIndex: 0,
-  garageThemeIndex: 0,
-  rallyBest: {},
-  neighborhoodDone: [],
-  heroOutfitUnlocked: false,
       firstRewardChoice: choice,
       homeVoucher: choice === 'home',
       totalHeistRbEarned: state.totalHeistRbEarned + (choice === 'rb' ? FIRST_HEIST_RB : 0),
@@ -363,6 +362,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     });
     return true;
   },
+  setRallyGameOpen: (open) => set({ rallyGameOpen: open }),
   requestLeoHeistApproach: (absoluteMinute, eligible, leoStoryComplete) => {
     const state = get();
     if (!eligible || !leoStoryComplete || state.missLeslieHeistIntroduced || state.heistStatus === 'active' || state.heistStatus === 'reward-choice' || state.leoHeistHintCount >= 2 || state.leoHeistApproachActive) return false;
@@ -473,7 +473,11 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
       neighborhoodDone: Array.isArray(saved.neighborhoodDone)
         ? saved.neighborhoodDone.filter((id) => NEIGHBORHOOD_SPOT_IDS.includes(id))
         : [],
-      heroOutfitUnlocked: saved.heroOutfitUnlocked === true,
+      // Derived from the completed-heist record rather than trusting the flag.
+      // This also awards the suit to legitimate pre-feature saves on first load.
+      heroOutfitUnlocked: saved.firstHeistComplete === true
+        && safeCount(saved.heistsCompleted ?? 0, Number.MAX_SAFE_INTEGER) >= HERO_OUTFIT_HEISTS,
+      rallyGameOpen: false,
       timingGridComplete: saved.timingGridComplete === true,
       timingGridBestScore: typeof gridScore === 'number' && Number.isFinite(gridScore)
         ? Math.max(0, Math.min(TIMING_GRID_ROUNDS.length, Math.floor(gridScore)))
@@ -496,4 +500,3 @@ export function deleteDayKareSave() {
  */
 registerHeistsCompletedReader(() => useFinalMasterStore.getState().heistsCompleted);
 useGameStore.getState().syncDripOwnership();
-

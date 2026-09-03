@@ -45,6 +45,11 @@ function InteractionFocusSystem({ playerRef }: { playerRef: React.RefObject<THRE
     forward.current.set(0, 0, -1).applyQuaternion(playerRef.current.quaternion);
     camera.getWorldDirection(cameraForward.current);
     const store = useGameStore.getState();
+    const finalUi = useFinalMasterStore.getState();
+    if (finalUi.heistBoardOpen || finalUi.rallyGameOpen) {
+      if (store.activeInteractable !== null) store.setActiveInteractable(null);
+      return;
+    }
     if (isGameplayBlocked({
       journalOpen: store.journalOpen,
       activeDialogue: store.activeDialogue,

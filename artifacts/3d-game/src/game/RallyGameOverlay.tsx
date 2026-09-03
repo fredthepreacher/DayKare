@@ -26,6 +26,11 @@ export function RallyGameOverlay({ id, onClose }: { id: RallyId; onClose: () => 
   const bankedRef = useRef(false);
 
   useEffect(() => {
+    useFinalMasterStore.getState().setRallyGameOpen(true);
+    return () => useFinalMasterStore.getState().setRallyGameOpen(false);
+  }, []);
+
+  useEffect(() => {
     let frame = 0;
     let last = performance.now();
     const loop = () => {

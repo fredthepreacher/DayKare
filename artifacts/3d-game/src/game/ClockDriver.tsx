@@ -4,6 +4,7 @@ import { useModeStore } from './modeStore';
 import { isGameplayBlocked } from './gameplayGate';
 import type { PauseReason } from './gameClock';
 import { STORYBOOK_CLOSE_HOLD_SECONDS, STORYBOOK_CLOSE_MINUTE, STORYBOOK_OPEN_MINUTE, STORYBOOK_WARNING_MINUTE } from './storybookLaneConfig';
+import { useFinalMasterStore } from './finalMasterStore';
 
 /**
  * Drives the canonical clock from real elapsed time.
@@ -32,6 +33,8 @@ function currentPauseReason(): PauseReason | null {
   const mode = useModeStore.getState();
   const frontEndBlocked = mode.menuOpen || mode.activeMode === 'multiplayer-lobby';
   if (game.expansion.lastDayReport) return 'front-end';
+  const finalUi = useFinalMasterStore.getState();
+  if (finalUi.heistBoardOpen || finalUi.rallyGameOpen) return 'menu';
 
   if (!isGameplayBlocked({
     journalOpen: game.journalOpen,

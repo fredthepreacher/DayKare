@@ -76,6 +76,43 @@ const NO_EVIDENCE: AchievementEvidence = {
   assert.notEqual(useFinalMasterStore.getState().homeThemeIndex, 0, 'the two switches are independent');
 }
 
+{
+  // A returning-player reward recovery must not erase progress introduced by
+  // this update. This was a real regression in the first implementation.
+  useFinalMasterStore.setState({
+    homeRewardRecoveryPending: true,
+    firstRewardChoice: null,
+    homeVoucher: false,
+    homeThemeIndex: 1,
+    garageThemeIndex: 2,
+    rallyBest: { 'ping-pong': 7 },
+    neighborhoodDone: ['mail-bluebell'],
+    heroOutfitUnlocked: true,
+  });
+  assert.equal(useFinalMasterStore.getState().resolveHomeRewardRecovery('home'), true);
+  assert.deepEqual({
+    homeThemeIndex: useFinalMasterStore.getState().homeThemeIndex,
+    garageThemeIndex: useFinalMasterStore.getState().garageThemeIndex,
+    rallyBest: useFinalMasterStore.getState().rallyBest,
+    neighborhoodDone: useFinalMasterStore.getState().neighborhoodDone,
+    heroOutfitUnlocked: useFinalMasterStore.getState().heroOutfitUnlocked,
+  }, {
+    homeThemeIndex: 1,
+    garageThemeIndex: 2,
+    rallyBest: { 'ping-pong': 7 },
+    neighborhoodDone: ['mail-bluebell'],
+    heroOutfitUnlocked: true,
+  }, 'reward recovery preserves all unrelated player progress');
+
+  const options = (useFinalMasterStore as unknown as {
+    persist: { getOptions: () => { merge?: (persisted: unknown, current: unknown) => unknown } };
+  }).persist.getOptions();
+  const merge = (saved: Record<string, unknown>) => options.merge!(saved, useFinalMasterStore.getState()) as ReturnType<typeof useFinalMasterStore.getState>;
+  assert.equal(merge({ heroOutfitUnlocked: true, firstHeistComplete: false, heistsCompleted: 0 }).heroOutfitUnlocked, false, 'a forged hero flag is discarded on load');
+  assert.equal(merge({ firstHeistComplete: true, heistsCompleted: 1 }).heroOutfitUnlocked, true, 'a legitimate completed heist restores the hero outfit');
+  assert.equal(merge({ rallyGameOpen: true }).rallyGameOpen, false, 'a modal can never reopen from persisted data');
+}
+
 /* ------------------------------- rally ------------------------------- */
 
 /** Plays a rally with a paddle that tracks the ball, i.e. a competent player. */
@@ -102,6 +139,9 @@ function playIdle(config: RallyConfig, seconds: number) {
 
 // Three lives, so one fumble is not the end of a run.
 assert.equal(RALLY_MAX_MISSES, 3, 'a rally gives the player three misses');
+useFinalMasterStore.getState().setRallyGameOpen(true);
+assert.equal(useFinalMasterStore.getState().rallyGameOpen, true, 'the rally modal publishes its gameplay gate');
+useFinalMasterStore.getState().setRallyGameOpen(false);
 
 for (const config of Object.values(RALLY_CONFIGS)) {
   const tracked = playTracking(config, 90);
