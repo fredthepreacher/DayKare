@@ -136,7 +136,9 @@ const HOME_TARGETS: [string, readonly number[]][] = [
   ['bathroom 2', [13.4, 0, -5.4]],
   ['down-stairs corridor', [-12, 0, 0]],
   ['basement landing', HOME_BASEMENT_LANDING],
-  ['rec room', [-18, 0, 3]],
+  ['rec room', [-17, 0, 4.2]],
+  ['ping pong table', [-18.6, 0, -0.7]],
+  ['bedroom closet', [15.7, 0, 2.5]],
   ['basement dining room', [-23.4, 0, 5.6]],
   ['basement dining table approach', [-23.4, 0, 0]],
 ];
@@ -150,10 +152,17 @@ for (const [label, target] of HOME_TARGETS) {
 // reachable floor area, which a single point check would never notice.
 // A wall dropped in the wrong place halves one of these long before it
 // makes any named target unreachable.
-const basementArea = home.areaBetween(-27, -14);
+// Split by room rather than by floor: the basement is two rooms, and a
+// wall dropped between them would leave the total looking healthy while one
+// half was sealed off.
+const diningArea = home.areaBetween(-27, -20.65);
+const recArea = home.areaBetween(-20.35, -14);
+const basementArea = diningArea + recArea;
 const groundArea = home.areaBetween(-10, 2);
 const upperArea = home.areaBetween(6, 19);
-assert.ok(basementArea > 90, `the basement should offer real floor space, not ${basementArea.toFixed(0)} m2`);
+assert.ok(diningArea > 30, `the basement dining room should be a room, not ${diningArea.toFixed(0)} m2`);
+assert.ok(recArea > 40, `and the rec room should have real floor space, not ${recArea.toFixed(0)} m2`);
+assert.ok(basementArea > 78, `the basement together should stay walkable, not ${basementArea.toFixed(0)} m2`);
 assert.ok(groundArea > 86, `the ground floor should offer real floor space, not ${groundArea.toFixed(0)} m2`);
 assert.ok(upperArea > 88, `the upper floor should offer real floor space, not ${upperArea.toFixed(0)} m2`);
 

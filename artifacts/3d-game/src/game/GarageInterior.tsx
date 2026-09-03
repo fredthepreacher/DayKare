@@ -6,6 +6,8 @@ import { registerInteractionCandidate, updateInteractionCandidate } from './inte
 import { GARAGE_BAYS, GARAGE_EXIT_POINT, WORLD_SOLIDS } from './world';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { garageBays } from './ownership';
+import { useFinalMasterStore } from './finalMasterStore';
+import { GARAGE_THEMES, garageTheme, type GaragePalette } from './interiorThemes';
 
 /**
  * The garage.
@@ -18,14 +20,13 @@ import { garageBays } from './ownership';
 
 const GARAGE_SOLIDS = WORLD_SOLIDS.filter((solid) => solid.zone === 'garage');
 
-const FIXTURE_COLORS: Record<string, string> = {
-  'garage-workbench': '#9a7d5c',
-  'garage-shelf': '#7d6047',
-  'garage-toolbox': '#c8483f',
-  'garage-door': '#c9cdd2',
-};
-
-function AuthoredGarageGeometry() {
+function AuthoredGarageGeometry({ palette }: { palette: GaragePalette }) {
+  const fixtures: Record<string, string> = {
+    'garage-workbench': palette.fixture,
+    'garage-shelf': palette.fixture,
+    'garage-toolbox': palette.signage,
+    'garage-door': '#c9cdd2',
+  };
   return <group>
     {GARAGE_SOLIDS.map((solid) => {
       const isWall = solid.kind === 'wall';
@@ -37,21 +38,32 @@ function AuthoredGarageGeometry() {
         receiveShadow
       >
         <boxGeometry args={[solid.maxX - solid.minX, height, solid.maxZ - solid.minZ]} />
-        <meshStandardMaterial color={FIXTURE_COLORS[solid.id] ?? '#d8d3c8'} roughness={0.9} />
+        <meshStandardMaterial color={fixtures[solid.id] ?? palette.wall} roughness={0.9} />
       </mesh>;
     })}
   </group>;
 }
 
 /** The parked vehicle for a bay, or an empty marked bay. */
-function Bay({ index, vehicle }: { index: number; vehicle: { id: string; label: string } | null }) {
+function Bay({ index, vehicle, palette }: { index: number; vehicle: { id: string; label: string } | null; palette: GaragePalette }) {
   const [x, , z] = GARAGE_BAYS[index];
   return (
     <group position={[x, 0, z]}>
-      {/* Bay markings, so an empty bay reads as a space for something. */}
+      {/* Painted bay markings, so an empty bay reads as a space for something
+          rather than as bare floor. */}
       <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[2.3, 3.4]} />
-        <meshStandardMaterial color={vehicle ? '#c3bdaf' : '#b9b3a6'} roughness={1} />
+        <meshStandardMaterial color={palette.floor} roughness={1} />
+      </mesh>
+      {[-1.1, 1.1].map((edge) => (
+        <mesh key={edge} position={[edge, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.09, 3.4]} />
+          <meshStandardMaterial color={palette.marking} />
+        </mesh>
+      ))}
+      <mesh position={[0, 0.025, -1.65]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[2.3, 0.09]} />
+        <meshStandardMaterial color={palette.marking} />
       </mesh>
       {vehicle?.id === 'tricycle' && (
         <group position={[0, 0.32, 0]}>
@@ -106,8 +118,96 @@ function ExitDoor() {
   );
 }
 
+/** A rack for bikes and trikes, a tire stack, hooks and bins. */
+function GarageFittings({ palette }: { palette: GaragePalette }) {
+  return (
+    <group>
+      {/* Bike rack along the east wall. */}
+      <group position={[5.1, 0, 1.4]}>
+        <mesh position={[0, 0.06, 0]} castShadow>
+          <boxGeometry args={[0.5, 0.12, 2.6]} />
+          <meshStandardMaterial color={palette.fixture} />
+        </mesh>
+        {[-0.9, 0, 0.9].map((z) => (
+          <mesh key={z} position={[0, 0.45, z]} castShadow>
+            <boxGeometry args={[0.07, 0.78, 0.07]} />
+            <meshStandardMaterial color={palette.fixture} />
+          </mesh>
+        ))}
+        <Text position={[-0.5, 1.1, 0]} rotation={[0, -Math.PI / 2, 0]} fontSize={0.16} color={palette.signage} anchorX="center">BIKE RACK</Text>
+      </group>
+
+      {/* Tire stack in the corner. */}
+      <group position={[-5.1, 0, 3.4]}>
+        {[0, 1, 2].map((tier) => (
+          <mesh key={tier} position={[0, 0.14 + tier * 0.26, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <torusGeometry args={[0.36, 0.13, 8, 16]} />
+            <meshStandardMaterial color="#33383d" roughness={0.95} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Wall hooks with helmets, above the workbench. */}
+      <group position={[-4.05, 1.55, -5.85]}>
+        {[-0.8, 0, 0.8].map((x, index) => (
+          <group key={x} position={[x, 0, 0]}>
+            <mesh position={[0, 0.16, 0.06]}>
+              <boxGeometry args={[0.05, 0.24, 0.05]} />
+              <meshStandardMaterial color={palette.fixture} />
+            </mesh>
+            <mesh position={[0, 0, 0.14]} castShadow>
+              <sphereGeometry args={[0.19, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2]} />
+              <meshStandardMaterial color={['#e94255', '#f2c94c', '#5fa8d3'][index]} />
+            </mesh>
+          </group>
+        ))}
+      </group>
+
+      {/* Storage bins under the shelf. */}
+      {[-0.9, 0, 0.9].map((z, index) => (
+        <mesh key={z} position={[5.2, 0.26, -1.4 + z]} castShadow>
+          <boxGeometry args={[0.8, 0.52, 0.72]} />
+          <meshStandardMaterial color={[palette.marking, palette.signage, palette.fixture][index]} />
+        </mesh>
+      ))}
+
+      {/* Signage over the workbench. */}
+      <Text position={[-4.05, 2.35, -5.9]} fontSize={0.26} color={palette.signage} anchorX="center">HOME GARAGE</Text>
+    </group>
+  );
+}
+
+/** The paint chart by the door that cycles the garage's theme. */
+function GarageThemeSwitch({ palette }: { palette: GaragePalette }) {
+  const vector = useMemo(() => new THREE.Vector3(-3.4, 0, 5.2), []);
+  const candidate = useMemo(() => ({
+    id: 'garage-theme-switch', position: vector.clone(), valid: true, range: 2.2, priority: 70,
+  }), [vector]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  useFrame(() => updateInteractionCandidate('garage-theme-switch', { position: vector, valid: true }));
+  return (
+    <group position={[-3.4, 0, 5.75]}>
+      <mesh position={[0, 1.35, 0]} castShadow>
+        <boxGeometry args={[1.1, 0.72, 0.08]} />
+        <meshStandardMaterial color="#f2f0ec" />
+      </mesh>
+      {GARAGE_THEMES.map((theme, index) => (
+        <mesh key={theme.id} position={[-0.34 + index * 0.34, 1.35, -0.06]}>
+          <boxGeometry args={[0.26, 0.5, 0.03]} />
+          <meshStandardMaterial color={theme.marking} />
+        </mesh>
+      ))}
+      <Text position={[0, 1.92, -0.06]} rotation={[0, Math.PI, 0]} fontSize={0.15} color={palette.signage} anchorX="center">
+        GARAGE COLOURS
+      </Text>
+    </group>
+  );
+}
+
 export function GarageInterior() {
   const owned = useStorybookLaneStore((state) => state.ownedItems);
+  const themeIndex = useFinalMasterStore((state) => state.garageThemeIndex);
+  const palette = garageTheme(themeIndex);
   const bays = garageBays(owned);
   return (
     <group>
@@ -116,11 +216,13 @@ export function GarageInterior() {
       <pointLight position={[0, 2.6, 0]} intensity={0.55} distance={16} />
       <mesh position={[0, -0.06, 0]} receiveShadow>
         <boxGeometry args={[12.6, 0.12, 12.6]} />
-        <meshStandardMaterial color="#a9a396" roughness={0.98} />
+        <meshStandardMaterial color={palette.floor} roughness={0.98} />
       </mesh>
-      <AuthoredGarageGeometry />
+      <AuthoredGarageGeometry palette={palette} />
+      <GarageFittings palette={palette} />
+      <GarageThemeSwitch palette={palette} />
       <ExitDoor />
-      {bays.map((vehicle, index) => <Bay key={index} index={index} vehicle={vehicle} />)}
+      {bays.map((vehicle, index) => <Bay key={index} index={index} vehicle={vehicle} palette={palette} />)}
       <Text position={[0, 2.5, -5.86]} fontSize={0.3} color="#5c3a21" anchorX="center">YOUR GARAGE</Text>
       <Text position={[0, 2.14, -5.86]} fontSize={0.14} color="#7a6353" anchorX="center">
         RIDES ARE STORED HERE

@@ -106,7 +106,7 @@ import {
   getOptionalRewardMultiplier,
 } from './storyProgression';
 import { monetizedReputation } from './monetizationStore';
-import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GummyCropState } from './gardenEconomy';
+import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_SEEDS_PER_PLANTING, GUMMY_SEEDS_RETURNED_PER_HARVEST, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GardenHarvestResult, type GardenPlantResult, type GummyCropState } from './gardenEconomy';
 import { STORYBOOK_CLOSE_MINUTE, storybookIsOpen } from './storybookLaneConfig';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { CAPER_HEIST_RB, STORY_REWARDS } from './finalMaster';
@@ -284,6 +284,7 @@ export interface GameState {
   markTidyTutorialSeen: () => void;
   purchaseDripItem: (itemId: string) => boolean;
   /** Grants only known, non-prestige catalog cosmetics after verified fulfillment. */
+  syncDripOwnership: () => void;
   grantMonetizationCosmetics: (itemIds: string[]) => void;
   equipDripItem: (itemId: string) => boolean;
   unequipDripCategory: (category: DripCategory) => void;
@@ -308,8 +309,8 @@ export interface GameState {
   startGardenActivity: (bed?: 0 | 1) => boolean;
   advanceGardenActivity: (bed?: 0 | 1) => number;
   resetGardenActivity: (bed?: 0 | 1) => void;
-  plantGummyDrops: (bed?: 0 | 1) => boolean;
-  harvestGummyDrops: (bed?: 0 | 1) => boolean;
+  plantGummyDrops: (bed?: 0 | 1) => GardenPlantResult;
+  harvestGummyDrops: (bed?: 0 | 1) => GardenHarvestResult;
   eatGummyDrop: (bed?: 0 | 1) => boolean;
   feedGummyDrop: (bed?: 0 | 1) => boolean;
   sellGummyCrop: (bed?: 0 | 1) => boolean;
@@ -843,6 +844,18 @@ function normalizeJuiceClubState(
  * is derived from the record of that play rather than from a flag that could be
  * set directly.
  */
+let readHeistsCompleted: () => number = () => 0;
+
+/**
+ * finalMasterStore owns the career heist count and already imports this module,
+ * so it registers a reader here rather than this module importing it back and
+ * creating a cycle. Until it does, the count reads 0, which only ever locks a
+ * prestige item - it can never hand one out.
+ */
+export function registerHeistsCompletedReader(read: () => number) {
+  readHeistsCompleted = read;
+}
+
 function dripEvidenceFrom(input: {
   quests: QuestStates;
   caper: { step: string };
@@ -865,6 +878,7 @@ function dripEvidenceFrom(input: {
       (best, friend) => Math.max(best, friend?.friendship ?? 0),
       0,
     ),
+    heistsCompleted: readHeistsCompleted(),
   };
 }
 
@@ -1505,6 +1519,27 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      /**
+       * Re-derive achievement ownership from current evidence.
+       *
+       * Achievement items are recomputed rather than trusted from the save, so
+       * anything that changes the evidence after this store has rehydrated -
+       * finishing a heist, or finalMasterStore rehydrating its own career count
+       * a moment later - has to ask for the rebuild.
+       */
+      syncDripOwnership: () => set((state) => {
+        const evidence = dripEvidenceFrom({
+          quests: state.quests,
+          caper: state.caper,
+          progression: state.progression,
+          juiceClubCustomersServed: state.juiceClubCustomersServed,
+          friends: state.friends,
+        });
+        const dripOwned = normalizeDripOwned(state.dripOwned, evidence);
+        if (dripOwned.length === state.dripOwned.length
+          && dripOwned.every((id, index) => id === state.dripOwned[index])) return state;
+        return { dripOwned };
+      }),
       grantMonetizationCosmetics: (itemIds) => set((state) => {
         const safeIds = Array.isArray(itemIds)
           ? itemIds.filter((id) => {
@@ -1887,27 +1922,47 @@ export const useGameStore = create<GameState>()(
         ? { gardenActivityStep: 0 }
         : { expansion: { ...state.expansion, secondPlantingStep: 0 } }),
       plantGummyDrops: (bed = 0) => {
-        let changed = false;
+        let result: GardenPlantResult = 'wrong-place';
         set((state) => {
           const crop = bed === 0 ? state.gummyCrop : state.gummyCrop2;
-          if (state.zone !== 'garden' || crop.plantedAt !== null) return state;
-          changed = true;
+          if (state.zone !== 'garden') return state;
+          if (crop.plantedAt !== null) { result = 'already-growing'; return state; }
+          // A seed goes in the ground. This is what stops the bed from
+          // refilling itself for nothing.
+          if (state.expansion.seedPackets < GUMMY_SEEDS_PER_PLANTING) { result = 'needs-seeds'; return state; }
+          result = 'planted';
           const next = { ...crop, plantedAt: absoluteGameMinute(state.dayNumber, state.clock.minute) };
-          return bed === 0 ? { gummyCrop: next } : { gummyCrop2: next };
+          return {
+            ...(bed === 0 ? { gummyCrop: next } : { gummyCrop2: next }),
+            expansion: {
+              ...state.expansion,
+              seedPackets: state.expansion.seedPackets - GUMMY_SEEDS_PER_PLANTING,
+            },
+          };
         });
-        return changed;
+        return result;
       },
       harvestGummyDrops: (bed = 0) => {
-        let changed = false;
+        let result: GardenHarvestResult = 'wrong-place';
         set((state) => {
           const now = absoluteGameMinute(state.dayNumber, state.clock.minute);
           const crop = bed === 0 ? state.gummyCrop : state.gummyCrop2;
-          if (state.zone !== 'garden' || !cropIsReady(crop, now)) return state;
-          changed = true;
+          if (state.zone !== 'garden') return state;
+          if (crop.plantedAt === null) { result = 'nothing-planted'; return state; }
+          if (!cropIsReady(crop, now)) { result = 'not-ready'; return state; }
+          result = 'harvested';
           const next = { plantedAt: null, gummyDrops: Math.min(999, crop.gummyDrops + GUMMY_HARVEST_SIZE), harvests: crop.harvests + 1 };
-          return bed === 0 ? { gummyCrop: next } : { gummyCrop2: next };
+          return {
+            ...(bed === 0 ? { gummyCrop: next } : { gummyCrop2: next }),
+            // Seeds come back with the crop, so the loop sustains itself
+            // without ever being free.
+            expansion: {
+              ...state.expansion,
+              seedPackets: Math.min(999, state.expansion.seedPackets + GUMMY_SEEDS_RETURNED_PER_HARVEST),
+            },
+          };
         });
-        return changed;
+        return result;
       },
       eatGummyDrop: (bed = 0) => {
         let changed = false;

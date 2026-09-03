@@ -237,17 +237,35 @@ function ReadingNook() {
   );
 }
 
+/**
+ * The classroom's picture rail, hung on the hallway divider.
+ *
+ * The frames used to sit on a 4 m pitch from z = -4 through z = 0 to z = +4.
+ * The divider is not one wall though - it is two segments with a 4.3 m
+ * doorway between them at z = -2.15..2.15 - so the middle frame hung in the
+ * doorway with nothing behind it. That is the panel floating in mid-air
+ * beside the classroom window in the screenshots.
+ *
+ * Positions are now authored per wall segment, and ART_GALLERY_FRAMES is
+ * exported so a test can assert every frame is actually backed by a wall.
+ */
+export const ART_GALLERY_HEIGHT = 1.65;
+export const ART_GALLERY_FACE_X = -7.64;
+export const ART_GALLERY_FRAME_SIZE: [number, number] = [1.15, 1.5];
+/** World z for each frame. All three sit on a divider segment, none in the door. */
+export const ART_GALLERY_FRAMES = [-5.6, -3.0, 5.0] as const;
+
 function ArtGallery({ imaginationMode }: { imaginationMode: boolean }) {
   const frames = imaginationMode
     ? ['#ff4da6', '#52e7ff', '#ffd166']
     : ['#e76f51', '#457b9d', '#e9c46a'];
 
   return (
-    <group position={[-7.64, 1.65, 0]} rotation={[0, Math.PI / 2, 0]}>
+    <group position={[ART_GALLERY_FACE_X, ART_GALLERY_HEIGHT, 0]} rotation={[0, Math.PI / 2, 0]}>
       {frames.map((color, index) => (
-        <group key={color} position={[-4 + index * 4, 0, 0]}>
+        <group key={color} position={[-ART_GALLERY_FRAMES[index], 0, 0]}>
           <mesh castShadow>
-            <boxGeometry args={[1.15, 1.5, 0.12]} />
+            <boxGeometry args={[ART_GALLERY_FRAME_SIZE[0], ART_GALLERY_FRAME_SIZE[1], 0.12]} />
             <meshStandardMaterial color="#fefae0" roughness={0.75} />
           </mesh>
           <mesh position={[0, 0, 0.075]}>

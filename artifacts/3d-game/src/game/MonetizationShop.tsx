@@ -63,6 +63,7 @@ function ProductCard({
   const juiceClubCustomersServed = useGameStore(
     (state) => state.juiceClubCustomersServed,
   );
+  const heistsCompleted = useFinalMasterStore((state) => state.heistsCompleted);
   const cosmeticId = product.grant.cosmetics?.[0];
   const cosmetic = cosmeticId ? getDripItem(cosmeticId) : null;
   const owned =
@@ -84,6 +85,7 @@ function ProductCard({
       (best, friend) => Math.max(best, friend?.friendship ?? 0),
       0,
     ),
+    heistsCompleted,
   });
   const preservesGameplayGate = !product.progressionOverride;
   const needsReputation = cosmetic
@@ -288,6 +290,7 @@ export function MonetizationShop() {
           (best, friend) => Math.max(best, friend?.friendship ?? 0),
           0,
         ),
+        heistsCompleted: useFinalMasterStore.getState().heistsCompleted,
       });
       const success = spendCurrencyProduct(
         selected.id,

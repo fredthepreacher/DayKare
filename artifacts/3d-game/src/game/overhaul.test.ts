@@ -923,7 +923,10 @@ const socialContext = (overrides: Partial<SocialContext> = {}): SocialContext =>
 
 {
   // The catalog must match the authored economy, and REP must be reachable.
-  assert.equal(DRIP_CATALOG.length, 24, 'the whole Drop 01 catalog is present');
+  // Drop 01's 24 pieces, plus the two-piece Rascal Ranger suit the heist awards.
+  const heistReward = DRIP_CATALOG.filter((item) => item.achievement === 'heist-milestone');
+  assert.equal(heistReward.length, 2, 'the heist reward is a two-piece set');
+  assert.equal(DRIP_CATALOG.length - heistReward.length, 24, 'the whole Drop 01 catalog is present');
   const ids = new Set(DRIP_CATALOG.map((item) => item.id));
   assert.equal(ids.size, DRIP_CATALOG.length, 'no duplicate item ids');
 

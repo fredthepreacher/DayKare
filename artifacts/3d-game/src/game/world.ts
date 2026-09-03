@@ -181,6 +181,10 @@ export const HOME_BASEMENT_LANDING: [number, number, number] = [-15.4, HOME_BASE
  * housing later, because a zone is already per-session.
  * ------------------------------------------------------------------ */
 
+/** The tennis court's playing surface, and the walk-up spot beside it. */
+export const TENNIS_COURT = { minX: 13.5, maxX: 20.5, minZ: -21.5, maxZ: -15 } as const;
+export const TENNIS_APPROACH: [number, number, number] = [17, 0, -14.2];
+
 export const GARAGE_SPAWN: [number, number, number] = [0, 0, 4.6];
 /** The inside face of the garage door, and the way back to Stony Brook. */
 export const GARAGE_EXIT_POINT: [number, number, number] = [0, 0, 5.6];
@@ -408,9 +412,14 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   homeBox('home-primary-bookshelf', 'furniture', 13.4, 15.2, -2.9, -2.2, { cameraRole: 'substantial', maxY: 1.6 }),
   homeBox('home-bath2-tub', 'furniture', 15.9, 17.8, -7.7, -6.2, { cameraRole: 'substantial', maxY: 0.6 }),
   homeBox('home-bath2-vanity', 'counter', 9.6, 11.2, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
-  homeBox('home-rec-sofa', 'furniture', -20.6, -17.6, 5.4, 6.6, { cameraRole: 'substantial', maxY: 0.85 }),
+  // The divider moved west when the nook became the dining room; this sofa
+  // was left overlapping it, and the shelf below ended up on the wrong side
+  // of the wall entirely.
+  homeBox('home-rec-sofa', 'furniture', -20.1, -17.1, 5.4, 6.6, { cameraRole: 'substantial', maxY: 0.85 }),
   homeBox('home-rec-arcade', 'furniture', -15.6, -14.4, -6.6, -5.0, { cameraRole: 'substantial', maxY: 1.85 }),
-  homeBox('home-rec-shelf', 'furniture', -21.8, -20.8, -6.6, -3.6, { cameraRole: 'substantial', maxY: 1.6 }),
+  homeBox('home-rec-shelf', 'furniture', -14.9, -14.1, -3.4, -0.6, { cameraRole: 'substantial', maxY: 1.6 }),
+  // Ping pong, in the middle of the rec room with room to stand at both ends.
+  homeBox('home-ping-pong', 'table', -19.3, -17.8, 0.2, 2.9, { cameraRole: 'substantial', maxY: 0.76 }),
   // The basement dining room: a table with four chairs and room to walk
   // all the way round it.
   homeBox('home-basement-dining-table', 'table', -24.5, -22.3, 1.6, 3.8, { cameraRole: 'substantial', maxY: 0.74 }),
@@ -472,6 +481,24 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   storybookBox('sb-manor-shell', 'wall', -18, -8, -17, -11, { cameraRole: 'structural', maxY: 6.2 }),
   storybookBox('sb-manor-porch-post-west', 'furniture', -15.15, -14.85, -10.9, -10.6, { maxY: 2.6 }),
   storybookBox('sb-manor-porch-post-east', 'furniture', -11.15, -10.85, -10.9, -10.6, { maxY: 2.6 }),
+  /* ---- Tennis court, north-east of the lane ---- */
+  // The net is the only solid; the surface and the lines are flat, and the
+  // fence posts sit outside the play area so a rally never catches on one.
+  storybookBox('sb-tennis-net', 'furniture', 13.6, 20.4, -18.35, -18.15, { maxY: 0.95 }),
+  storybookBox('sb-tennis-post-nw', 'furniture', 13.35, 13.65, -21.65, -21.35, { maxY: 1.6 }),
+  storybookBox('sb-tennis-post-ne', 'furniture', 20.35, 20.65, -21.65, -21.35, { maxY: 1.6 }),
+  storybookBox('sb-tennis-post-sw', 'furniture', 13.35, 13.65, -15.15, -14.85, { maxY: 1.6 }),
+  storybookBox('sb-tennis-post-se', 'furniture', 20.35, 20.65, -15.15, -14.85, { maxY: 1.6 }),
+  /* ---- Lane furniture: lamps, benches and planters ---- */
+  storybookBox('sb-lamp-west', 'furniture', -7.15, -6.85, -6.15, -5.85, { maxY: 3.2 }),
+  storybookBox('sb-lamp-east', 'furniture', 6.85, 7.15, -6.15, -5.85, { maxY: 3.2 }),
+  storybookBox('sb-lamp-north', 'furniture', -0.15, 0.15, 11.85, 12.15, { maxY: 3.2 }),
+  storybookBox('sb-bench-west', 'furniture', -5.4, -3.6, -11.7, -11.1, { maxY: 0.8 }),
+  storybookBox('sb-bench-east', 'furniture', 3.6, 5.4, -11.7, -11.1, { maxY: 0.8 }),
+  storybookBox('sb-planter-west', 'furniture', -2.9, -2.1, 11.6, 12.4, { maxY: 0.7 }),
+  storybookBox('sb-planter-east', 'furniture', 2.1, 2.9, 11.6, 12.4, { maxY: 0.7 }),
+  storybookBox('sb-lane-sign', 'furniture', -0.2, 0.2, -12.2, -11.8, { maxY: 2.4 }),
+
   storybookBox('sb-manor-mailbox', 'furniture', -12.06, -11.62, -6.42, -5.98, { maxY: 1.2 }),
   // The west hedge used to run across the driveway, so the one clear route
   // to the garage front was walled off by shrubbery. The hedges now sit in

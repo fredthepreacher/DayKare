@@ -11,7 +11,8 @@ import { REALTORS, realtorPatrolTarget, type RealtorProfile } from './realEstate
 import { DOG_RECALL_RESCUE_DISTANCE, consumeDogRecall } from './dogRecall';
 import { STORYBOOK_PLAY_LOOPS, storybookPlayTarget, type PlayStyle, type StorybookPlayLoop } from './storybookPlay';
 import { isAfterHours } from './storybookLaneConfig';
-import { GARAGE_DOOR_APPROACH } from './world';
+import { GARAGE_DOOR_APPROACH, TENNIS_APPROACH, TENNIS_COURT } from './world';
+import { activitySpots, type NeighborhoodActivityId, type NeighborhoodSpot } from './neighborhood';
 import { KID_CAST, type KidDefinition } from './NPCs';
 import { useGameStore } from './store';
 
@@ -417,6 +418,138 @@ function AfterHoursPlay() {
   );
 }
 
+/** The tennis court: surface, lines, net and a fence. */
+function TennisCourt() {
+  const midX = (TENNIS_COURT.minX + TENNIS_COURT.maxX) / 2;
+  const midZ = (TENNIS_COURT.minZ + TENNIS_COURT.maxZ) / 2;
+  const width = TENNIS_COURT.maxX - TENNIS_COURT.minX;
+  const depth = TENNIS_COURT.maxZ - TENNIS_COURT.minZ;
+  useStorybookCandidate('storybook-tennis', TENNIS_APPROACH, 2.6, 42);
+  return (
+    <group>
+      <mesh position={[midX, 0.02, midZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[width, depth]} />
+        <meshStandardMaterial color="#5f8f6a" roughness={1} />
+      </mesh>
+      {/* Court lines. */}
+      {[TENNIS_COURT.minZ + 0.5, TENNIS_COURT.maxZ - 0.5].map((z) => (
+        <mesh key={z} position={[midX, 0.03, z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[width - 1, 0.09]} /><meshStandardMaterial color="#f4f7f3" />
+        </mesh>
+      ))}
+      {[TENNIS_COURT.minX + 0.5, TENNIS_COURT.maxX - 0.5].map((x) => (
+        <mesh key={x} position={[x, 0.03, midZ]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.09, depth - 1]} /><meshStandardMaterial color="#f4f7f3" />
+        </mesh>
+      ))}
+      <mesh position={[midX, 0.03, midZ]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[width - 1, 0.07]} /><meshStandardMaterial color="#f4f7f3" />
+      </mesh>
+      {/* Net. */}
+      <mesh position={[midX, 0.48, midZ]} castShadow>
+        <boxGeometry args={[width - 0.6, 0.9, 0.07]} />
+        <meshStandardMaterial color="#e7ecef" transparent opacity={0.86} />
+      </mesh>
+      {/* Fence posts at the corners, outside the play area. */}
+      {[[TENNIS_COURT.minX, TENNIS_COURT.minZ], [TENNIS_COURT.maxX, TENNIS_COURT.minZ],
+        [TENNIS_COURT.minX, TENNIS_COURT.maxZ], [TENNIS_COURT.maxX, TENNIS_COURT.maxZ]].map(([x, z]) => (
+        <mesh key={`${x}-${z}`} position={[x, 0.8, z]} castShadow>
+          <boxGeometry args={[0.16, 1.6, 0.16]} /><meshStandardMaterial color="#6f7a63" />
+        </mesh>
+      ))}
+      <Text position={[midX, 1.9, TENNIS_COURT.maxZ + 0.4]} fontSize={0.34} color="#4a5a44" anchorX="center">
+        STONY BROOK COURT
+      </Text>
+    </group>
+  );
+}
+
+/** Lamp posts, benches, planters and a lane sign. */
+function LaneFurniture() {
+  return (
+    <group>
+      {[[-7, -6], [7, -6], [0, 12]].map(([x, z]) => (
+        <group key={`${x}-${z}`} position={[x, 0, z]}>
+          <mesh position={[0, 1.5, 0]} castShadow>
+            <cylinderGeometry args={[0.09, 0.13, 3, 8]} /><meshStandardMaterial color="#4a4f55" />
+          </mesh>
+          <mesh position={[0, 3.12, 0]} castShadow>
+            <sphereGeometry args={[0.26, 12, 10]} />
+            <meshStandardMaterial color="#fff3c7" emissive="#ffd98a" emissiveIntensity={0.4} />
+          </mesh>
+        </group>
+      ))}
+      {[[-4.5, -11.4], [4.5, -11.4]].map(([x, z]) => (
+        <group key={`b${x}`} position={[x, 0, z]}>
+          <mesh position={[0, 0.42, 0]} castShadow>
+            <boxGeometry args={[1.8, 0.12, 0.5]} /><meshStandardMaterial color="#9a7d5c" />
+          </mesh>
+          <mesh position={[0, 0.68, -0.2]} castShadow>
+            <boxGeometry args={[1.8, 0.42, 0.1]} /><meshStandardMaterial color="#9a7d5c" />
+          </mesh>
+          {[-0.7, 0.7].map((leg) => (
+            <mesh key={leg} position={[leg, 0.2, 0]}>
+              <boxGeometry args={[0.12, 0.4, 0.42]} /><meshStandardMaterial color="#6f5b45" />
+            </mesh>
+          ))}
+        </group>
+      ))}
+      {[-2.5, 2.5].map((x) => (
+        <group key={`p${x}`} position={[x, 0, 12]}>
+          <mesh position={[0, 0.32, 0]} castShadow>
+            <boxGeometry args={[0.8, 0.64, 0.8]} /><meshStandardMaterial color="#b9764a" />
+          </mesh>
+          <mesh position={[0, 0.74, 0]} castShadow>
+            <sphereGeometry args={[0.38, 12, 10]} /><meshStandardMaterial color="#5f9e63" roughness={1} />
+          </mesh>
+        </group>
+      ))}
+      <group position={[0, 0, -12]}>
+        <mesh position={[0, 1.2, 0]} castShadow>
+          <boxGeometry args={[0.14, 2.4, 0.14]} /><meshStandardMaterial color="#7f5a42" />
+        </mesh>
+        <mesh position={[0, 2.15, 0]} castShadow>
+          <boxGeometry args={[2.4, 0.55, 0.08]} /><meshStandardMaterial color="#fff6e2" />
+        </mesh>
+        <Text position={[0, 2.15, 0.06]} fontSize={0.24} color="#5c3a21" anchorX="center">STONY BROOK</Text>
+      </group>
+    </group>
+  );
+}
+
+/** The three neighbourhood activities, as markers you walk up to. */
+function NeighborhoodSpots() {
+  const done = useFinalMasterStore((state) => state.neighborhoodDone);
+  return (
+    <group>
+      {activitySpots().map(({ activity, spot }) => (
+        <NeighborhoodMarker key={spot.id} activityId={activity.id} spot={spot} done={done.includes(spot.id)} />
+      ))}
+    </group>
+  );
+}
+
+function NeighborhoodMarker({ activityId, spot, done }: {
+  activityId: NeighborhoodActivityId; spot: NeighborhoodSpot; done: boolean;
+}) {
+  useStorybookCandidate(`storybook-spot-${spot.id}`, spot.position, 2.2, done ? 12 : 36);
+  const color = activityId === 'mail-run' ? '#5fa8d3' : activityId === 'chalk-art' ? '#e78bb5' : '#f2c94c';
+  return (
+    <group position={spot.position as unknown as [number, number, number]}>
+      <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.36, 0.54, 20]} />
+        <meshBasicMaterial color={done ? '#9aa79b' : color} transparent opacity={done ? 0.35 : 0.8} />
+      </mesh>
+      {!done && (
+        <mesh position={[0, 0.62, 0]} castShadow>
+          <boxGeometry args={[0.34, 0.34, 0.12]} />
+          <meshStandardMaterial color={color} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 export function StorybookLane() {
   const cribTier = useStorybookLaneStore((state) => state.cribTier);
   useStorybookCandidate('storybook-exit', [0, 0, 22], 2.8, 45);
@@ -451,6 +584,9 @@ export function StorybookLane() {
         <Text position={[0, 2.5, -0.22]} rotation={[0, Math.PI, 0]} fontSize={0.42} color="#fff7df" anchorX="center">BACK TO DAYKARE</Text>
       </group>
       <AfterHoursPlay />
+      <TennisCourt />
+      <LaneFurniture />
+      <NeighborhoodSpots />
     </group>
   );
 }

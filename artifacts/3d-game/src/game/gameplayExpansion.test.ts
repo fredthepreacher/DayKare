@@ -97,8 +97,8 @@ useGameStore.setState((state) => ({
   gummyCrop2: { plantedAt, gummyDrops: 0, harvests: 0 },
   clock: { ...state.clock, minute: 9 * 60 + GUMMY_GROWTH_MINUTES },
 }));
-assert.equal(useGameStore.getState().harvestGummyDrops(0), true);
-assert.equal(useGameStore.getState().harvestGummyDrops(1), true);
+assert.equal(useGameStore.getState().harvestGummyDrops(0), 'harvested');
+assert.equal(useGameStore.getState().harvestGummyDrops(1), 'harvested');
 assert.equal(useGameStore.getState().gummyCrop.gummyDrops, 10);
 assert.equal(useGameStore.getState().gummyCrop2.gummyDrops, 10);
 

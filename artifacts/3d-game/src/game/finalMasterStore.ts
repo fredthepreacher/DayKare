@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { addLifetimeXp, getUnlockedRoutes, MAX_REPUTATION } from './progression';
-import { useGameStore } from './store';
+import { registerHeistsCompletedReader, useGameStore } from './store';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import {
   DEFAULT_AVATAR, FIRST_HEIST_CASH, FIRST_HEIST_RB, FIRST_HEIST_XP, FULL_REDESIGN_PRICE,
@@ -10,6 +10,11 @@ import {
 } from './finalMaster';
 import { useToastStore } from './toastStore';
 import { TIMING_GRID_ROUNDS } from './heistPlanning';
+import { GARAGE_THEMES, HOME_THEMES, nextGarageTheme, nextHomeTheme } from './interiorThemes';
+import { NEIGHBORHOOD_SPOT_IDS, activityCompletedBy } from './neighborhood';
+
+/** How many completed heists earn the reward outfit. */
+export const HERO_OUTFIT_HEISTS = 1;
 
 export const FINAL_MASTER_STORAGE_KEY = 'daykare-final-master';
 
@@ -42,6 +47,15 @@ interface FinalMasterState {
    * or silently granting neither.
    */
   homeRewardRecoveryPending: boolean;
+  /** Interior colour themes, stored as indices into the authored palettes. */
+  homeThemeIndex: number;
+  garageThemeIndex: number;
+  /** Best rally reached in each of the two rally minigames. */
+  rallyBest: Record<string, number>;
+  /** Spot ids completed across the three neighbourhood activities. */
+  neighborhoodDone: string[];
+  /** The heist-completion reward outfit, once earned. */
+  heroOutfitUnlocked: boolean;
   heistBoardOpen: boolean;
   leoHeistHintCount: number;
   leoHeistIntroCompleted: boolean;
@@ -69,6 +83,11 @@ interface FinalMasterState {
   completeRoutePlanner: (risk: number) => boolean;
   completeTimingGrid: (score: number) => boolean;
   resolveHomeRewardRecovery: (choice: 'rb' | 'home') => boolean;
+  cycleHomeTheme: () => number;
+  cycleGarageTheme: () => number;
+  recordRallyResult: (id: string, bestRally: number, xp: number) => boolean;
+  completeNeighborhoodSpot: (spotId: string) => 'done' | 'already' | 'unknown';
+  claimHeroOutfit: () => boolean;
   requestLeoHeistApproach: (absoluteMinute: number, eligible: boolean, leoStoryComplete: boolean) => boolean;
   completeLeoHeistHint: (absoluteMinute: number) => 1 | 2 | null;
   buyStarterHome: () => 'purchased' | 'owned' | 'insufficient';
@@ -136,6 +155,11 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
   timingGridComplete: false,
   timingGridBestScore: null,
   homeRewardRecoveryPending: false,
+  homeThemeIndex: 0,
+  garageThemeIndex: 0,
+  rallyBest: {},
+  neighborhoodDone: [],
+  heroOutfitUnlocked: false,
   heistBoardOpen: false,
   leoHeistHintCount: 0,
   leoHeistIntroCompleted: false,
@@ -210,6 +234,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
           grantCoreReward(FIRST_HEIST_XP, FIRST_HEIST_CASH);
         }
         set({ heistStatus: 'complete', heistStep: HEIST_STEPS.length, heistCompletedEvents: completed, companionCommand: 'finale', lastReplayDay: dayNumber, heistsCompleted: state.heistsCompleted + 1, successfulFinales: state.successfulFinales + 1, totalHeistRbEarned: state.totalHeistRbEarned + REPLAY_HEIST_RB });
+        get().claimHeroOutfit();
       }
     } else set({ heistStep: next, heistCompletedEvents: completed, companionCommand: next === 2 ? 'wait' : next === 3 ? 'goto' : next === 4 ? 'interact' : next === 5 ? 'regroup' : 'follow' });
     return true;
@@ -219,6 +244,9 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     if (state.heistStatus !== 'reward-choice' || state.firstRewardChoice) return false;
     if (choice === 'rb') useStorybookLaneStore.getState().grantRibbonBucks(FIRST_HEIST_RB);
     set({ firstRewardChoice: choice, firstHeistComplete: true, heistStatus: 'complete', homeVoucher: choice === 'home', totalHeistRbEarned: state.totalHeistRbEarned + (choice === 'rb' ? FIRST_HEIST_RB : 0) });
+    // The suit is the proof you finished a heist, so it lands the moment the
+    // first clear is booked rather than waiting for the next replay.
+    get().claimHeroOutfit();
     set({ homeRewardRecoveryPending: false });
     return true;
   },
@@ -270,11 +298,69 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     }
     set({
       homeRewardRecoveryPending: false,
+  homeThemeIndex: 0,
+  garageThemeIndex: 0,
+  rallyBest: {},
+  neighborhoodDone: [],
+  heroOutfitUnlocked: false,
       firstRewardChoice: choice,
       homeVoucher: choice === 'home',
       totalHeistRbEarned: state.totalHeistRbEarned + (choice === 'rb' ? FIRST_HEIST_RB : 0),
     });
     if (choice === 'rb') useStorybookLaneStore.setState({ ribbonBucks: useStorybookLaneStore.getState().ribbonBucks + FIRST_HEIST_RB });
+    return true;
+  },
+  cycleHomeTheme: () => {
+    const next = nextHomeTheme(get().homeThemeIndex);
+    set({ homeThemeIndex: next });
+    return next;
+  },
+  cycleGarageTheme: () => {
+    const next = nextGarageTheme(get().garageThemeIndex);
+    set({ garageThemeIndex: next });
+    return next;
+  },
+  /**
+   * A rally result. XP is paid only when a run beats the stored best, so a
+   * minigame rewards getting better at it rather than replaying it.
+   */
+  recordRallyResult: (id, bestRally, xp) => {
+    const state = get();
+    const safeBest = Math.max(0, Math.min(999, Math.floor(Number.isFinite(bestRally) ? bestRally : 0)));
+    const previous = state.rallyBest[id] ?? 0;
+    if (safeBest <= previous) return false;
+    set({ rallyBest: { ...state.rallyBest, [id]: safeBest } });
+    grantCoreReward(Math.max(0, Math.floor(xp)), 0);
+    return true;
+  },
+  completeNeighborhoodSpot: (spotId) => {
+    if (!NEIGHBORHOOD_SPOT_IDS.includes(spotId)) return 'unknown';
+    const state = get();
+    if (state.neighborhoodDone.includes(spotId)) return 'already';
+    const completed = activityCompletedBy(spotId, state.neighborhoodDone);
+    set({ neighborhoodDone: [...state.neighborhoodDone, spotId] });
+    // The activity's reward lands once, on the visit that finishes it.
+    if (completed) {
+      grantCoreReward(completed.xpReward, 0, completed.repReward);
+      useToastStore.getState().enqueue({
+        title: `${completed.label} complete!`,
+        detail: `+${completed.xpReward} XP · +${completed.repReward} REP`,
+        kind: 'success',
+      });
+    }
+    return 'done';
+  },
+  /** The hero outfit is earned, once, and never sold. */
+  claimHeroOutfit: () => {
+    const state = get();
+    if (state.heroOutfitUnlocked || !state.firstHeistComplete || state.heistsCompleted < HERO_OUTFIT_HEISTS) return false;
+    set({ heroOutfitUnlocked: true });
+    useGameStore.getState().syncDripOwnership();
+    useToastStore.getState().enqueue({
+      title: 'Rascal Ranger suit unlocked!',
+      detail: 'Change into it at your bedroom closet.',
+      kind: 'success',
+    });
     return true;
   },
   requestLeoHeistApproach: (absoluteMinute, eligible, leoStoryComplete) => {
@@ -339,6 +425,9 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     routePlannerComplete: state.routePlannerComplete, routePlannerBestRisk: state.routePlannerBestRisk,
     timingGridComplete: state.timingGridComplete, timingGridBestScore: state.timingGridBestScore,
     homeRewardRecoveryPending: state.homeRewardRecoveryPending,
+    homeThemeIndex: state.homeThemeIndex, garageThemeIndex: state.garageThemeIndex,
+    rallyBest: state.rallyBest, neighborhoodDone: state.neighborhoodDone,
+    heroOutfitUnlocked: state.heroOutfitUnlocked,
     leoHeistHintCount: state.leoHeistHintCount, leoHeistIntroCompleted: state.leoHeistIntroCompleted, leoHeistNextHintMinute: state.leoHeistNextHintMinute,
     leoHeistWaypointActive: state.leoHeistWaypointActive, missLeslieHeistIntroduced: state.missLeslieHeistIntroduced,
     ownedStarterHome: state.ownedStarterHome, homeVoucher: state.homeVoucher,
@@ -372,6 +461,19 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
       homeVoucher: voucher,
       insideHome: false,
       homeRewardRecoveryPending: owedRecovery,
+      homeThemeIndex: safeCount(saved.homeThemeIndex ?? 0, HOME_THEMES.length - 1),
+      garageThemeIndex: safeCount(saved.garageThemeIndex ?? 0, GARAGE_THEMES.length - 1),
+      rallyBest: saved.rallyBest && typeof saved.rallyBest === 'object'
+        ? Object.fromEntries(Object.entries(saved.rallyBest)
+          .filter(([, value]) => Number.isFinite(Number(value)))
+          .map(([key, value]) => [key, safeCount(value, 999)]))
+        : {},
+      // Only spots that still exist survive a load, so removing an activity
+      // later cannot leave a save pointing at nothing.
+      neighborhoodDone: Array.isArray(saved.neighborhoodDone)
+        ? saved.neighborhoodDone.filter((id) => NEIGHBORHOOD_SPOT_IDS.includes(id))
+        : [],
+      heroOutfitUnlocked: saved.heroOutfitUnlocked === true,
       timingGridComplete: saved.timingGridComplete === true,
       timingGridBestScore: typeof gridScore === 'number' && Number.isFinite(gridScore)
         ? Math.max(0, Math.min(TIMING_GRID_ROUNDS.length, Math.floor(gridScore)))
@@ -385,3 +487,13 @@ export function deleteDayKareSave() {
   window.sessionStorage.clear();
   window.location.reload();
 }
+
+/**
+ * The career heist count lives here, but drip ownership is derived in the game
+ * store, which loads first. Hand it a reader, then ask it to rebuild once - the
+ * suit would otherwise stay locked for the rest of a session that started with
+ * a heist already finished.
+ */
+registerHeistsCompletedReader(() => useFinalMasterStore.getState().heistsCompleted);
+useGameStore.getState().syncDripOwnership();
+

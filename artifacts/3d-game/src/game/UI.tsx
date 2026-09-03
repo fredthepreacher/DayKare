@@ -3,6 +3,10 @@ import { useIsRainy, useWeatherLabel } from './WeatherSystem';
 import { useGameStore } from './store';
 import { useSlideStore } from './slideStore';
 import { requestDogRecall } from './dogRecall';
+import { GARAGE_THEMES, HOME_THEMES } from './interiorThemes';
+import { activityProgress, activitySpots } from './neighborhood';
+import { RallyGameOverlay } from './RallyGameOverlay';
+import type { RallyId } from './rallyGame';
 import { homeTierName, ownershipSummary, ownershipWalletLine } from './ownership';
 import { REALTORS, STARTER_PROPERTY_ID, STONY_BROOK_PROPERTIES, propertyAction, type StonyBrookProperty } from './realEstate';
 import { zoneLabel } from './world';
@@ -34,7 +38,7 @@ import {
   interventionIsActive,
 } from './teacherInterventions';
 import { useMonetizationStore } from './monetizationStore';
-import { absoluteGameMinute, cropIsReady, cropProgress, GUMMY_HARVEST_SIZE } from './gardenEconomy';
+import { absoluteGameMinute, cropIsReady, cropProgress, GUMMY_HARVEST_SIZE, GUMMY_SEEDS_PER_PLANTING, GUMMY_SEEDS_RETURNED_PER_HARVEST } from './gardenEconomy';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { STORYBOOK_OPEN_MINUTE, STORYBOOK_PRICES, storybookIsOpen, type StorybookItemId } from './storybookLaneConfig';
 import { playStorybookSound } from './storybookLaneAudio';
@@ -186,6 +190,8 @@ export function UI() {
   const [recoverySeconds, setRecoverySeconds] = useState(0);
   const [questTrackerMode, setQuestTrackerMode] = useState<'expanded' | 'collapsed' | 'hidden'>('collapsed');
   const [seedInspectionOpen, setSeedInspectionOpen] = useState(false);
+  // Ping pong and tennis share one overlay; this is which, if either, is up.
+  const [rallyGame, setRallyGame] = useState<RallyId | null>(null);
   const [seedMeter, setSeedMeter] = useState(0);
   const reconcileGameplayRewards = useMonetizationStore((state) => state.reconcileGameplayRewards);
 
@@ -608,6 +614,41 @@ export function UI() {
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
           }
+        } else if (activeInteractable === 'home-ping-pong' || activeInteractable === 'storybook-tennis') {
+          setRallyGame(activeInteractable === 'home-ping-pong' ? 'ping-pong' : 'tennis');
+          setActiveDialogue(null);
+        } else if (activeInteractable === 'home-closet') {
+          // The closet opens the outfit drawer that already exists, rather
+          // than a second wardrobe UI.
+          if (!journalOpen) toggleJournal();
+          setActiveDialogue({
+            name: 'Closet',
+            text: useFinalMasterStore.getState().heroOutfitUnlocked
+              ? 'Your outfits are in the Drip tab — including the Rascal Ranger suit.'
+              : 'Your outfits are in the Drip tab.',
+          });
+        } else if (activeInteractable === 'home-theme-switch') {
+          const next = useFinalMasterStore.getState().cycleHomeTheme();
+          setActiveDialogue({ name: 'Home Colours', text: `Switched to ${HOME_THEMES[next].label}.` });
+        } else if (activeInteractable === 'garage-theme-switch') {
+          const next = useFinalMasterStore.getState().cycleGarageTheme();
+          setActiveDialogue({ name: 'Garage Colours', text: `Switched to ${GARAGE_THEMES[next].label}.` });
+        } else if (activeInteractable.startsWith('storybook-spot-')) {
+          const spotId = activeInteractable.replace('storybook-spot-', '');
+          const found = activitySpots().find((entry) => entry.spot.id === spotId);
+          const result = useFinalMasterStore.getState().completeNeighborhoodSpot(spotId);
+          if (found) {
+            const done = useFinalMasterStore.getState().neighborhoodDone;
+            const progress = activityProgress(found.activity, done);
+            setActiveDialogue({
+              name: found.activity.label,
+              text: result === 'already'
+                ? `Already done here. ${progress.found}/${progress.total} finished.`
+                : progress.complete
+                  ? `${found.spot.hint} — that is the last one. ${found.activity.label} complete!`
+                  : `${found.spot.hint}. ${progress.found}/${progress.total} finished.`,
+            });
+          }
         } else if (activeInteractable === 'storybook-garage-door') {
           const owns = useFinalMasterStore.getState().ownedStarterHome;
           if (!owns) {
@@ -853,7 +894,9 @@ export function UI() {
             resetGardenActivity(bed);
             setActiveDialogue({
               name: 'Gardener Nia',
-              text: 'The bed is ready for another planting round whenever you are.',
+              text: expansion.seedPackets >= 3
+                ? 'The bed is ready for another planting round whenever you are.'
+                : `A guided round needs three seed packets and you have ${expansion.seedPackets}. Harvest a ready Gummy Drop bed to get two back.`,
             });
           }
         } else if (activeInteractable.startsWith('gummy-drop-bed-')) {
@@ -861,13 +904,34 @@ export function UI() {
           const selectedCrop = bed === 0 ? gummyCrop : gummyCrop2;
           const now = absoluteGameMinute(dayNumber, useGameStore.getState().clock.minute);
           if (selectedCrop.plantedAt === null) {
-            if (plantGummyDrops(bed)) recordTutorialEvent('plant-three-seeds');
-            playGameSound('garden-plant', 'interaction');
-            setActiveDialogue({ name: `Gummy Drop Garden ${bed + 1}`, text: 'Seeds planted! They need five in-game hours to grow a full crop of ten Gummy Drops.' });
+            // The dialogue used to say "Seeds planted!" whether or not
+            // anything was planted, which is what made planting look broken
+            // when the player had run out of seed packets.
+            const planted = plantGummyDrops(bed);
+            if (planted === 'planted') {
+              recordTutorialEvent('plant-three-seeds');
+              playGameSound('garden-plant', 'interaction');
+              setActiveDialogue({
+                name: `Gummy Drop Garden ${bed + 1}`,
+                text: `Seeds planted — one packet used, ${expansion.seedPackets - GUMMY_SEEDS_PER_PLANTING} left. They need five in-game hours to grow a full crop of ten Gummy Drops.`,
+              });
+            } else if (planted === 'needs-seeds') {
+              setActiveDialogue({
+                name: `Gummy Drop Garden ${bed + 1}`,
+                text: 'You are out of seed packets. Harvest a ready bed to get two back, or ask Gardener Nia about a planting round.',
+              });
+            } else {
+              setActiveDialogue({ name: `Gummy Drop Garden ${bed + 1}`, text: 'Nothing to plant here right now.' });
+            }
           } else if (cropIsReady(selectedCrop, now)) {
-            harvestGummyDrops(bed);
-            playGameSound('garden-harvest', 'interaction');
-            setActiveDialogue({ name: 'Gummy Drop Garden', text: 'Ten Gummy Drops harvested! Sell the basket for $30, share them for cash and REP, or eat one.' });
+            const harvested = harvestGummyDrops(bed);
+            if (harvested === 'harvested') {
+              playGameSound('garden-harvest', 'interaction');
+              setActiveDialogue({
+                name: 'Gummy Drop Garden',
+                text: `Ten Gummy Drops harvested, and ${GUMMY_SEEDS_RETURNED_PER_HARVEST} seed packets back. Plant again to grow another crop — the bed will not refill on its own.`,
+              });
+            }
           } else {
             setActiveDialogue({ name: 'Gummy Drop Garden', text: `The candy plants are ${Math.floor(cropProgress(selectedCrop, now) * 100)}% grown. A full crop takes five in-game hours.` });
           }
@@ -1349,6 +1413,15 @@ export function UI() {
     if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
     if (activeInteractable === 'wavy-slide') return 'Ride the Wavy Slide';
     if (activeInteractable.startsWith('storybook-realtor-')) return 'Ask about properties';
+    if (activeInteractable === 'home-ping-pong') return 'Play Ping Pong';
+    if (activeInteractable === 'storybook-tennis') return 'Play Tennis';
+    if (activeInteractable === 'home-closet') return 'Open Closet';
+    if (activeInteractable === 'home-theme-switch') return 'Change Home Colours';
+    if (activeInteractable === 'garage-theme-switch') return 'Change Garage Colours';
+    if (activeInteractable.startsWith('storybook-spot-')) {
+      const found = activitySpots().find((entry) => `storybook-spot-${entry.spot.id}` === activeInteractable);
+      return found ? found.spot.hint : 'Look around';
+    }
     if (activeInteractable === 'storybook-garage-door') return 'Enter Garage';
     if (activeInteractable === 'garage-exit') return 'Exit Garage';
     if (activeInteractable === 'storybook-whistle-dog') return 'Whistle for your dog';
@@ -1466,6 +1539,14 @@ export function UI() {
     }
     if (activeInteractable === 'wavy-slide') return 'Playground fun';
     if (activeInteractable.startsWith('storybook-realtor-')) return 'Stony Brook Realty';
+    if (activeInteractable === 'home-ping-pong') return 'Basement minigame';
+    if (activeInteractable === 'storybook-tennis') return 'Neighbourhood minigame';
+    if (activeInteractable === 'home-closet') return 'Outfits and drip';
+    if (activeInteractable === 'home-theme-switch' || activeInteractable === 'garage-theme-switch') return 'Interior colours';
+    if (activeInteractable.startsWith('storybook-spot-')) {
+      const found = activitySpots().find((entry) => `storybook-spot-${entry.spot.id}` === activeInteractable);
+      return found ? found.activity.label : 'Neighbourhood';
+    }
     if (activeInteractable === 'storybook-garage-door') return 'Store and manage your rides';
     if (activeInteractable === 'garage-exit') return 'Back to the driveway';
     if (activeInteractable === 'storybook-whistle-dog') return 'Call your pet';
@@ -1803,6 +1884,7 @@ export function UI() {
 
       {/* Interaction Prompt - Bottom Center */}
       <WavyShout />
+      {rallyGame && <RallyGameOverlay id={rallyGame} onClose={() => setRallyGame(null)} />}
       {interactionLabel && !journalOpen && !activeDialogue && (
         <div className="daykare-desktop-interact daykare-interaction-prompt absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
           <div className="bg-primary text-primary-foreground font-mono font-bold w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner">

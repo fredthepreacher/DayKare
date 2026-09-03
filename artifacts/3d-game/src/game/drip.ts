@@ -41,7 +41,8 @@ export type DripAchievement =
   | 'rainbow-10-rounds'
   | 'juice-25-customers'
   | 'art-5-activities'
-  | 'friend-trusted';
+  | 'friend-trusted'
+  | 'heist-milestone';
 
 export interface DripItem {
   id: string;
@@ -71,6 +72,11 @@ export const DRIP_CATALOG: DripItem[] = [
   { id: 'tiny_varsity_cardigan', name: 'Tiny Varsity Cardigan', category: 'top', rarity: 'Uncommon', repRequired: 120, priceCash: 12, unlockType: 'rep+money', unlockDetail: 'Reach 120 REP', prestige: false, color: '#22335c', accent: '#f2ece1' },
   { id: 'playground_hoodie', name: 'Playground Hoodie', category: 'top', rarity: 'Uncommon', repRequired: 160, priceCash: 14, unlockType: 'rep+money', unlockDetail: 'Reach 160 REP', prestige: false, color: '#49b79b', accent: '#ffd166' },
   { id: 'maker_art_smock', name: 'Maker Art Smock', category: 'top', rarity: 'Uncommon', repRequired: 0, priceCash: 0, unlockType: 'achievement', unlockDetail: 'Finish 5 art or maker activities', prestige: true, achievement: 'art-5-activities', color: '#f4efe2', accent: '#8ec7a1' },
+
+  // The heist-completion reward. Earned only - priceCash 0 and an achievement
+  // gate, so it can never appear as something to buy.
+  { id: 'rascal_ranger_suit', name: 'Rascal Ranger Suit', category: 'top', rarity: 'Legendary', repRequired: 0, priceCash: 0, unlockType: 'achievement', unlockDetail: 'Finish a Sticker Parade heist with Miss Leslie', prestige: true, achievement: 'heist-milestone', color: '#2f3b8c', accent: '#ffcf3d' },
+  { id: 'rascal_ranger_boots', name: 'Rascal Ranger Boots', category: 'shoes', rarity: 'Legendary', repRequired: 0, priceCash: 0, unlockType: 'achievement', unlockDetail: 'Comes with the Rascal Ranger suit', prestige: true, achievement: 'heist-milestone', color: '#2f3b8c', accent: '#5ee0a8' },
 
   // Bottoms
   { id: 'puddle_joggers', name: 'Puddle Joggers', category: 'bottom', rarity: 'Common', repRequired: 0, priceCash: 6, unlockType: 'money', unlockDetail: 'Starter shop', prestige: false, color: '#8fb8dd' },
@@ -159,6 +165,8 @@ export interface AchievementEvidence {
   artActivities: number;
   /** Highest friendship value across the cast. */
   bestFriendship: number;
+  /** Completed Sticker Parade heists, for the reward outfit. */
+  heistsCompleted: number;
 }
 
 const ART_ACHIEVEMENT_TARGET = 5;
@@ -177,6 +185,7 @@ export function achievementsEarned(evidence: AchievementEvidence): Set<DripAchie
   if (evidence.juiceCustomersServed >= JUICE_ACHIEVEMENT_TARGET) earned.add('juice-25-customers');
   if (evidence.artActivities >= ART_ACHIEVEMENT_TARGET) earned.add('art-5-activities');
   if (evidence.bestFriendship >= TRUSTED_FRIENDSHIP) earned.add('friend-trusted');
+  if (evidence.heistsCompleted >= 1) earned.add('heist-milestone');
   return earned;
 }
 

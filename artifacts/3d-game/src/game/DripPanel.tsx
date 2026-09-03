@@ -14,6 +14,7 @@ import {
   type DripView,
 } from './drip';
 import { evaluateAllAreaAccess } from './areaAccess';
+import { useFinalMasterStore } from './finalMasterStore';
 import { FISHING_RODS } from './gameplayExpansion';
 
 /**
@@ -134,6 +135,7 @@ export function DripPanel() {
   const equipFishingRod = useGameStore((state) => state.equipFishingRod);
 
   const [category, setCategory] = useState<DripCategory | 'all'>('all');
+  const heistsCompleted = useFinalMasterStore((state) => state.heistsCompleted);
 
   const evidence = useMemo(() => ({
     binkyComplete: quests['where-binky']?.status === 'complete',
@@ -143,7 +145,8 @@ export function DripPanel() {
     juiceCustomersServed: juiceClubCustomersServed,
     artActivities: progression.activityRuns['garden-planting'] ?? 0,
     bestFriendship: Object.values(friends).reduce((best, friend) => Math.max(best, friend?.friendship ?? 0), 0),
-  }), [quests, caper.step, progression.activityRuns, juiceClubCustomersServed, friends]);
+    heistsCompleted,
+  }), [quests, caper.step, progression.activityRuns, juiceClubCustomersServed, friends, heistsCompleted]);
 
   const earned = useMemo(() => achievementsEarned(evidence), [evidence]);
   const ownedSet = useMemo(() => new Set(dripOwned), [dripOwned]);

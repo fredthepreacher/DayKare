@@ -9,6 +9,7 @@ import {
   PLAYER_RADIUS, WORLD_SOLIDS, isWalkable, zoneLabel,
 } from './world';
 import { garageBays, ownershipSummary } from './ownership';
+import { ART_GALLERY_FACE_X, ART_GALLERY_FRAMES, ART_GALLERY_FRAME_SIZE, ART_GALLERY_HEIGHT } from './HubDetails';
 import {
   AFTER_HOURS_END_MINUTE, AFTER_HOURS_START_MINUTE, isAfterHours, STORYBOOK_CLOSE_MINUTE,
 } from './storybookLaneConfig';
@@ -20,6 +21,29 @@ import { SCHEDULE_DETECTION_GRACE_SECONDS } from './schedulePolicy';
  * Addendum v5: the reward table, the garage as its own zone, dining moved to
  * the basement, and after-hours Stony Brook.
  */
+
+/* --------------------------- the art gallery --------------------------- */
+
+{
+  // Every frame on the classroom picture rail must have a wall behind it.
+  // The middle frame used to hang at z = 0, which is the middle of the
+  // hallway doorway - a panel floating in mid-air beside the window.
+  const backing = WORLD_SOLIDS.filter((solid) => solid.zone === 'hub'
+    && solid.id.startsWith('hall-divider')
+    && solid.minX <= ART_GALLERY_FACE_X && solid.maxX >= ART_GALLERY_FACE_X - 0.12);
+  assert.ok(backing.length >= 2, 'the picture rail hangs on the hallway divider segments');
+
+  for (const z of ART_GALLERY_FRAMES) {
+    const half = ART_GALLERY_FRAME_SIZE[0] / 2;
+    const supported = backing.some((solid) => solid.minZ <= z - half && solid.maxZ >= z + half);
+    assert.ok(supported, `the frame at z=${z} has a wall behind it, not a doorway`);
+    // And it fits under the wall's height, so it cannot poke out of the top.
+    assert.ok(
+      ART_GALLERY_HEIGHT + ART_GALLERY_FRAME_SIZE[1] / 2 <= 3,
+      'and it fits within the wall it hangs on',
+    );
+  }
+}
 
 /* ---------------------------- reward table ---------------------------- */
 

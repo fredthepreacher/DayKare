@@ -7,6 +7,8 @@ import {
   HOME_BASEMENT_MAX_X, HOME_BASEMENT_Y, HOME_EXIT_POINT, HOME_GROUND_MAX_X, HOME_GROUND_MIN_X,
   HOME_UPPER_MIN_X, HOME_UPPER_Y, WORLD_SOLIDS, groundHeightAt,
 } from './world';
+import { useFinalMasterStore } from './finalMasterStore';
+import { HOME_THEMES, homeTheme, type InteriorPalette } from './interiorThemes';
 
 /**
  * The owned Stony Brook home.
@@ -17,14 +19,16 @@ import {
  * authored separately, and none of it blocks.
  */
 
-const WALL_COLORS: Record<string, string> = {
-  basement: '#c3b6a4',
-  ground: '#f6d9a8',
-  upper: '#e8cfe4',
-  stairs: '#e6c99a',
-};
+function wallColors(palette: InteriorPalette): Record<string, string> {
+  return {
+    basement: palette.wallBasement,
+    ground: palette.wallGround,
+    upper: palette.wallUpper,
+    stairs: palette.trim,
+  };
+}
 
-function floorBandFor(x: number): keyof typeof WALL_COLORS {
+function floorBandFor(x: number): 'basement' | 'ground' | 'upper' | 'stairs' {
   if (x <= HOME_BASEMENT_MAX_X) return 'basement';
   if (x < HOME_GROUND_MIN_X) return 'stairs';
   if (x <= HOME_GROUND_MAX_X) return 'ground';
@@ -34,8 +38,18 @@ function floorBandFor(x: number): keyof typeof WALL_COLORS {
 
 const HOME_SOLIDS = WORLD_SOLIDS.filter((solid) => solid.zone === 'home');
 
+/** A walk-up spot inside the home. */
+function useHomeCandidate(id: string, position: readonly [number, number, number], priority = 60, range = 2.3) {
+  const vector = useMemo(() => new THREE.Vector3(...position), [position]);
+  const candidate = useMemo(() => ({ id, position: vector.clone(), valid: true, range, priority }), [id, vector, range, priority]);
+  useEffect(() => registerInteractionCandidate(candidate), [candidate]);
+  useFrame(() => updateInteractionCandidate(id, { position: vector, valid: true }));
+  return null;
+}
+
 /** Walls and furniture, drawn straight from their colliders. */
-function AuthoredHomeGeometry() {
+function AuthoredHomeGeometry({ palette }: { palette: InteriorPalette }) {
+  const walls = wallColors(palette);
   return <group>
     {HOME_SOLIDS.map((solid) => {
       const centerX = (solid.minX + solid.maxX) / 2;
@@ -44,8 +58,8 @@ function AuthoredHomeGeometry() {
       const isWall = solid.kind === 'wall';
       const height = isWall ? 3 : (solid.maxY ?? 1);
       const color = isWall
-        ? WALL_COLORS[floorBandFor(centerX)]
-        : FURNITURE_COLORS[solid.id] ?? '#b98d63';
+        ? walls[floorBandFor(centerX)]
+        : FURNITURE_COLORS[solid.id] ?? palette.trim;
       return <mesh key={solid.id} position={[centerX, base + height / 2, centerZ]} castShadow receiveShadow>
         <boxGeometry args={[solid.maxX - solid.minX, height, solid.maxZ - solid.minZ]} />
         <meshStandardMaterial color={color} roughness={0.88} />
@@ -139,7 +153,85 @@ function ExitDoor() {
   </group>;
 }
 
+/** The wardrobe in the primary bedroom, where outfits are changed. */
+function ClosetStation() {
+  useHomeCandidate('home-closet', [15.7, HOME_UPPER_Y, 2.5], 84, 2.4);
+  return (
+    <group position={[15.7, HOME_UPPER_Y, 2.5]}>
+      <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.5, 0.72, 24]} />
+        <meshBasicMaterial color="#ffd84d" transparent opacity={0.5} />
+      </mesh>
+      <Text position={[0, 2.35, 0]} fontSize={0.2} color="#7a5a3f" anchorX="center">CLOSET</Text>
+    </group>
+  );
+}
+
+/** The ping pong table, and the spot you stand at to play. */
+function PingPongTable({ palette }: { palette: InteriorPalette }) {
+  useHomeCandidate('home-ping-pong', [-18.55, HOME_BASEMENT_Y, -0.8], 82, 2.4);
+  return (
+    <group position={[-18.55, HOME_BASEMENT_Y, 1.55]}>
+      <mesh position={[0, 0.68, 0]} castShadow receiveShadow>
+        <boxGeometry args={[1.5, 0.08, 2.7]} />
+        <meshStandardMaterial color="#2f6f4f" roughness={0.85} />
+      </mesh>
+      {/* Centre line and net. */}
+      <mesh position={[0, 0.725, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.05, 2.6]} />
+        <meshStandardMaterial color="#f2f6f4" />
+      </mesh>
+      <mesh position={[0, 0.83, 0]}>
+        <boxGeometry args={[1.62, 0.22, 0.03]} />
+        <meshStandardMaterial color="#e9edf0" />
+      </mesh>
+      {[[-0.62, -1.2], [0.62, -1.2], [-0.62, 1.2], [0.62, 1.2]].map(([x, z]) => (
+        <mesh key={`${x}-${z}`} position={[x, 0.32, z]} castShadow>
+          <boxGeometry args={[0.09, 0.64, 0.09]} />
+          <meshStandardMaterial color={palette.trim} />
+        </mesh>
+      ))}
+      {/* Two bats and a ball, so the table reads as ready to play. */}
+      <mesh position={[-0.42, 0.75, 1.05]} rotation={[-Math.PI / 2, 0, 0.4]}>
+        <cylinderGeometry args={[0.16, 0.16, 0.03, 14]} />
+        <meshStandardMaterial color="#c8433f" />
+      </mesh>
+      <mesh position={[0.44, 0.75, -1.05]} rotation={[-Math.PI / 2, 0, -0.3]}>
+        <cylinderGeometry args={[0.16, 0.16, 0.03, 14]} />
+        <meshStandardMaterial color="#22262b" />
+      </mesh>
+      <mesh position={[0.1, 0.78, 0.6]}>
+        <sphereGeometry args={[0.05, 10, 8]} />
+        <meshStandardMaterial color="#fff6d8" />
+      </mesh>
+      <Text position={[0, 1.5, 0]} fontSize={0.18} color="#7a5a3f" anchorX="center">PING PONG</Text>
+    </group>
+  );
+}
+
+/** A paint swatch by the basement stairs that cycles the home's theme. */
+function ThemeSwitch() {
+  useHomeCandidate('home-theme-switch', [-15.2, HOME_BASEMENT_Y, 2.6], 70, 2.2);
+  return (
+    <group position={[-15.2, HOME_BASEMENT_Y, 2.6]}>
+      <mesh position={[0, 0.9, 0]} castShadow>
+        <boxGeometry args={[0.12, 0.7, 0.9]} />
+        <meshStandardMaterial color="#e9edf0" />
+      </mesh>
+      {HOME_THEMES.map((theme, index) => (
+        <mesh key={theme.id} position={[0.07, 0.9, -0.24 + index * 0.48]}>
+          <boxGeometry args={[0.03, 0.44, 0.36]} />
+          <meshStandardMaterial color={theme.accent} />
+        </mesh>
+      ))}
+      <Text position={[0, 1.5, 0]} fontSize={0.15} color="#7a5a3f" anchorX="center">HOME COLOURS</Text>
+    </group>
+  );
+}
+
 export function HomeInterior() {
+  const themeIndex = useFinalMasterStore((state) => state.homeThemeIndex);
+  const palette = homeTheme(themeIndex);
   return <group>
     <ambientLight intensity={0.82} />
     <directionalLight position={[-4, 12, 6]} intensity={0.85} castShadow />
@@ -148,22 +240,26 @@ export function HomeInterior() {
     <pointLight position={[-19, HOME_BASEMENT_Y + 2.2, 0]} intensity={0.5} distance={14} />
 
     {/* Floors */}
-    <Slab minX={-26} maxX={-14} minZ={-7} maxZ={7} y={HOME_BASEMENT_Y} color="#9d9182" />
-    <Slab minX={-10} maxX={2} minZ={-8} maxZ={8} y={0} color="#d8b98c" />
-    <Slab minX={6} maxX={18} minZ={-8} maxZ={8} y={HOME_UPPER_Y} color="#cfa9c6" />
+    <Slab minX={-26} maxX={-14} minZ={-7} maxZ={7} y={HOME_BASEMENT_Y} color={palette.floorBasement} />
+    <Slab minX={-10} maxX={2} minZ={-8} maxZ={8} y={0} color={palette.floorGround} />
+    <Slab minX={6} maxX={18} minZ={-8} maxZ={8} y={HOME_UPPER_Y} color={palette.floorUpper} />
 
     {/* Stair corridors: a floor slab is no use on a slope, so the ramp
         surface itself is drawn as steps. */}
     <Stairs fromX={-14} toX={-10} fromY={HOME_BASEMENT_Y} toY={0} z={0} />
     <Stairs fromX={2} toX={6} fromY={0} toY={HOME_UPPER_Y} z={0} />
 
-    <AuthoredHomeGeometry />
+    <AuthoredHomeGeometry palette={palette} />
     <ExitDoor />
 
     {/* Living room */}
     <Rug x={-7} z={4} y={0} w={4.6} d={3.4} color="#c98fae" />
-    <mesh position={[-8, 0.98, 1.4]}><boxGeometry args={[2.1, 1.2, 0.1]} /><meshStandardMaterial color="#2c3138" /></mesh>
-    <mesh position={[-8, 0.98, 1.34]}><planeGeometry args={[1.95, 1.05]} /><meshStandardMaterial color="#5fa8d3" emissive="#2f6f9c" emissiveIntensity={0.35} /></mesh>
+    {/* TV setup: panel on a stand, with a soundbar and a console shelf. */}
+    <mesh position={[-8, 1.12, 1.42]} castShadow><boxGeometry args={[2.25, 1.3, 0.09]} /><meshStandardMaterial color="#22262b" /></mesh>
+    <mesh position={[-8, 1.12, 1.36]}><planeGeometry args={[2.05, 1.12]} /><meshStandardMaterial color="#5fa8d3" emissive="#2f6f9c" emissiveIntensity={0.4} /></mesh>
+    <mesh position={[-8, 0.44, 1.42]}><boxGeometry args={[0.16, 0.32, 0.16]} /><meshStandardMaterial color="#3a4046" /></mesh>
+    <mesh position={[-8, 0.68, 1.5]}><boxGeometry args={[1.5, 0.11, 0.13]} /><meshStandardMaterial color="#3a4046" /></mesh>
+    <mesh position={[-8.9, 0.7, 1.5]}><boxGeometry args={[0.34, 0.09, 0.28]} /><meshStandardMaterial color={palette.accent} /></mesh>
     <mesh position={[-7, 0.42, 4]} castShadow><boxGeometry args={[1.5, 0.44, 0.9]} /><meshStandardMaterial color="#a9713f" /></mesh>
     <Lamp x={-4.2} z={7} y={0} />
     <mesh position={[-9.85, 1.9, 4]}><boxGeometry args={[0.06, 1, 1.5]} /><meshStandardMaterial color="#8ec6a4" /></mesh>
@@ -174,11 +270,9 @@ export function HomeInterior() {
     <mesh position={[-6.4, 1.03, -7.2]} castShadow><boxGeometry args={[0.62, 0.16, 0.44]} /><meshStandardMaterial color="#8fb6c9" /></mesh>
     <RoomLabel x={-6.5} z={-5} y={0} text="KITCHEN" />
 
-    {/* Dining */}
-    {[[-2.1, 0.9], [-0.7, 0.9], [-2.1, 1.9], [-0.7, 1.9]].map(([cx, cz]) => (
-      <mesh key={`${cx}-${cz}`} position={[cx, 0.28, cz]} castShadow><boxGeometry args={[0.42, 0.56, 0.42]} /><meshStandardMaterial color="#8d6244" /></mesh>
-    ))}
-    <RoomLabel x={-1.4} z={0} y={0} text="DINING" />
+    {/* The old dining area is open floor now, on the way to the stairs. */}
+    <Rug x={-0.6} z={0.6} y={0} w={3} d={3.4} color={palette.accent} />
+    <RoomLabel x={-0.6} z={-1.6} y={0} text="HALL" />
 
     {/* Entry */}
     <Rug x={-1} z={5.6} y={0} w={2.4} d={1.6} color="#d9b26a" />
@@ -210,6 +304,7 @@ export function HomeInterior() {
     ))}
     <mesh position={[16.1, HOME_UPPER_Y + 1.75, 5.9]}><boxGeometry args={[0.06, 0.85, 1.2]} /><meshStandardMaterial color="#f0a0b8" /></mesh>
     <RoomLabel x={13.2} z={3.6} y={HOME_UPPER_Y} text="PRIMARY BEDROOM" />
+    <ClosetStation />
 
     {/* Upper: bathroom 2 + hallway */}
     <mesh position={[12.6, HOME_UPPER_Y + 0.3, -7.2]} castShadow><boxGeometry args={[0.5, 0.6, 0.62]} /><meshStandardMaterial color="#f4f8f9" /></mesh>
@@ -217,6 +312,9 @@ export function HomeInterior() {
     <Lamp x={7.4} z={5} y={HOME_UPPER_Y} />
     <mesh position={[6.2, HOME_UPPER_Y + 1.9, 5]}><boxGeometry args={[0.06, 0.9, 1.3]} /><meshStandardMaterial color="#f0a0b8" /></mesh>
     <RoomLabel x={7.4} z={0} y={HOME_UPPER_Y} text="UPSTAIRS HALL" />
+
+    {/* Ping pong, in the rec room */}
+    <PingPongTable palette={palette} />
 
     {/* Basement rec room */}
     <Rug x={-18.6} z={4} y={HOME_BASEMENT_Y} w={5} d={3.6} color="#89c4a6" />
@@ -228,6 +326,9 @@ export function HomeInterior() {
     ))}
     <mesh position={[-20.2, HOME_BASEMENT_Y + 0.26, -4.2]} castShadow><boxGeometry args={[0.9, 0.52, 0.7]} /><meshStandardMaterial color="#5fa8d3" /></mesh>
     <RoomLabel x={-18} z={0} y={HOME_BASEMENT_Y} text="REC ROOM" />
-    <RoomLabel x={-24} z={0} y={HOME_BASEMENT_Y} text="STORAGE" />
+    <RoomLabel x={-23.4} z={-1.4} y={HOME_BASEMENT_Y} text="DINING" />
+    {/* Basement dining: table, chairs and a sideboard. */}
+    <Rug x={-23.4} z={2.7} y={HOME_BASEMENT_Y} w={3.6} d={3.6} color={palette.accent} />
+    <ThemeSwitch />
   </group>;
 }

@@ -75,7 +75,7 @@ useGameStore.setState((state) => ({
   clock: { ...state.clock, minute: 14 * 60 },
   timeOfDay: 14,
 }));
-assert.equal(useGameStore.getState().harvestGummyDrops(), true);
+assert.equal(useGameStore.getState().harvestGummyDrops(), 'harvested');
 assert.equal(useGameStore.getState().gummyCrop.gummyDrops, 10);
 assert.equal(useGameStore.getState().sellGummyCrop(), true);
 assert.equal(useGameStore.getState().juiceClubCash, 30, 'one full crop earns the promised $30');
