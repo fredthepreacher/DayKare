@@ -608,6 +608,17 @@ export function UI() {
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
           }
+        } else if (activeInteractable === 'storybook-garage-door') {
+          const owns = useFinalMasterStore.getState().ownedStarterHome;
+          if (!owns) {
+            setActiveDialogue({ name: 'Garage', text: 'The garage belongs with the house. Talk to a Stony Brook realtor about Wavy Manor first.' });
+          } else {
+            useGameStore.getState().enterGarage();
+            setActiveDialogue(null);
+          }
+        } else if (activeInteractable === 'garage-exit') {
+          useGameStore.getState().leaveGarage();
+          setActiveDialogue(null);
         } else if (activeInteractable === 'storybook-whistle-dog') {
           requestDogRecall();
           playStorybookSound('pet');
@@ -1338,6 +1349,8 @@ export function UI() {
     if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
     if (activeInteractable === 'wavy-slide') return 'Ride the Wavy Slide';
     if (activeInteractable.startsWith('storybook-realtor-')) return 'Ask about properties';
+    if (activeInteractable === 'storybook-garage-door') return 'Enter Garage';
+    if (activeInteractable === 'garage-exit') return 'Exit Garage';
     if (activeInteractable === 'storybook-whistle-dog') return 'Whistle for your dog';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
@@ -1453,6 +1466,8 @@ export function UI() {
     }
     if (activeInteractable === 'wavy-slide') return 'Playground fun';
     if (activeInteractable.startsWith('storybook-realtor-')) return 'Stony Brook Realty';
+    if (activeInteractable === 'storybook-garage-door') return 'Store and manage your rides';
+    if (activeInteractable === 'garage-exit') return 'Back to the driveway';
     if (activeInteractable === 'storybook-whistle-dog') return 'Call your pet';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
     if (activeInteractable === 'tricycle') return 'Ride or customize';

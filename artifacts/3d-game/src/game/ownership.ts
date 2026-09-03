@@ -75,12 +75,16 @@ export function ownershipSummary(input: OwnershipInput): OwnershipCategory[] {
     ? [{ id: 'dog', label: 'Dog', detail: 'Follows you in Stony Brook · whistle to call' }]
     : [];
 
+  // Rides live in the garage now, so the summary says where to find them.
+  const parked = garageBays(input.laneItems);
   const rides: OwnershipEntry[] = (['tricycle', 'mini-ride-on'] as StorybookItemId[])
     .filter(owns)
     .map((item) => ({
       id: item,
       label: LANE_ITEM_LABELS[item],
-      detail: `Parked at your home · ${STORYBOOK_PRICES[item === 'mini-ride-on' ? 'miniRideOn' : item].toLocaleString()} RB`,
+      detail: parked.some((bay) => bay?.id === item)
+        ? 'In the garage'
+        : `Owned · ${STORYBOOK_PRICES[item === 'mini-ride-on' ? 'miniRideOn' : item].toLocaleString()} RB`,
     }));
 
   const furnishings: OwnershipEntry[] = owns('crib')
@@ -107,11 +111,28 @@ export function ownershipSummary(input: OwnershipInput): OwnershipCategory[] {
   return [
     { id: 'property', title: 'Property', entries: property, emptyLabel: 'No home yet — talk to a Stony Brook realtor.' },
     { id: 'pets', title: 'Pets', entries: pets, emptyLabel: 'No pet yet.' },
-    { id: 'rides', title: 'Rides', entries: rides, emptyLabel: 'No rides yet.' },
+    { id: 'rides', title: 'Rides (garage)', entries: rides, emptyLabel: 'The garage is empty — no rides yet.' },
     { id: 'furnishings', title: 'Furnishings', entries: furnishings, emptyLabel: 'Nothing installed yet.' },
     { id: 'drip', title: 'Drip', entries: drip, emptyLabel: 'No cosmetics owned yet.' },
     { id: 'gear', title: 'Gear', entries: gear, emptyLabel: 'No gear yet.' },
   ];
+}
+
+/**
+ * What sits in each garage bay, read from the lane store's owned items.
+ *
+ * There is no garage inventory of its own: a ride is in the garage exactly
+ * when the player owns it, so the two cannot disagree. Bays the player has
+ * not filled come back null and render as marked empty spaces, which is what
+ * makes the garage read as something to grow into.
+ */
+export function garageBays(ownedItems: readonly string[]) {
+  const RIDES: { id: StorybookItemId; label: string }[] = [
+    { id: 'tricycle', label: 'Tricycle' },
+    { id: 'mini-ride-on', label: 'Mini Ride-On' },
+  ];
+  const parked = RIDES.filter((ride) => ownedItems.includes(ride.id));
+  return [0, 1, 2, 3].map((index) => parked[index] ?? null);
 }
 
 /** A one-line wallet summary to head the ownership screen. */

@@ -9,6 +9,11 @@ import { useStorybookLaneStore } from './storybookLaneStore';
 import { useFinalMasterStore } from './finalMasterStore';
 import { REALTORS, realtorPatrolTarget, type RealtorProfile } from './realEstate';
 import { DOG_RECALL_RESCUE_DISTANCE, consumeDogRecall } from './dogRecall';
+import { STORYBOOK_PLAY_LOOPS, storybookPlayTarget, type PlayStyle, type StorybookPlayLoop } from './storybookPlay';
+import { isAfterHours } from './storybookLaneConfig';
+import { GARAGE_DOOR_APPROACH } from './world';
+import { KID_CAST, type KidDefinition } from './NPCs';
+import { useGameStore } from './store';
 
 const HOUSES = [
   { id: 'bluebell', label: 'BLUEBELL', position: [13, 0, -12] as const, color: '#75c9f1' },
@@ -66,6 +71,7 @@ function House({ house }: { house: typeof HOUSES[number] }) {
 function WavyManor() {
   const owned = useFinalMasterStore((state) => state.ownedStarterHome);
   useStorybookCandidate('storybook-home-my-home', [-13, 0, -9.6], 2.6, 40);
+  useStorybookCandidate('storybook-garage-door', GARAGE_DOOR_APPROACH, 2.5, 38);
   return (
     <group>
       {/* Driveway and front path: flat surfaces, walked straight over. */}
@@ -90,10 +96,19 @@ function WavyManor() {
         <coneGeometry args={[6.4, 1.9, 4]} /><meshStandardMaterial color="#7d4a37" roughness={0.85} />
       </mesh>
 
-      {/* Garage front and door. */}
-      <mesh position={[-16.4, 1.2, -10.94]} castShadow>
-        <boxGeometry args={[2.8, 2.4, 0.16]} /><meshStandardMaterial color="#d7d2c6" roughness={0.8} />
-      </mesh>
+      {/* Garage front: a roller door the player can actually open. */}
+      <group position={[-16.4, 0, -10.94]}>
+        {[0.4, 1.0, 1.6, 2.2].map((y) => (
+          <mesh key={y} position={[0, y, 0]} castShadow>
+            <boxGeometry args={[2.8, 0.5, 0.16]} />
+            <meshStandardMaterial color="#dfe3e7" roughness={0.62} metalness={0.1} />
+          </mesh>
+        ))}
+        <mesh position={[0, 2.62, 0.02]} castShadow>
+          <boxGeometry args={[3.1, 0.16, 0.24]} /><meshStandardMaterial color="#8a5a44" />
+        </mesh>
+        <Text position={[0, 2.86, 0.06]} fontSize={0.19} color="#5c3a21" anchorX="center">GARAGE</Text>
+      </group>
 
       {/* Front door and porch. */}
       <mesh position={[-13, 1.15, -10.94]} castShadow>
@@ -313,6 +328,95 @@ function DogFollower() {
   );
 }
 
+/**
+ * The cast at after-hours play.
+ *
+ * Every child walks their own authored loop, so they spread across the
+ * neighbourhood instead of piling onto one anchor, and the ones on wheels
+ * bring their ride with them. Positions are lerped on the frame rather than
+ * pushed through state, so eleven children cost eleven transforms and no
+ * re-renders.
+ */
+function AfterHoursChild({ loop, cast }: { loop: StorybookPlayLoop; cast: KidDefinition }) {
+  const ref = useRef<THREE.Group>(null);
+  const target = useMemo(() => new THREE.Vector3(...loop.spots[0]), [loop]);
+  const offset = useMemo(() => new THREE.Vector3(), []);
+  const riding = loop.style === 'trike' || loop.style === 'ride-on';
+  useFrame((state, delta) => {
+    if (!ref.current) return;
+    target.set(...storybookPlayTarget(loop, state.clock.elapsedTime));
+    offset.copy(target).sub(ref.current.position);
+    offset.y = 0;
+    if (offset.lengthSq() > 0.08) {
+      const speed = riding ? 1.9 : 1.15;
+      ref.current.position.addScaledVector(offset.normalize(), Math.min(speed * delta, 1));
+      ref.current.rotation.y = Math.atan2(-offset.x, -offset.z);
+    }
+  });
+  const mode = loop.style === 'chat'
+    ? 'conversation'
+    : loop.style === 'sit'
+      ? 'reading'
+      : 'playing';
+  return (
+    <group ref={ref} position={loop.spots[0] as unknown as [number, number, number]}>
+      <group position={[0, riding ? 0.34 : 0, 0]}>
+        <CharacterModel
+          bodyColor={cast.color}
+          accentColor={cast.accent}
+          hairColor={cast.hairColor}
+          hairStyle={cast.hairStyle}
+          skinColor={cast.skinColor}
+          activityMode={mode}
+          motionSeed={loop.name.length + loop.spots.length}
+        />
+      </group>
+      {riding && <Ride style={loop.style} />}
+      <Text position={[0, 2.05, 0]} fontSize={0.17} color="#5c3a21" anchorX="center">{loop.name}</Text>
+    </group>
+  );
+}
+
+/** The trike or ride-on under a child who is using one. */
+function Ride({ style }: { style: PlayStyle }) {
+  if (style === 'trike') {
+    return (
+      <group position={[0, 0.3, 0]}>
+        <mesh castShadow><boxGeometry args={[0.5, 0.22, 1.25]} /><meshStandardMaterial color="#e94255" /></mesh>
+        {[-0.5, 0.5].map((z) => (
+          <mesh key={z} position={[0, -0.18, z]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.24, 0.24, 0.1, 10]} /><meshStandardMaterial color="#292929" />
+          </mesh>
+        ))}
+      </group>
+    );
+  }
+  return (
+    <group position={[0, 0.34, 0]}>
+      <mesh castShadow><boxGeometry args={[1.05, 0.55, 1.85]} /><meshStandardMaterial color="#7c4dff" metalness={0.16} /></mesh>
+      <mesh position={[0, 0.46, -0.22]}><boxGeometry args={[0.7, 0.44, 0.68]} /><meshStandardMaterial color="#f9d84a" /></mesh>
+      {[[-0.5, 0.62], [0.5, 0.62], [-0.5, -0.62], [0.5, -0.62]].map(([x, z]) => (
+        <mesh key={`${x}-${z}`} position={[x, -0.24, z]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.2, 0.2, 0.12, 10]} /><meshStandardMaterial color="#292929" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function AfterHoursPlay() {
+  const minute = useGameStore((state) => state.clock.minute);
+  if (!isAfterHours(minute)) return null;
+  return (
+    <group>
+      {STORYBOOK_PLAY_LOOPS.map((loop) => {
+        const cast = KID_CAST.find((kid) => kid.name === loop.name);
+        return cast ? <AfterHoursChild key={loop.name} loop={loop} cast={cast} /> : null;
+      })}
+    </group>
+  );
+}
+
 export function StorybookLane() {
   const cribTier = useStorybookLaneStore((state) => state.cribTier);
   useStorybookCandidate('storybook-exit', [0, 0, 22], 2.8, 45);
@@ -346,12 +450,7 @@ export function StorybookLane() {
         <mesh position={[0, 2.55, 0]} castShadow><boxGeometry args={[5.35, 0.38, 0.34]} /><meshStandardMaterial color="#7f5a42" /></mesh>
         <Text position={[0, 2.5, -0.22]} rotation={[0, Math.PI, 0]} fontSize={0.42} color="#fff7df" anchorX="center">BACK TO DAYKARE</Text>
       </group>
-      <group position={[4, 0, 7]}>
-        <CharacterModel bodyColor="#6fc6d9" accentColor="#ffdf6f" hairColor="#593d2d" hairStyle="curls" activityMode="conversation" motionSeed={8} />
-      </group>
-      <group position={[-4, 0, 7]}>
-        <CharacterModel bodyColor="#f28bb5" accentColor="#9ee0a1" hairColor="#3f2b26" hairStyle="sprout" activityMode="playing" motionSeed={9} />
-      </group>
+      <AfterHoursPlay />
     </group>
   );
 }

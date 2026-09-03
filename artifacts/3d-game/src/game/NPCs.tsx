@@ -55,7 +55,7 @@ import {
   type EscapeTeacher,
 } from './escapeRetrieval';
 
-type KidDefinition = {
+export type KidDefinition = {
   name: string;
   color: string;
   accent: string;

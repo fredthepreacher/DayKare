@@ -10,8 +10,8 @@ import {
 import { normalizeStorybookSave, useStorybookLaneStore } from './storybookLaneStore';
 import { useGameStore } from './store';
 
-assert.equal(STORYBOOK_CLOSE_MINUTE - STORYBOOK_OPEN_MINUTE, 120, 'Storybook Lane is open for two game hours, 5:30 PM to 7:30 PM');
-assert.equal(STORYBOOK_CLOSE_MINUTE, 19 * 60 + 30, 'and it closes at 7:30 PM');
+assert.equal(STORYBOOK_CLOSE_MINUTE - STORYBOOK_OPEN_MINUTE, 135, 'Stony Brook after-hours runs 5:30 PM to 7:45 PM');
+assert.equal(STORYBOOK_CLOSE_MINUTE, 19 * 60 + 45, 'and it closes at 7:45 PM');
 assert.equal(storybookIsOpen(STORYBOOK_OPEN_MINUTE - 1), false);
 assert.equal(storybookIsOpen(STORYBOOK_OPEN_MINUTE), true);
 assert.equal(storybookIsOpen(STORYBOOK_CLOSE_MINUTE), false);
@@ -52,7 +52,7 @@ assert.equal(useGameStore.getState().zone, 'storybook');
 // The day cannot be ended early - 6:30 PM is now mid-evening, not closing.
 useGameStore.getState().setTimeOfDay(18.5);
 assert.equal(useGameStore.getState().finishDay(), false, 'the day does not end before 7:30 PM');
-useGameStore.getState().setTimeOfDay(19.5);
+useGameStore.getState().setTimeOfDay(19.75);
 assert.equal(useGameStore.getState().finishDay(), true);
 assert.equal(useGameStore.getState().zone, 'hub');
 assert.equal(useGameStore.getState().timeOfDay, 9);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { WINDOW_OPENINGS, buildWall, windowOpeningsResolve } from './windows';
+import { readFileSync } from 'node:fs';
+import { WINDOW_ART_CLEARANCE, WINDOW_OPENINGS, buildWall, windowOpeningsResolve } from './windows';
 import { PLAYER_RADIUS, WORLD_SOLIDS, isWalkable } from './world';
 import {
   LEGACY_CARE_COIN_TO_RASCAL_BUCKS, MONETIZATION_CATALOG, formatProductPrice,
@@ -56,6 +57,44 @@ import { DAY_END_MINUTE } from './gameClock';
   // cannot walk through one.
   const inTheWindow = new THREE.Vector3(openings[0].along, 0, (wall.minZ + wall.maxZ) / 2);
   assert.equal(isWalkable(inTheWindow, PLAYER_RADIUS), false, 'the window keeps the wall solid');
+
+  // No opening may be cut out from behind a piece of wall art. This is the
+  // defect the first cut of the window work shipped: two hallway windows were
+  // punched through the wall the attendance chart and the props board hang on,
+  // so those frames were left overhanging a hole and read as floating in
+  // mid-air. The mounts are scanned out of the source, so a new piece of art
+  // hung over a window fails here too.
+  const artSource = ['HubDetails.tsx', 'Interactables.tsx', 'Garden.tsx']
+    .map((file) => readFileSync(new URL(`./${file}`, import.meta.url), 'utf8'))
+    .join('\n');
+  const MOUNT = /surfaceAnchor=\{\{([^}]*)\}\}[^>]*?size=\{\[([^\]]*)\]\}/g;
+  const mounts: { solidId: string; along: number; width: number }[] = [];
+  for (const match of artSource.matchAll(MOUNT)) {
+    const solidId = /solidId:\s*'([^']+)'/.exec(match[1])?.[1];
+    const face = /face:\s*'([^']+)'/.exec(match[1])?.[1];
+    const along = Number(/along:\s*(-?[\d.]+)/.exec(match[1])?.[1] ?? Number.NaN);
+    const width = Number(match[2].split(',')[0]);
+    if (!solidId || face === 'top' || !Number.isFinite(along) || !Number.isFinite(width)) continue;
+    mounts.push({ solidId, along, width });
+  }
+  assert.ok(mounts.length >= 8, 'the artwork scan found the mounts it is meant to check');
+  assert.ok(
+    mounts.some((mount) => mount.solidId === 'west-boundary'),
+    'and it sees the hallway wall in particular',
+  );
+
+  for (const mount of mounts) {
+    for (const opening of WINDOW_OPENINGS.filter((item) => item.solidId === mount.solidId)) {
+      const gap = Math.max(
+        opening.along - opening.width / 2 - (mount.along + mount.width / 2),
+        mount.along - mount.width / 2 - (opening.along + opening.width / 2),
+      );
+      assert.ok(
+        gap >= WINDOW_ART_CLEARANCE,
+        `a window on ${mount.solidId} at ${opening.along} leaves only ${gap.toFixed(2)} m beside the art at ${mount.along}`,
+      );
+    }
+  }
 
   // A wall with no openings is one piece, so the common case pays nothing.
   const plain = WORLD_SOLIDS.find((solid) => solid.id === 'hall-divider-north')!;
@@ -176,10 +215,11 @@ import { DAY_END_MINUTE } from './gameClock';
 /* --------------------------- Stony Brook hours --------------------------- */
 
 {
-  assert.equal(STORYBOOK_CLOSE_MINUTE, 19 * 60 + 30, 'the lane stays open to 7:30 PM');
+  assert.equal(STORYBOOK_CLOSE_MINUTE, 19 * 60 + 45, 'after-hours runs to 7:45 PM');
   assert.equal(DAY_END_MINUTE, STORYBOOK_CLOSE_MINUTE, 'and the day clock reaches it');
-  assert.equal(storybookIsOpen(19 * 60 + 29), true, 'one minute before close is still open');
-  assert.equal(storybookIsOpen(19 * 60 + 30), false, 'closing time is closed');
+  assert.equal(storybookIsOpen(19 * 60 + 44), true, 'one minute before close is still open');
+  assert.equal(storybookIsOpen(19 * 60 + 45), false, 'closing time is closed');
+  assert.equal(storybookIsOpen(19 * 60 + 35), true, '7:35 PM used to be past closing and is not any more');
   assert.equal(storybookIsOpen(18 * 60 + 45), true, '6:45 PM used to be after hours and is not any more');
   assert.ok(
     STORYBOOK_CLOSE_HOLD_SECONDS >= 10 && STORYBOOK_CLOSE_HOLD_SECONDS <= 25,

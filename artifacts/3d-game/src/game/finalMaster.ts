@@ -5,11 +5,43 @@ export const RASCAL_BUCKS_PER_GEM = 10_000;
  * Paid on the transition into 'complete', so a reload cannot re-award it.
  */
 export const CAPER_HEIST_RB = 2_500;
+
+/**
+ * Every story and heist payout in Rascal Bucks, in one place.
+ *
+ * These used to be four literals scattered across three stores, which is how
+ * the board could advertise one number while the wallet received another.
+ * Each is paid exactly once, on the single state transition that completes
+ * the story - never on load - so a refresh cannot pay twice.
+ */
+export const STORY_REWARDS = {
+  /** Miss Leslie's Sticker Parade, first clear. */
+  leslieHeist: 9_000,
+  /** The original crew job, run from the caper board. */
+  stickerParadeCaper: CAPER_HEIST_RB,
+  /** Where's Binky - returning Binky to Leo. */
+  leoStory: 1_000,
+  /** Two Stars, One Team - making peace with Mae. */
+  maeStory: 3_000,
+} as const;
+
+export type StoryRewardId = keyof typeof STORY_REWARDS;
+
+export const STORY_REWARD_LABELS: Record<StoryRewardId, string> = {
+  leslieHeist: "Miss Leslie's Sticker Parade",
+  stickerParadeCaper: 'Sticker Parade Caper',
+  leoStory: "Where's Binky?",
+  maeStory: 'Two Stars, One Team',
+};
 export const STARTER_HOME_PRICE = 25_000;
 export const FULL_REDESIGN_PRICE = 10_000;
 export const FIRST_HEIST_CASH = 1_000;
 export const FIRST_HEIST_XP = 250;
-export const FIRST_HEIST_RB = 14_000;
+/**
+ * The first-clear payout for Miss Leslie's heist. Reads from STORY_REWARDS so
+ * the board, the reward-choice modal and the wallet cannot disagree.
+ */
+export const FIRST_HEIST_RB = STORY_REWARDS.leslieHeist;
 export const REPLAY_HEIST_RB = 5_000;
 
 export const TUTORIAL_CHAPTERS = [

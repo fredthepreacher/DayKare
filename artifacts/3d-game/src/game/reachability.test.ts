@@ -122,7 +122,8 @@ const HOME_TARGETS: [string, readonly number[]][] = [
   ['front door', [-1, 0, 7.4]],
   ['living room', [-7, 0, 4]],
   ['kitchen', [-6.5, 0, -5]],
-  ['dining area', [-1.4, 0, -1.4]],
+  ['open hall by the stairs', [-1.4, 0, -1.4]],
+  ['entry through to the hall', [-1, 0, 4]],
   ['bathroom 1', [-1, 0, -5.5]],
   ['up-stairs corridor', [4, 0, 0]],
   ['upstairs landing', HOME_UPPER_LANDING],
@@ -136,7 +137,8 @@ const HOME_TARGETS: [string, readonly number[]][] = [
   ['down-stairs corridor', [-12, 0, 0]],
   ['basement landing', HOME_BASEMENT_LANDING],
   ['rec room', [-18, 0, 3]],
-  ['storage nook', [-24, 0, 0]],
+  ['basement dining room', [-23.4, 0, 5.6]],
+  ['basement dining table approach', [-23.4, 0, 0]],
 ];
 
 for (const [label, target] of HOME_TARGETS) {
@@ -175,6 +177,33 @@ assert.equal(
   false,
   'and the wall that split the bedroom from it is gone',
 );
+
+// Dining moved downstairs. Nothing on the ground floor is a dining room any
+// more, and the wall that boxed the entry in went with it.
+assert.equal(
+  WORLD_SOLIDS.some((solid) => solid.id === 'home-dining-table'),
+  false,
+  'the ground floor no longer holds a dining table',
+);
+assert.equal(
+  WORLD_SOLIDS.some((solid) => solid.id.startsWith('home-ground-entry-wall')),
+  false,
+  'and the entry opens straight through to the stairs',
+);
+assert.ok(
+  WORLD_SOLIDS.some((solid) => solid.id === 'home-basement-dining-table'),
+  'the basement has the dining table instead',
+);
+// You can walk all the way round the basement table, which is what stops a
+// dining room from feeling like a cupboard.
+for (const [label, point] of [
+  ['north of the table', [-23.4, 0, 0.1]],
+  ['south of the table', [-23.4, 0, 5.4]],
+  ['west of the table', [-25.4, 0, 3.8]],
+  ['east of the table', [-21.4, 0, 2.7]],
+] as [string, number[]][]) {
+  assert.ok(home.reaches(point), `there is walking room ${label} in the basement dining room`);
+}
 for (const z of [-2.5, -1, 1, 3, 5, 7]) {
   assert.ok(home.reaches([13, 0, z]), `the merged bedroom is one walkable room at z=${z}`);
 }

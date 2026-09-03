@@ -73,6 +73,13 @@ export function evaluateScheduleRetrieval(
     scheduleObservedAt = now;
     if (retrieval.reason === 'schedule') resetActiveRetrieval(now);
   }
+  // After-hours Stony Brook is explicitly outside the daycare's supervision.
+  // No mandatory block overlaps it today, but stating the rule here means a
+  // future block that does cannot quietly send a teacher into the lane.
+  if (zone === 'storybook' || zone === 'home') {
+    if (retrieval.reason === 'schedule' && retrieval.phase !== 'grace') resetActiveRetrieval(now);
+    return getEscapeRetrievalSnapshot();
+  }
   if (!isMandatorySchedule(scheduleId) || exempt) {
     if (retrieval.reason === 'schedule' && retrieval.phase !== 'grace') resetActiveRetrieval(now);
     return getEscapeRetrievalSnapshot();

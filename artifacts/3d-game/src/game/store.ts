@@ -53,6 +53,8 @@ import {
   GARDEN_RETURN_SPAWN,
   STORYBOOK_SPAWN,
   HOME_SPAWN,
+  GARAGE_SPAWN,
+  GARAGE_DOOR_RETURN,
   STONY_BROOK_DOOR_RETURN,
   getTrackedPlayerPosition,
   isWalkable,
@@ -107,7 +109,7 @@ import { monetizedReputation } from './monetizationStore';
 import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GummyCropState } from './gardenEconomy';
 import { STORYBOOK_CLOSE_MINUTE, storybookIsOpen } from './storybookLaneConfig';
 import { useStorybookLaneStore } from './storybookLaneStore';
-import { CAPER_HEIST_RB } from './finalMaster';
+import { CAPER_HEIST_RB, STORY_REWARDS } from './finalMaster';
 import { getEscapeRetrievalSnapshot } from './escapeRetrieval';
 import {
   ART_CASH,
@@ -351,6 +353,8 @@ export interface GameState {
   enterStorybookLane: () => boolean;
   enterOwnedHome: () => boolean;
   leaveOwnedHome: () => boolean;
+  enterGarage: () => boolean;
+  leaveGarage: () => boolean;
   leaveStorybookLane: () => boolean;
   finishDay: () => boolean;
   returnToHub: () => boolean;
@@ -1076,7 +1080,7 @@ export const useGameStore = create<GameState>()(
         quality: isQualityPreset(quality) ? quality : initialState.quality,
       }),
       setTimeOfDay: (time) => set((state) => {
-         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 19.5);
+         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 19.75);
         const schedule = getScheduleForTime(timeOfDay);
         const minute = timeOfDayToMinute(timeOfDay);
         return {
@@ -1403,6 +1407,12 @@ export const useGameStore = create<GameState>()(
             trustedHelperPass: true,
           });
           changed = true;
+          // Leo's story pays here, on the one transition into 'returned-good'.
+          // The guard above rejects a completed quest, so a reload restores a
+          // finished story and never reaches this branch.
+          useStorybookLaneStore.setState((wallet) => ({
+            ribbonBucks: wallet.ribbonBucks + STORY_REWARDS.leoStory,
+          }));
           return {
             binkyStatus: status,
             quests,
@@ -1410,7 +1420,7 @@ export const useGameStore = create<GameState>()(
             rewardEvents: appendRewardEvent(state.rewardEvents, {
               id: 'where-binky-complete',
               title: 'Binky is home!',
-              detail: 'Trusted Helper Pass earned',
+              detail: `Trusted Helper Pass earned · +${STORY_REWARDS.leoStory.toLocaleString()} RB`,
               tokens: 5,
               reputation: monetizedReputation(8),
               sticker: 'Binky Buddy',
@@ -2182,6 +2192,11 @@ export const useGameStore = create<GameState>()(
           const rivalStory = resolveMaeStory(state.rivalStory);
           if (rivalStory === state.rivalStory) return state;
           changed = true;
+          // resolveMaeStory returns the same object once the story is done, so
+          // this pays on the single transition and never on a reload.
+          useStorybookLaneStore.setState((wallet) => ({
+            ribbonBucks: wallet.ribbonBucks + STORY_REWARDS.maeStory,
+          }));
           const progression = withQualifiedRoutes({
             ...state.progression,
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + 5),
@@ -2202,7 +2217,7 @@ export const useGameStore = create<GameState>()(
             rewardEvents: appendRewardEvent(state.rewardEvents, {
               id: 'rival-story-complete',
               title: 'Two Stars, One Team!',
-              detail: 'Nickname earned: Bridge Builder',
+              detail: `Nickname earned: Bridge Builder · +${STORY_REWARDS.maeStory.toLocaleString()} RB`,
               tokens: 5,
               reputation: monetizedReputation(4),
               sticker: 'Two Stars',
@@ -2448,6 +2463,43 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      /**
+       * The garage loads as its own zone, entered from the driveway. It is
+       * deliberately not a room of the house: separate collision, separate
+       * spawn, and nothing of the house's geometry to walk through first.
+       */
+      enterGarage: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'storybook' || state.zoneTransitioning) return state;
+          changed = true;
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'garage' as GameZone,
+            storybookPosition: currentPosition(state),
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
+      leaveGarage: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'garage' || state.zoneTransitioning) return state;
+          changed = true;
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'storybook' as GameZone,
+            storybookPosition: GARAGE_DOOR_RETURN,
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
       leaveOwnedHome: () => {
         let changed = false;
         set((state) => {
@@ -2538,7 +2590,9 @@ export const useGameStore = create<GameState>()(
             ? state.storybookPosition
             : zone === 'home'
               ? HOME_SPAWN
-              : state.hubPosition;
+              : zone === 'garage'
+                ? GARAGE_SPAWN
+                : state.hubPosition;
         resetTouchInput();
         return {
           zone,

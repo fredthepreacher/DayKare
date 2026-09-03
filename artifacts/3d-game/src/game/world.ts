@@ -14,7 +14,7 @@ export type SolidKind =
   | 'activity-station'
   | 'camera-blocker';
 
-export type GameZone = 'hub' | 'garden' | 'storybook' | 'home';
+export type GameZone = 'hub' | 'garden' | 'storybook' | 'home' | 'garage';
 
 export interface WorldSolid {
   id: string;
@@ -171,6 +171,42 @@ export const STONY_BROOK_DOOR_RETURN: [number, number, number] = [-13, 0, -8.6];
 export const HOME_UPPER_LANDING: [number, number, number] = [7.4, HOME_UPPER_Y, 0];
 export const HOME_BASEMENT_LANDING: [number, number, number] = [-15.4, HOME_BASEMENT_Y, 0];
 
+/* ------------------------------------------------------------------ *
+ * The garage.
+ *
+ * Its own zone rather than a room of the house: the brief asked for it to
+ * load separately, and a zone already gives us that - separate collision,
+ * separate camera bounds, its own spawn - for the cost of one entry in the
+ * union. No new instancing machinery, and it stays compatible with per-player
+ * housing later, because a zone is already per-session.
+ * ------------------------------------------------------------------ */
+
+export const GARAGE_SPAWN: [number, number, number] = [0, 0, 4.6];
+/** The inside face of the garage door, and the way back to Stony Brook. */
+export const GARAGE_EXIT_POINT: [number, number, number] = [0, 0, 5.6];
+/** Where the player stands on the driveway after leaving the garage. */
+export const GARAGE_DOOR_RETURN: [number, number, number] = [-16.5, 0, -9.4];
+/** The walk-up spot on the driveway, in front of the garage door. */
+export const GARAGE_DOOR_APPROACH: [number, number, number] = [-16.4, 0, -10.1];
+
+/** Vehicle bays, west to east. Each holds one owned ride. */
+export const GARAGE_BAYS: readonly [number, number, number][] = [
+  [-4.4, 0, -1.2],
+  [-1.5, 0, -1.2],
+  [1.5, 0, -1.2],
+  [4.4, 0, -1.2],
+];
+
+const garageBox = (
+  id: string,
+  kind: SolidKind,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number,
+  options: Omit<Partial<WorldSolid>, 'id' | 'kind' | 'minX' | 'maxX' | 'minZ' | 'maxZ'> = {},
+): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'garage', ...options });
+
 const homeBox = (
   id: string,
   kind: SolidKind,
@@ -292,6 +328,19 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   // to two 0.86 m lanes, or 0.30 m on the tricycle. Now it reads as the floor
   // decoration it looks like.
   box('sandbox', 'playground', 10, 14, 3, 7, { cameraRole: 'substantial', maxY: 0.07 }),
+  /* ---- The garage: one room, four bays, a workbench and a door ---- */
+  garageBox('garage-north', 'wall', -6.3, 6.3, -6.3, -6.0),
+  garageBox('garage-south-west', 'wall', -6.3, -1.1, 6.0, 6.3),
+  garageBox('garage-south-east', 'wall', 1.1, 6.3, 6.0, 6.3),
+  // The roller door. Solid, like the home's front door: you leave through the
+  // interaction, not through the gap.
+  garageBox('garage-door', 'wall', -1.1, 1.1, 6.0, 6.3),
+  garageBox('garage-west', 'wall', -6.3, -6.0, -6.3, 6.3),
+  garageBox('garage-east', 'wall', 6.0, 6.3, -6.3, 6.3),
+  garageBox('garage-workbench', 'counter', -5.9, -2.2, -5.9, -5.0, { cameraRole: 'substantial', maxY: 0.95 }),
+  garageBox('garage-shelf', 'furniture', 4.6, 5.9, -5.9, -3.2, { cameraRole: 'substantial', maxY: 1.9 }),
+  garageBox('garage-toolbox', 'furniture', -0.7, 0.7, -5.9, -5.1, { maxY: 0.85 }),
+
   /* ---- The owned Stony Brook home interior ---- */
   homeBox('home-ground-north', 'wall', -10.3, 2.3, -8.3, -8.0),
   homeBox('home-ground-south-west', 'wall', -10.3, -1.9, 8.0, 8.3),
@@ -309,8 +358,6 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   homeBox('home-ground-spine-c', 'wall', -3.15, -2.85, 3.6, 8.3),
   homeBox('home-ground-kitchen-wall-a', 'wall', -10.3, -8.0, -0.15, 0.15),
   homeBox('home-ground-kitchen-wall-b', 'wall', -6.4, -2.85, -0.15, 0.15),
-  homeBox('home-ground-entry-wall-a', 'wall', -3.15, -2.2, 3.85, 4.15),
-  homeBox('home-ground-entry-wall-b', 'wall', 0.4, 2.3, 3.85, 4.15),
   homeBox('home-ground-bath-wall-a', 'wall', -1.2, 2.3, -3.15, -2.85),
   // A 5.2 m stairwell rather than a 4 m slot: the approach was tight
   // enough that the camera boxed in at the landing.
@@ -337,8 +384,10 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   homeBox('home-basement-west', 'wall', -26.3, -26.0, -7.3, 7.3),
   homeBox('home-basement-east-north', 'wall', -14.0, -13.7, -7.3, -2.6),
   homeBox('home-basement-east-south', 'wall', -14.0, -13.7, 2.6, 7.3),
-  homeBox('home-basement-divider-a', 'wall', -22.15, -21.85, -7.3, -1.0),
-  homeBox('home-basement-divider-b', 'wall', -22.15, -21.85, 1.0, 7.3),
+  // Moved 1.5 m west: the old nook was 4 m across, which is a cupboard,
+  // not a room you can put a table and four chairs in.
+  homeBox('home-basement-divider-a', 'wall', -20.65, -20.35, -7.3, -1.0),
+  homeBox('home-basement-divider-b', 'wall', -20.65, -20.35, 1.0, 7.3),
   homeBox('home-sofa', 'furniture', -9.6, -6.4, 5.9, 7.0, { cameraRole: 'substantial', maxY: 0.85 }),
   homeBox('home-tv-stand', 'furniture', -9.6, -6.4, 1.0, 1.8, { cameraRole: 'substantial', maxY: 0.62 }),
   homeBox('home-bookshelf', 'furniture', -4.6, -3.3, 5.6, 6.5, { cameraRole: 'substantial', maxY: 1.9 }),
@@ -346,7 +395,6 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   homeBox('home-kitchen-counter-west', 'counter', -9.7, -8.8, -6.8, -3.4, { cameraRole: 'substantial', maxY: 0.95 }),
   homeBox('home-kitchen-island', 'counter', -7.0, -5.0, -4.4, -3.2, { cameraRole: 'substantial', maxY: 0.95 }),
   homeBox('home-fridge', 'furniture', -4.4, -3.4, -7.7, -6.6, { cameraRole: 'substantial', maxY: 1.9 }),
-  homeBox('home-dining-table', 'table', -2.4, -0.4, 0.4, 2.4, { cameraRole: 'substantial', maxY: 0.74 }),
   homeBox('home-bath1-tub', 'furniture', -2.7, -0.8, -7.7, -6.4, { cameraRole: 'substantial', maxY: 0.6 }),
   homeBox('home-bath1-vanity', 'counter', 0.6, 1.9, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
   homeBox('home-primary-bed', 'furniture', 10.4, 12.5, 5.1, 7.4, { cameraRole: 'substantial', maxY: 0.62 }),
@@ -363,8 +411,17 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   homeBox('home-rec-sofa', 'furniture', -20.6, -17.6, 5.4, 6.6, { cameraRole: 'substantial', maxY: 0.85 }),
   homeBox('home-rec-arcade', 'furniture', -15.6, -14.4, -6.6, -5.0, { cameraRole: 'substantial', maxY: 1.85 }),
   homeBox('home-rec-shelf', 'furniture', -21.8, -20.8, -6.6, -3.6, { cameraRole: 'substantial', maxY: 1.6 }),
-  homeBox('home-storage-crates', 'furniture', -25.7, -24.2, -6.6, -3.4, { cameraRole: 'substantial', maxY: 1.1 }),
-  homeBox('home-storage-shelf', 'furniture', -25.7, -24.6, 2.0, 6.6, { cameraRole: 'substantial', maxY: 1.7 }),
+  // The basement dining room: a table with four chairs and room to walk
+  // all the way round it.
+  homeBox('home-basement-dining-table', 'table', -24.5, -22.3, 1.6, 3.8, { cameraRole: 'substantial', maxY: 0.74 }),
+  homeBox('home-basement-dining-chair-nw', 'furniture', -24.4, -23.8, 0.7, 1.3, { maxY: 0.52 }),
+  homeBox('home-basement-dining-chair-ne', 'furniture', -23.0, -22.4, 0.7, 1.3, { maxY: 0.52 }),
+  homeBox('home-basement-dining-chair-sw', 'furniture', -24.4, -23.8, 4.1, 4.7, { maxY: 0.52 }),
+  homeBox('home-basement-dining-chair-se', 'furniture', -23.0, -22.4, 4.1, 4.7, { maxY: 0.52 }),
+  homeBox('home-basement-sideboard', 'counter', -25.8, -25.0, -1.4, 1.4, { cameraRole: 'substantial', maxY: 0.95 }),
+  // Storage joined the rec room when the nook became the dining room.
+  homeBox('home-storage-crates', 'furniture', -19.6, -18.1, -6.6, -5.6, { cameraRole: 'substantial', maxY: 1.1 }),
+  homeBox('home-storage-shelf', 'furniture', -17.2, -16.2, -6.6, -4.2, { cameraRole: 'substantial', maxY: 1.7 }),
   box('route-garden-district', 'route-gate', 13, 15.4, -14.3, -12.3),
   box('route-storybook-lane', 'route-gate', -15.4, -13, -14.3, -12.3),
   box('route-maker-market', 'route-gate', 13, 15.4, 12.2, 14.3),
@@ -547,6 +604,7 @@ export const WORLD_WALKABLE_REGIONS: WalkableRegion[] = [
   // home is fully enclosed by its own walls, so the walls can do all
   // the containing and the region only has to be large enough.
   { id: 'home-interior', zone: 'home', minX: -26.5, maxX: 18.5, minZ: -8.5, maxZ: 8.5 },
+  { id: 'garage-interior', zone: 'garage', minX: -6.5, maxX: 6.5, minZ: -6.5, maxZ: 6.5 },
 ];
 
 export const GARDEN_SPAWN: [number, number, number] = [0, 0, 14];
@@ -844,6 +902,7 @@ export function findApproachPoint(
  */
 export const ZONE_LABELS: Record<GameZone, string> = {
   home: 'Your Stony Brook Home',
+  garage: 'Your Garage',
   hub: 'DayKare Hub',
   garden: 'Garden District',
   storybook: 'Storybook Lane',

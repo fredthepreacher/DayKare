@@ -27,6 +27,7 @@ import { startCloudSync } from './cloudSync';
 import { MultiplayerWorld } from './MultiplayerWorld';
 import { FinalMasterWorld } from './FinalMasterWorld';
 import { HomeInterior } from './HomeInterior';
+import { GarageInterior } from './GarageInterior';
 import { FinalMasterOverlay } from './FinalMasterUI';
 import { ToastViewport } from './ToastViewport';
 import { useFinalMasterStore } from './finalMasterStore';
@@ -94,7 +95,7 @@ function GameScene() {
       <WeatherEffects />
       <PerformanceTelemetry />
       
-      {zone === 'home' ? <HomeInterior /> : zone === 'hub' ? (
+      {zone === 'home' ? <HomeInterior /> : zone === 'garage' ? <GarageInterior /> : zone === 'hub' ? (
         <>
           <Environment />
           <HubDetails />

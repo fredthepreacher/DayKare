@@ -2329,9 +2329,10 @@ assert.equal(zoneLabel('hub'), 'DayKare Hub', 'the hub has a player-facing name'
 assert.equal(zoneLabel('garden'), 'Garden District', 'and so does the garden');
 assert.equal(zoneLabel('storybook'), 'Storybook Lane', 'and so does the after-hours neighborhood');
 assert.equal(zoneLabel('home'), 'Your Stony Brook Home', 'and so does the owned home interior');
+assert.equal(zoneLabel('garage'), 'Your Garage', 'and so does the garage, which loads as its own zone');
 assert.deepEqual(
   Object.keys(ZONE_LABELS).sort(),
-  ['garden', 'home', 'hub', 'storybook'],
+  ['garage', 'garden', 'home', 'hub', 'storybook'],
   'every zone has a label - a future district must fail to compile rather than silently render as the hub',
 );
 

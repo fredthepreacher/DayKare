@@ -31,10 +31,16 @@ export const WINDOW_OPENINGS: readonly WindowOpening[] = [
   { solidId: 'main-north-wall', along: 4.4, width: 1.9, sill: 1.15, height: 1.25 },
   // Hallway outer wall. The hallway had no daylight at all, which is why a
   // flat blue panel there read as a floating decoration rather than a window.
-  { solidId: 'west-boundary', along: -3.2, width: 1.9, sill: 1.15, height: 1.25 },
-  { solidId: 'west-boundary', along: 3.2, width: 1.9, sill: 1.15, height: 1.25 },
-  // Playground side, so the room reads as lit from both ends.
-  { solidId: 'east-boundary', along: -6.5, width: 1.9, sill: 1.15, height: 1.25 },
+  //
+  // These two sit in the gaps BETWEEN the three pieces of art already hung on
+  // this wall. Cut at +/-3.2 they punched a hole out from behind the
+  // attendance chart and the props board, which left those frames hanging
+  // over open air - the "artwork floating in thin air near the hallway".
+  { solidId: 'west-boundary', along: -2.3, width: 1.35, sill: 1.15, height: 1.25 },
+  { solidId: 'west-boundary', along: 2.25, width: 1.35, sill: 1.15, height: 1.25 },
+  // Playground side, so the room reads as lit from both ends. Pushed clear of
+  // the playground-equipment board, which it used to miss by 8 cm.
+  { solidId: 'east-boundary', along: -7, width: 1.6, sill: 1.15, height: 1.25 },
   { solidId: 'east-boundary', along: 6.5, width: 1.9, sill: 1.15, height: 1.25 },
 ];
 
@@ -119,6 +125,12 @@ export function buildWall(solid: WorldSolid, height = 3): WallBuild {
   if (cursor < end) segments.push(at((cursor + end) / 2, height / 2, end - cursor, height));
   return { segments, panes };
 }
+
+/**
+ * How much clear wall an opening must leave around anything mounted on the
+ * same wall. Below this the frame overhangs the hole and reads as floating.
+ */
+export const WINDOW_ART_CLEARANCE = 0.25;
 
 /** Every wall an opening claims must actually exist, or it cuts nothing. */
 export function windowOpeningsResolve() {
