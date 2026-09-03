@@ -48,11 +48,25 @@ type Station = Omit<ChildActivityPlan, 'duration' | 'soloFallback'> & {
 };
 
 const CHILD_ORDER = ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max', 'Mae'];
+/**
+ * Where children sit to eat.
+ *
+ * These ring the two cafeteria tables. When the tables moved to the side walls -
+ * they had been close enough to the doorway that walking in shoved the player -
+ * the outer seats ended up INSIDE the tabletops, so a child at breakfast was
+ * standing in the furniture. The seats now sit on each table's inner and side
+ * faces, which also keeps the central lane between them clear.
+ */
 const CAFETERIA_NPC_SEATS: [number, number, number][] = [
-  [-14.5, 0, 10], [-13.35, 0, 9.05], [-13.35, 0, 10.95],
-  [-9.5, 0, 10], [-10.65, 0, 9.05], [-10.65, 0, 10.95],
-  [-14.65, 0, 11.45], [-9.35, 0, 11.45], [-14.65, 0, 8.9],
-  [-9.35, 0, 8.9], [-12, 0, 11.25],
+  // West table, centre (-14.4, 10), radius 0.78. A child's collision radius is
+  // 0.34, so a seat has to sit at least 1.12 m from the centre - 1.0 m still
+  // put them inside the tabletop.
+  [-13.2, 0, 10], [-14.4, 0, 8.8], [-14.4, 0, 11.2],
+  // East table, centre (-9.6, 10), radius 0.78.
+  [-10.8, 0, 10], [-9.6, 0, 8.8], [-9.6, 0, 11.2],
+  // Standing spots along the lane and in front of the serving pass.
+  [-13.2, 0, 11.0], [-10.8, 0, 11.0], [-13.2, 0, 9.0],
+  [-10.8, 0, 9.0], [-12, 0, 11.25],
 ];
 export const MIN_CHILD_ACTIVITY_DWELL_SECONDS = 7.2;
 export const MAX_CHILD_ACTIVITY_DWELL_SECONDS = 8.5;
@@ -108,12 +122,17 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'pretend-play', mode: 'pretend-play', position: [10.6, 0, -1.6], focus: [11.5, 0, -1.6], duration: 5.5 },
     { activity: 'following', mode: 'following', position: [14.1, 0, 1.1], focus: [13.1, 0, 1.1], duration: 4.8 },
     { activity: 'reacting', mode: 'reacting', position: [13.6, 0, 8.4], focus: [12.6, 0, 8.4], duration: 5.1 },
-    { activity: 'parallel-play', mode: 'playing', position: [9.5, 0, 10.5], focus: [10.5, 0, 10.5], duration: 5.6 },
+    // Was (9.5, 10.5), which the heist planning desk was later built on top of.
+    { activity: 'parallel-play', mode: 'playing', position: [9.2, 0, 8.4], focus: [10.2, 0, 8.4], duration: 5.6 },
     { activity: 'following', mode: 'following', position: [9.4, 0, 5.4], focus: [10.4, 0, 5.4], duration: 4.9 },
     { activity: 'conversation', mode: 'conversation', position: [14.6, 0, 5.2], focus: [13.6, 0, 5.2], duration: 5.3 },
     { activity: 'toy-play', mode: 'toy-play', position: [10.1, 0, -5.3], focus: [11.1, 0, -5.3], duration: 5.7 },
     { activity: 'dancing', mode: 'dancing', position: [14, 0, -4.8], focus: [13, 0, -4.8], duration: 5.4 },
-    { activity: 'pretend-play', mode: 'pretend-play', position: [11.5, 0, 12.1], focus: [12.5, 0, 12.1], duration: 5.5 },
+    // Was (11.5, 12.1), inside the heist hub's back wall. The far-north lawn is
+    // reachable now, but only through a 1.26 m gap beside the hub - sending the
+    // whole cast on that detour made the crowd scenario time out. Kept in the
+    // open east lane instead.
+    { activity: 'pretend-play', mode: 'pretend-play', position: [14.6, 0, 10.2], focus: [13.6, 0, 10.2], duration: 5.5 },
   ],
   pickup: [
     { activity: 'picture-books', mode: 'reading', position: [-9.2, 0, -5.2], focus: [-10.2, 0, -5.2], duration: 5.8 },

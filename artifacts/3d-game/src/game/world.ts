@@ -200,11 +200,51 @@ export const WORLD_SOLIDS: WorldSolid[] = [
     maxY: 1.8,
   }),
   box('storage-box-b', 'box', -11.1, -9.5, 13.7, 15.3, { cameraRole: 'substantial' }),
-  box('cafeteria-future-divider', 'wall', -15.7, -8.3, 13.05, 13.31),
-  box('cafeteria-counter', 'counter', -14.78, -9.22, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
-  box('cafeteria-table-a', 'table', -14.13, -12.57, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
-  box('cafeteria-table-b', 'table', -11.43, -9.87, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
-  box('heist-hub-back', 'furniture', 8.52, 12.78, 11.79, 11.97, { cameraRole: 'substantial', maxY: 2.4 }),
+  // The divider that partitions the cafeteria from the space behind it.
+  //
+  // It used to be ONE panel spanning the full room width, which sealed the back
+  // of the room completely - and the back of the room is where the storage
+  // shelves and `binky-storage` live. Where's Binky? is the opening Story quest,
+  // so that partition soft-locked a new save's first objective. An accessibility
+  // audit flagged the target as unreachable and the storage room as only 77%
+  // reachable.
+  //
+  // It is now two panels with a 2.6 m doorway on the western side, lined up with
+  // the storage nook. The cafeteria still reads as its own room; the shelves
+  // behind it stay reachable.
+  box('cafeteria-future-divider-west', 'wall', -15.7, -13.9, 13.05, 13.31),
+  box('cafeteria-future-divider-east', 'wall', -11.3, -8.3, 13.05, 13.31),
+  // The serving counter, in two segments with a service pass between them.
+  //
+  // As a single 5.6 m run it spanned the room's entire walkable width: inflated
+  // by the player radius it covered x -15.2 to -8.8 against walkable bounds of
+  // -15.28 to -8.72, so there was no way past it at all. The cafeteria was a
+  // dead end and everything behind it - the storage shelves, the Lost & Found,
+  // Binky - was cut off. The pass lines up with the doorway in the divider
+  // above, so one lane runs door -> counter -> shelves.
+  box('cafeteria-counter-west', 'counter', -14.78, -13.8, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
+  box('cafeteria-counter-east', 'counter', -11.4, -9.22, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
+  // Both tables moved to the side walls. At their old centres (-13.35 and
+  // -10.65, z 10) their inflated footprints reached z 8.44 - a third of a metre
+  // from the doorway at z 8 - so walking in through the door clipped a table and
+  // the collision resolver shoved the player 0.28 m in one frame, against a
+  // 0.133 m step budget. That is the doorway-stall failure in the portal suite.
+  // Against the walls they leave a 2.4 m central lane from the door to the
+  // serving counter.
+  box('cafeteria-table-a', 'table', -15.18, -13.62, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
+  box('cafeteria-table-b', 'table', -10.38, -8.82, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
+  // The heist hub's back wall, shortened at its western end.
+  //
+  // At its full span (x 8.52 -> 12.78) it met the Maker Market gate (x 13 ->
+  // 15.4) with a 0.22 m gap between them - narrower than a child, let alone the
+  // player - which sealed the entire northern third of the playground. That is
+  // roughly 14 x 3 m of open grass the player could see and walk toward but
+  // never enter: exactly the "inviting open-looking route with invisible
+  // collision" the polish pass is meant to remove.
+  //
+  // Ending it at x 9.9 leaves a 1.26 m walkway up the hub's west side, so the
+  // north playground is reachable while the planning desk stays enclosed.
+  box('heist-hub-back', 'furniture', 9.9, 12.78, 11.79, 11.97, { cameraRole: 'substantial', maxY: 2.4 }),
   box('heist-hub-east', 'furniture', 12.62, 12.78, 9.3, 11.8, { cameraRole: 'substantial', maxY: 1.8 }),
   box('heist-planning-desk', 'table', 9.38, 11.03, 10.24, 11.06, { cameraRole: 'substantial', maxY: 1.06 }),
   box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8, {

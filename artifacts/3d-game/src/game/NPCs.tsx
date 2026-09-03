@@ -555,7 +555,7 @@ export function teacherPatrolSpots(
   defaultPos: [number, number, number],
 ): [number, number, number][] {
   if (name === 'Ms. Harper') {
-    if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-14.4, 0, 9.1]];
+    if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-12.3, 0, 10.4]];
     if (schedule === 'show-and-tell') return [[0, 0, 0.2], [0, 0, 4.8]];
     if (schedule === 'nap') return [[-5.8, 0, 4.8], [5.8, 0, 4.8]];
     if (schedule === 'art-time') return [[-12.35, 0, -10], [-12.35, 0, -13.8]];
@@ -563,12 +563,12 @@ export function teacherPatrolSpots(
     if (schedule === 'pickup') return [[-6, 0, -1.6], [-6, 0, 2]];
     return [defaultPos, [-4.5, 0, 2.8]];
   }
-  if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-14.4, 0, 9.1]];
+  if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-12.3, 0, 10.4]];
   if (schedule === 'show-and-tell') return [[0, 0, 0.2], [2.8, 0, 2.3]];
   if (schedule === 'nap') return [[5.8, 0, 4.8], [-5.8, 0, 4.8]];
   if (schedule === 'art-time') return [[-12.35, 0, -9.8], [-12.35, 0, -14.2], [-12, 0, -7]];
   if (schedule === 'juice-club') return [[5.2, 0, -3], [5.2, 0, -0.8], [1.2, 0, 1.5]];
-  if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, 10], [14.8, 0, 5.5], [14, 0, -8.5], [10, 0, -12]];
+  if (schedule === 'outdoor-play' && !isRainy) return [[10, 0, 8.6], [14.8, 0, 5.5], [14, 0, -8.5], [10, 0, -12]];
   if (schedule === 'outdoor-play') return [[2, 0, -5.2], [2.2, 0, -5.8], [-2, 0, -5.6]];
   if (schedule === 'pickup') return [[-9.3, 0, 4.5], [-9.3, 0, 0], [-9.3, 0, -4.5]];
   return [[4.8, 0, 3.8], [5.3, 0, -1.2], [7, 0, 0]];
@@ -1139,7 +1139,14 @@ export function kidDestination(
       'juice-club': [[0.8, 0, -2.2], [-1.4, 0, -1], [1.1, 0, 1.9], [-2.2, 0, 0.5], [4.8, 0, 4], [-4.8, 0, 1.8]],
       'outdoor-play': rainy
         ? [[3.4, 0, -6.2], [1.5, 0, -5.2], [-1.4, 0, -5.5], [2.5, 0, -4.6], [-3.1, 0, -5.5], [0, 0, -6.7]]
-        : [[10.3, 0, -10.7], [13.6, 0, -8.2], [10.6, 0, -1.6], [14.1, 0, 1.1], [13.6, 0, 8.4], [11.5, 0, 12.1]],
+        : [
+          [10.3, 0, -10.7], [13.6, 0, -8.2], [10.6, 0, -1.6],
+          [14.1, 0, 1.1], [13.6, 0, 8.4],
+          // Was (11.5, 12.1). The heist hub's back wall was later built across
+          // that spot, so the pair assigned to it - Mae and Max - walked at a
+          // wall for the whole period and never arrived.
+          [14.4, 0, 9.4],
+        ],
       pickup: [[-9.2, 0, -5.2], [-9.2, 0, -1.2], [-9.2, 0, 3.2], [-12.8, 0, -6], [-12.8, 0, -2], [-12.8, 0, 5.8]],
     };
     const spots = groupSpots[schedule];

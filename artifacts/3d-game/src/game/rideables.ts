@@ -70,18 +70,21 @@ export const RIDEABLES: RideableDefinition[] = [
   {
     id: 'trike-playground-b',
     kind: 'tricycle',
-    home: [9.6, 9.2],
-    approach: [10.6, 9.2],
+    home: [9.4, 7.6],
+    approach: [10.4, 7.6],
     speed: 1.75,
     route: {
-      // Southern loop, clear of the sandbox's southern edge and the Maker
-      // Market gate (x 13..15.4, z 12.2..14.3).
+      // Moved south. This loop used to run x 9.4-12.6, z 9-13.4, which the
+      // Miss Leslie heist hub was later built on top of - its east wall
+      // (x 12.62-12.78) sits exactly on the old (12.6, 10.8) waypoint, so a
+      // riding child steered into a wall for the whole ride. Every point below
+      // is asserted walkable at the tricycle radius, not just the child radius.
       waypoints: [
-        [9.6, 9.2],
-        [9.4, 12.4],
-        [11.8, 13.4],
-        [12.6, 10.8],
-        [11.0, 9.0],
+        [9.4, 7.6],
+        [9.4, 4.0],
+        [11.6, 2.8],
+        [13.4, 4.4],
+        [11.8, 6.8],
       ],
     },
   },

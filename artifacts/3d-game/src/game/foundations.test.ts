@@ -799,7 +799,10 @@ assert.ok(
   'the collider does not extend past the visible ramp geometry',
 );
 const upperStorageBox = getWorldSolidTransform('storage-box-upper', 0.8, 1.4);
-assert.deepEqual(upperStorageBox.position, [-14, 1.4, 10]);
+// The storage shelves moved north (z 10 -> 14.4) when the cafeteria took over
+// the front of this room. The transform still has to derive from the collider
+// rather than from a remembered constant, which is what this asserts.
+assert.deepEqual(upperStorageBox.position, [-14, 1.4, 14.4]);
 assert.deepEqual(upperStorageBox.size, [0.8000000000000007, 0.8, 0.8000000000000007]);
 assert.deepEqual(
   getWorldSolidSurfaceTransform('main-south-wall', 'north', 1.72, 4.6),
@@ -1634,28 +1637,53 @@ assert.ok(portraitProfile.distance > landscapeProfile.distance, 'portrait starts
 assert.ok(portraitProfile.fov > landscapeProfile.fov, 'portrait uses a wider lens instead of manual zoom');
 assert.ok(portraitProfile.lookAhead > landscapeProfile.lookAhead, 'portrait keeps useful movement look-ahead');
 assert.deepEqual(artworkBackingSize([2, 1]), [2.16, 1.16], 'artwork support extends beyond the supplied graphic');
-const anchoredArtwork: Array<{
-  fileName: string;
-  anchor: ArtworkSurfaceAnchor;
-  size: [number, number];
-}> = [
-  { fileName: '02_wall_mural_welcome.png', anchor: { solidId: 'main-south-wall', face: 'north', height: 1.72, along: 0 }, size: [4.25, 3.15] },
-  { fileName: '03_wall_decals_set.png', anchor: { solidId: 'hall-divider-south', face: 'east', height: 1.6, along: 4.5 }, size: [2.15, 1.6] },
-  { fileName: '04_classroom_scene.png', anchor: { solidId: 'main-south-wall', face: 'north', height: 1.72, along: 4.6 }, size: [2.55, 1.9] },
-  { fileName: '05_playground_equipment.png', anchor: { solidId: 'east-boundary', face: 'west', height: 1.65, along: -4.2 }, size: [2.55, 1.9] },
-  { fileName: '06_posters_charts.png', anchor: { solidId: 'north-boundary', face: 'south', height: 1.72, along: -12 }, size: [2.5, 1.88] },
-  { fileName: '07_classroom_signs.png', anchor: { solidId: 'hall-divider-north', face: 'east', height: 1.6, along: -4.5 }, size: [2.15, 1.6] },
-  { fileName: '09_cubby_labels.png', anchor: { solidId: 'cubbies', face: 'north', height: 1.18, along: -5.7 }, size: [2.95, 0.72] },
-  { fileName: '10_props_toys.png', anchor: { solidId: 'art-table', face: 'top', height: 1.03 }, size: [2.25, 1.55] },
-  { fileName: '11_juice_club_branding.png', anchor: { solidId: 'juice-signboard', face: 'south', height: 1.5, along: 3 }, size: [1.7, 1.22] },
-  { fileName: '12_garden_signage.png', anchor: { solidId: 'garden-sign', face: 'south', height: 0.98 }, size: [3.55, 1.3] },
-  { fileName: '14_environment_props.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.65, along: 4.4 }, size: [2.35, 1.75] },
-  { fileName: '17_motivational_banner.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.65, along: 0 }, size: [2.55, 1.9] },
-  { fileName: '19_attendance_chart.png', anchor: { solidId: 'west-boundary', face: 'east', height: 1.7, along: -4.5 }, size: [2.3, 1.72] },
-];
-for (const artwork of anchoredArtwork) {
-  const validation = validateArtworkSurfaceAnchor(artwork.anchor, artwork.size);
-  assert.equal(validation.valid, true, `${artwork.fileName} mount: ${validation.issues.join(', ')}`);
+/**
+ * Every wall-mounted graphic in the game, read out of the components that
+ * actually mount them.
+ *
+ * This used to be a hand-copied list, and it had already drifted: it asserted a
+ * 4.25 x 3.15 m welcome mural at height 1.72 - a top edge of 3.295 m on a 3 m
+ * wall - long after the real mount in HubDetails.tsx had been corrected to
+ * 4.05 x 2.65 at 1.55. So the suite was failing on artwork nobody had hung and
+ * passing on artwork nobody had checked.
+ *
+ * Scanning the source means a mount cannot be added, moved or resized without
+ * this check seeing it, which is the property the copy never had.
+ */
+const ARTWORK_SOURCES = ['HubDetails.tsx', 'Interactables.tsx', 'Garden.tsx'];
+const MOUNT_PATTERN = /surfaceAnchor=\{\{([^}]*)\}\}[^>]*?size=\{\[([^\]]*)\]\}/g;
+
+const scannedMounts: Array<{ file: string; anchor: ArtworkSurfaceAnchor; size: [number, number] }> = [];
+for (const file of ARTWORK_SOURCES) {
+  const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+  for (const match of source.matchAll(MOUNT_PATTERN)) {
+    const fields = match[1];
+    const read = (key: string) => {
+      const found = fields.match(new RegExp(`${key}:\\s*'?([^,')]+)'?`));
+      return found ? found[1].trim() : undefined;
+    };
+    const size = match[2].split(',').map((value) => Number(value.trim())) as [number, number];
+    scannedMounts.push({
+      file,
+      anchor: {
+        solidId: read('solidId')!,
+        face: read('face') as ArtworkSurfaceAnchor['face'],
+        height: Number(read('height')),
+        ...(read('along') !== undefined ? { along: Number(read('along')) } : {}),
+      } as ArtworkSurfaceAnchor,
+      size,
+    });
+  }
+}
+
+assert.ok(scannedMounts.length >= 12, `expected to find the authored wall art, found ${scannedMounts.length}`);
+for (const mount of scannedMounts) {
+  const validation = validateArtworkSurfaceAnchor(mount.anchor, mount.size);
+  assert.equal(
+    validation.valid,
+    true,
+    `${mount.file}: ${mount.anchor.solidId} mount is invalid - ${validation.issues.join(', ')}`,
+  );
 }
 assert.equal(
   validateArtworkSurfaceAnchor(

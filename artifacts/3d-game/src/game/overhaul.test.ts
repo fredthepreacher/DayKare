@@ -848,6 +848,13 @@ const socialContext = (overrides: Partial<SocialContext> = {}): SocialContext =>
     );
     for (const [x, z] of rideable.route.waypoints) {
       assert.ok(isWalkable(vec(x, z), 0.34), `${rideable.id} route point ${x},${z} is walkable`);
+      // A child on a trike is wider than a child. Checking only the walking
+      // radius is what allowed a waypoint to sit inside the heist hub's east
+      // wall once that hub was built over the old loop.
+      assert.ok(
+        isWalkable(vec(x, z), TRICYCLE_RADIUS),
+        `${rideable.id} route point ${x},${z} fits a rider, not just a walker`,
+      );
     }
   }
   assert.ok(RIDEABLES.length >= 2, 'more than one child can ride at once');
