@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import {
+  LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
   MONETIZATION_CONFIG,
   applyProgressMultiplier,
   createInitialEntitlements,
@@ -10,8 +11,18 @@ import {
   productGrantRespectsProgression,
   type EntitlementState,
   type ProgressionEligibility,
+  type ShopCurrency,
   type VerifiedTransaction,
 } from "./monetization";
+import { useStorybookLaneStore } from "./storybookLaneStore";
+
+/** Rascal Bucks are the lane wallet's, so grants go there and nowhere else. */
+function creditRascalBucks(amount: number) {
+  const safe = Math.max(0, Math.floor(amount));
+  if (!safe) return;
+  const wallet = useStorybookLaneStore.getState();
+  useStorybookLaneStore.setState({ ribbonBucks: wallet.ribbonBucks + safe });
+}
 
 export type PurchaseState =
   | "idle"
@@ -42,13 +53,18 @@ export interface EconomyEvent {
   at: number;
   productId?: string;
   amount?: number;
-  currency?: "care_coins" | "care_gems";
+  currency?: ShopCurrency;
   reason?: string;
 }
 
 interface MonetizationStore {
-  careCoins: number;
   careGems: number;
+  /**
+   * Legacy saves may still carry a Care Coin balance. It is converted to
+   * Rascal Bucks once, on load, so the value is not stranded and the
+   * conversion cannot run twice.
+   */
+  legacyCareCoinsMigrated: boolean;
   rewardedReputation: number;
   entitlements: EntitlementState;
   purchaseState: PurchaseState;
@@ -89,8 +105,8 @@ function grantProduct(
   const subscriptionExpiresAt = grant.subscription
     ? now + 30 * 24 * 60 * 60_000
     : entitlements.subscriptionExpiresAt;
+  if (grant.rascalBucks) creditRascalBucks(grant.rascalBucks);
   return {
-    careCoins: Math.min(MAX_BALANCE, state.careCoins + (grant.careCoins ?? 0)),
     careGems: Math.min(MAX_BALANCE, state.careGems + (grant.careGems ?? 0)),
     entitlements: {
       ...entitlements,
@@ -122,8 +138,8 @@ function grantProduct(
 export const useMonetizationStore = create<MonetizationStore>()(
   persist(
     (set, get) => ({
-      careCoins: 0,
       careGems: 0,
+      legacyCareCoinsMigrated: false,
       rewardedReputation: 0,
       entitlements: createInitialEntitlements(),
       purchaseState: "idle",
@@ -142,23 +158,18 @@ export const useMonetizationStore = create<MonetizationStore>()(
         if (safeRep <= previous) return 0;
         const amount =
           Math.floor(
-            safeRep * MONETIZATION_CONFIG.gameplayCareCoinsPerReputation,
+            safeRep * MONETIZATION_CONFIG.gameplayRascalBucksPerReputation,
           ) -
           Math.floor(
-            previous * MONETIZATION_CONFIG.gameplayCareCoinsPerReputation,
+            previous * MONETIZATION_CONFIG.gameplayRascalBucksPerReputation,
           );
-        set((state) => ({
-          rewardedReputation: safeRep,
-          careCoins: Math.min(
-            MAX_BALANCE,
-            state.careCoins + Math.max(0, amount),
-          ),
-        }));
+        creditRascalBucks(amount);
+        set({ rewardedReputation: safeRep });
         if (amount > 0)
           get().track({
             name: "currency_earned",
             amount,
-            currency: "care_coins",
+            currency: "rascal_bucks",
             reason: "gameplay",
           });
         return Math.max(0, amount);
@@ -181,7 +192,9 @@ export const useMonetizationStore = create<MonetizationStore>()(
         )
           return false;
         const balance =
-          product.currency === "care_coins" ? state.careCoins : state.careGems;
+          product.currency === "rascal_bucks"
+            ? useStorybookLaneStore.getState().ribbonBucks
+            : state.careGems;
         if (balance < product.price) return false;
         const transactionId = `economy-${productId}-${Date.now()}`;
         const granted = grantProduct(
@@ -191,10 +204,16 @@ export const useMonetizationStore = create<MonetizationStore>()(
           Date.now(),
         );
         if (!granted) return false;
+        // Rascal Bucks live in the lane wallet, so the debit happens there
+        // rather than in a second balance the shop keeps for itself.
+        if (product.currency === "rascal_bucks") {
+          useStorybookLaneStore.setState({ ribbonBucks: balance - product.price });
+        }
         set({
           ...granted,
-          [product.currency === "care_coins" ? "careCoins" : "careGems"]:
-            balance - product.price,
+          ...(product.currency === "care_gems"
+            ? { careGems: balance - product.price }
+            : {}),
           purchaseState: "success",
           purchaseMessage: `${product.name} added.`,
         });
@@ -277,18 +296,16 @@ export const useMonetizationStore = create<MonetizationStore>()(
         if (entitlements.claimedDailyRewardDay === today) return false;
         const amount =
           entitlements.subscriptionTier === "family_pass"
-            ? MONETIZATION_CONFIG.familyPass.dailyCareCoins
+            ? MONETIZATION_CONFIG.familyPass.dailyRascalBucks
             : entitlements.subscriptionTier === "kare_pass"
-              ? MONETIZATION_CONFIG.karePass.dailyCareCoins
+              ? MONETIZATION_CONFIG.karePass.dailyRascalBucks
               : 5;
-        set({
-          careCoins: Math.min(MAX_BALANCE, state.careCoins + amount),
-          entitlements: { ...entitlements, claimedDailyRewardDay: today },
-        });
+        creditRascalBucks(amount);
+        set({ entitlements: { ...entitlements, claimedDailyRewardDay: today } });
         get().track({
           name: "daily_reward_claimed",
           amount,
-          currency: "care_coins",
+          currency: "rascal_bucks",
         });
         return true;
       },
@@ -309,19 +326,26 @@ export const useMonetizationStore = create<MonetizationStore>()(
           : window.localStorage,
       ),
       partialize: (state) => ({
-        careCoins: state.careCoins,
+        legacyCareCoinsMigrated: state.legacyCareCoinsMigrated,
         careGems: state.careGems,
         rewardedReputation: state.rewardedReputation,
         entitlements: state.entitlements,
       }),
       merge: (persisted, current) => {
-        const candidate = (persisted ?? {}) as Partial<MonetizationStore>;
+        const candidate = (persisted ?? {}) as Partial<MonetizationStore> & {
+          careCoins?: number;
+        };
+        // A save written before Care Coins were retired still carries a
+        // balance. Convert it once rather than stranding what the player
+        // earned, and record that it happened so a reload cannot pay twice.
+        const legacyCoins = Math.max(0, Math.floor(candidate.careCoins ?? 0));
+        const alreadyMigrated = candidate.legacyCareCoinsMigrated === true;
+        if (legacyCoins > 0 && !alreadyMigrated) {
+          creditRascalBucks(legacyCoins * LEGACY_CARE_COIN_TO_RASCAL_BUCKS);
+        }
         return {
           ...current,
-          careCoins: Math.max(
-            0,
-            Math.min(MAX_BALANCE, Math.floor(candidate.careCoins ?? 0)),
-          ),
+          legacyCareCoinsMigrated: alreadyMigrated || legacyCoins > 0 || candidate.careGems !== undefined,
           careGems: Math.max(
             0,
             Math.min(MAX_BALANCE, Math.floor(candidate.careGems ?? 0)),

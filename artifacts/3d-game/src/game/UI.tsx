@@ -2,6 +2,8 @@ import { RewardPulse } from './RewardPulse';
 import { useIsRainy, useWeatherLabel } from './WeatherSystem';
 import { useGameStore } from './store';
 import { useSlideStore } from './slideStore';
+import { requestDogRecall } from './dogRecall';
+import { homeTierName, ownershipSummary, ownershipWalletLine } from './ownership';
 import { REALTORS, STARTER_PROPERTY_ID, STONY_BROOK_PROPERTIES, propertyAction, type StonyBrookProperty } from './realEstate';
 import { zoneLabel } from './world';
 import { formatClock, timeOfDayToMinute } from './gameClock';
@@ -175,7 +177,6 @@ export function UI() {
   const activeMode = useModeStore((state) => state.activeMode);
   const multiplayerStatus = useMultiplayerStore((state) => state.status);
   const multiplayerOccupancy = useMultiplayerStore((state) => state.occupancy);
-  const careCoins = useMonetizationStore((state) => state.careCoins);
   const careGems = useMonetizationStore((state) => state.careGems);
   const storybook = useStorybookLaneStore();
   const storybookRoute = HUB_ROUTES.find((route) => route.id === 'storybook-lane');
@@ -434,6 +435,51 @@ export function UI() {
       }
 
       if (activeInteractable) {
+          /**
+           * Everything the player owns, derived from the stores that already
+           * hold it. Rendered through the dialogue so it works on desktop,
+           * touch and controller without a third input path.
+           */
+          const showOwnershipSummary = () => {
+            const game = useGameStore.getState();
+            const lane = useStorybookLaneStore.getState();
+            const final = useFinalMasterStore.getState();
+            const categories = ownershipSummary({
+              ownedStarterHome: final.ownedStarterHome,
+              homeVoucher: final.homeVoucher,
+              cribTier: lane.cribTier,
+              laneItems: lane.ownedItems,
+              dripOwned: game.dripOwned,
+              dripEquipped: game.dripEquipped as Record<string, string | null | undefined>,
+              fishingRods: game.expansion.ownedRods,
+              tokens: game.progression.tokens,
+              gems: final.gems,
+              rascalBucks: lane.ribbonBucks,
+            });
+            const walletLine = ownershipWalletLine({
+              ownedStarterHome: final.ownedStarterHome,
+              homeVoucher: final.homeVoucher,
+              cribTier: lane.cribTier,
+              laneItems: lane.ownedItems,
+              dripOwned: game.dripOwned,
+              dripEquipped: game.dripEquipped as Record<string, string | null | undefined>,
+              fishingRods: game.expansion.ownedRods,
+              tokens: game.progression.tokens,
+              gems: final.gems,
+              rascalBucks: lane.ribbonBucks,
+            });
+            const body = categories
+              .map((category) => category.entries.length
+                ? `${category.title}: ${category.entries.map((item) => `${item.label} (${item.detail})`).join(', ')}`
+                : `${category.title}: ${category.emptyLabel}`)
+              .join('\n');
+            setActiveDialogue({
+              name: 'What I own',
+              text: `${walletLine}\n\n${body}`,
+              options: [{ label: 'Close', action: () => setActiveDialogue(null) }],
+            });
+          };
+
         if (activeInteractable === 'final-home-exit') {
           useFinalMasterStore.getState().leaveHome();
           useGameStore.getState().setPlayerPosition([-13, 0, -8.7]);
@@ -562,6 +608,14 @@ export function UI() {
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
           }
+        } else if (activeInteractable === 'storybook-whistle-dog') {
+          requestDogRecall();
+          playStorybookSound('pet');
+          setActiveDialogue({
+            name: 'Whistle',
+            text: 'You whistle. Your dog comes bounding over from the dog house.',
+            options: [{ label: 'Good dog', action: () => setActiveDialogue(null) }],
+          });
         } else if (activeInteractable.startsWith('storybook-realtor-') || activeInteractable === 'storybook-ice-cream') {
           /**
            * The realtor desk. Built on the existing dialogue system so it
@@ -716,15 +770,36 @@ export function UI() {
               }
             };
             const owned = storybook.ownedItems;
+            // An owned item shows what it is, not what it would cost. The
+            // old menu still priced things the player had already bought,
+            // which reads as the purchase never having gone through.
+            const entry = (
+              item: StorybookItemId,
+              label: string,
+              price: number,
+              ownedLabel: string,
+              ownedAction?: () => void,
+            ) => (owned.includes(item)
+              ? { label: `${label} · ${ownedLabel}`, action: ownedAction ?? (() => setActiveDialogue(null)) }
+              : {
+                label: storybook.ribbonBucks >= price
+                  ? `${label} · Buy ${price.toLocaleString()} RB`
+                  : `${label} · ${price.toLocaleString()} RB (need ${(price - storybook.ribbonBucks).toLocaleString()} more)`,
+                action: () => { void buyItem(item, label); },
+              });
             setActiveDialogue({
-              name: 'My Home & Garage',
-              text: `Owned property. Balance: ${storybook.ribbonBucks} RB. Crib tier ${storybook.cribTier} is saved. Enter the furnished interior or manage the garage.`,
+              name: `${homeTierName(storybook.cribTier)} · Wavy Manor`,
+              text: `Owned property. Balance: ${storybook.ribbonBucks.toLocaleString()} RB. Enter the furnished interior, or check what you own.`,
               options: [
                 { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } },
-                { label: owned.includes('tricycle') ? 'Tricycle · Owned' : `Tricycle · ${STORYBOOK_PRICES.tricycle} RB`, action: () => { void buyItem('tricycle', 'Tricycle'); } },
-                { label: owned.includes('dog') ? 'Dog · Owned' : `Dog · ${STORYBOOK_PRICES.dog} RB`, action: () => { void buyItem('dog', 'Dog companion'); } },
-                { label: owned.includes('crib') ? 'Personal Crib · Owned' : `Personal Crib · ${STORYBOOK_PRICES.crib} RB`, action: () => { void buyItem('crib', 'Personal Crib'); } },
-                { label: owned.includes('mini-ride-on') ? 'Mini Ride-On · Owned' : `Mini Ride-On · ${STORYBOOK_PRICES.miniRideOn} RB`, action: () => { void buyItem('mini-ride-on', 'Mini Ride-On'); } },
+                { label: 'What I own', action: () => showOwnershipSummary() },
+                entry('tricycle', 'Tricycle', STORYBOOK_PRICES.tricycle, 'Owned'),
+                entry('dog', 'Dog', STORYBOOK_PRICES.dog, 'Owned · whistle for it outside', () => {
+                  requestDogRecall();
+                  setActiveDialogue({ name: 'Whistle', text: 'Your dog comes running.', options: [{ label: 'Good dog', action: () => setActiveDialogue(null) }] });
+                }),
+                entry('crib', 'Personal Crib', STORYBOOK_PRICES.crib, 'Owned'),
+                entry('mini-ride-on', 'Mini Ride-On', STORYBOOK_PRICES.miniRideOn, 'Owned'),
                 { label: 'Close', action: () => setActiveDialogue(null) },
               ],
             });
@@ -1263,6 +1338,7 @@ export function UI() {
     if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
     if (activeInteractable === 'wavy-slide') return 'Ride the Wavy Slide';
     if (activeInteractable.startsWith('storybook-realtor-')) return 'Ask about properties';
+    if (activeInteractable === 'storybook-whistle-dog') return 'Whistle for your dog';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
     if (activeInteractable === 'activity-rainbow-tidy-up') {
@@ -1377,6 +1453,7 @@ export function UI() {
     }
     if (activeInteractable === 'wavy-slide') return 'Playground fun';
     if (activeInteractable.startsWith('storybook-realtor-')) return 'Stony Brook Realty';
+    if (activeInteractable === 'storybook-whistle-dog') return 'Call your pet';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
     if (activeInteractable === 'tricycle') return 'Ride or customize';
     if (activeInteractable.startsWith('teacher-')) return 'Teacher guidance';
@@ -1492,7 +1569,6 @@ export function UI() {
         >
           <ShoppingBag className="w-5 h-5 text-violet-600" />
           <span className="font-bold hidden sm:block">Kare Shop</span>
-          <span className="text-[10px] font-black text-amber-700">{careCoins} C</span>
           <span className="text-[10px] font-black text-violet-700">{careGems} G</span>
         </button>
         <button 

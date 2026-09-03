@@ -1,6 +1,15 @@
 export const STORYBOOK_OPEN_MINUTE = 17 * 60 + 30;
-export const STORYBOOK_CLOSE_MINUTE = 18 * 60 + 30;
-export const STORYBOOK_WARNING_MINUTE = 18 * 60 + 25;
+// Stony Brook stays open until 7:30 PM. The evening is the social half of
+// the day - shops, the lane, the owned home - and one game hour was not
+// enough to do more than one errand in it.
+export const STORYBOOK_CLOSE_MINUTE = 19 * 60 + 30;
+export const STORYBOOK_WARNING_MINUTE = 19 * 60 + 25;
+/**
+ * How long the end-of-day card sits on screen after closing time before the
+ * day actually rolls over, in real seconds. Long enough to read, short
+ * enough not to feel like a hang.
+ */
+export const STORYBOOK_CLOSE_HOLD_SECONDS = 15;
 
 export const STORYBOOK_PRICES = {
   iceCream: 25,

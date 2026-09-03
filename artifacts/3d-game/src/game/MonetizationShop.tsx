@@ -21,6 +21,9 @@ import {
 import { useMonetizationStore } from "./monetizationStore";
 import { paymentProvider, sandboxCheckoutAllowed } from "./paymentProvider";
 import { useGameStore } from "./store";
+import { useStorybookLaneStore } from "./storybookLaneStore";
+import { useFinalMasterStore } from "./finalMasterStore";
+import { RASCAL_BUCKS_PER_GEM } from "./finalMaster";
 
 const SECTIONS: { id: ShopSection; label: string }[] = [
   { id: "featured", label: "Featured" },
@@ -49,8 +52,8 @@ function ProductCard({
   onSelect: (product: MonetizationProduct) => void;
 }) {
   const entitlements = useMonetizationStore((state) => state.entitlements);
-  const careCoins = useMonetizationStore((state) => state.careCoins);
   const careGems = useMonetizationStore((state) => state.careGems);
+  const rascalBucks = useStorybookLaneStore((state) => state.ribbonBucks);
   const dripOwned = useGameStore((state) => state.dripOwned);
   const dripEquipped = useGameStore((state) => state.dripEquipped);
   const progression = useGameStore((state) => state.progression);
@@ -68,7 +71,7 @@ function ProductCard({
   const equipped = Boolean(
     cosmetic && dripEquipped[cosmetic.category] === cosmetic.id,
   );
-  const balance = product.currency === "care_coins" ? careCoins : careGems;
+  const balance = product.currency === "rascal_bucks" ? rascalBucks : careGems;
   const insufficient = product.currency !== "usd" && balance < product.price;
   const earnedAchievements = achievementsEarned({
     binkyComplete: quests["where-binky"]?.status === "complete",
@@ -157,12 +160,70 @@ function ProductCard({
   );
 }
 
+/**
+ * Rascal Bucks into Care Gems, at a deliberately grindy 10,000 : 1.
+ *
+ * The button disables itself for the length of the write as well as when
+ * the balance is short, so a double tap cannot mint two gems from one
+ * payment; the store's own check is the second guard.
+ */
+function GemExchange() {
+  const rascalBucks = useStorybookLaneStore((state) => state.ribbonBucks);
+  const convert = useFinalMasterStore((state) => state.convertRbToGem);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const affordable = rascalBucks >= RASCAL_BUCKS_PER_GEM;
+
+  const run = () => {
+    if (busy) return;
+    setBusy(true);
+    const converted = convert();
+    setConfirming(false);
+    setMessage(
+      converted
+        ? `Traded ${RASCAL_BUCKS_PER_GEM.toLocaleString()} RB for 1 Care Gem.`
+        : `You need ${RASCAL_BUCKS_PER_GEM.toLocaleString()} RB. Nothing was spent.`,
+    );
+    setBusy(false);
+  };
+
+  return (
+    <span className="daykare-gem-exchange">
+      {confirming ? (
+        <>
+          <small>Trade {RASCAL_BUCKS_PER_GEM.toLocaleString()} RB for 1 Care Gem?</small>
+          <button type="button" disabled={busy || !affordable} onClick={run}>
+            Confirm
+          </button>
+          <button type="button" disabled={busy} onClick={() => setConfirming(false)}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            disabled={!affordable}
+            onClick={() => { setMessage(null); setConfirming(true); }}
+          >
+            {affordable
+              ? `Trade ${RASCAL_BUCKS_PER_GEM.toLocaleString()} RB → 1 Gem`
+              : `${(RASCAL_BUCKS_PER_GEM - rascalBucks).toLocaleString()} RB to your next Gem`}
+          </button>
+          {message && <small role="status">{message}</small>}
+        </>
+      )}
+    </span>
+  );
+}
+
 export function MonetizationShop() {
   const [section, setSection] = useState<ShopSection>("featured");
   const [selected, setSelected] = useState<MonetizationProduct | null>(null);
   const [clock, setClock] = useState(0);
-  const careCoins = useMonetizationStore((state) => state.careCoins);
   const careGems = useMonetizationStore((state) => state.careGems);
+  const rascalBucks = useStorybookLaneStore((state) => state.ribbonBucks);
   const entitlements = useMonetizationStore((state) => state.entitlements);
   const purchaseState = useMonetizationStore((state) => state.purchaseState);
   const purchaseMessage = useMonetizationStore(
@@ -283,21 +344,22 @@ export function MonetizationShop() {
           </p>
           <h2>Kare Shop</h2>
           <p>
-            Play to earn Care Coins. Care Gems are for premium collections. No
-            purchase is required to enjoy DayKare.
+            Play to earn Rascal Bucks. Care Gems are the rare tier, and 10,000
+            Rascal Bucks trade for one. No purchase is required to enjoy DayKare.
           </p>
         </div>
         <div className="daykare-shop-wallet" aria-label="Wallet balances">
           <span>
             <Coins aria-hidden="true" />
-            <strong>{careCoins}</strong>
-            <small>Care Coins</small>
+            <strong>{rascalBucks.toLocaleString()}</strong>
+            <small>Rascal Bucks</small>
           </span>
           <span>
             <Gem aria-hidden="true" />
             <strong>{careGems}</strong>
             <small>Care Gems</small>
           </span>
+          <GemExchange />
         </div>
       </section>
 
@@ -410,8 +472,8 @@ export function MonetizationShop() {
             <h3 id="purchase-title">{selected.name}</h3>
             <p>{selected.description}</p>
             <div className="daykare-purchase-contents">
-              {selected.grant.careCoins ? (
-                <span>+{selected.grant.careCoins} Care Coins</span>
+              {selected.grant.rascalBucks ? (
+                <span>+{selected.grant.rascalBucks.toLocaleString()} Rascal Bucks</span>
               ) : null}
               {selected.grant.careGems ? (
                 <span>+{selected.grant.careGems} Care Gems</span>

@@ -1,6 +1,15 @@
 import { DRIP_CATALOG, type DripAchievement, type DripCategory } from "./drip";
 
-export type ShopCurrency = "care_coins" | "care_gems" | "usd";
+/**
+ * Rascal Bucks are earned through play; Care Gems are the rare premium tier.
+ * Care Coins used to sit between them and are gone - one earned currency is
+ * enough, and the shop now prices its everyday tier in the same Bucks the
+ * player already spends on homes and pets.
+ */
+export type ShopCurrency = "rascal_bucks" | "care_gems" | "usd";
+
+/** What one retired Care Coin is worth in Rascal Bucks, everywhere. */
+export const LEGACY_CARE_COIN_TO_RASCAL_BUCKS = 50;
 export type SubscriptionTier = "none" | "kare_pass" | "family_pass";
 export type ProductKind =
   "cosmetic" | "furniture" | "bundle" | "boost" | "subscription" | "currency";
@@ -21,7 +30,12 @@ export interface BoostGrant {
   multiplier: number;
 }
 export interface ProductGrant {
-  careCoins?: number;
+  /**
+   * Care Coins are retired. The earned currency is Rascal Bucks, which the
+   * player already spends on homes, pets and rides, so a third premium-ish
+   * currency was buying nothing the other two did not.
+   */
+  rascalBucks?: number;
   careGems?: number;
   cosmetics?: string[];
   furniture?: string[];
@@ -89,7 +103,6 @@ export interface EntitlementState {
 }
 
 export interface MonetizationStateShape {
-  careCoins: number;
   careGems: number;
   entitlements: EntitlementState;
 }
@@ -99,17 +112,17 @@ export const MONETIZATION_CONFIG = {
   karePass: {
     monthlyPriceUsd: 4.99,
     progressMultiplier: 1.35,
-    dailyCareCoins: 20,
+    dailyRascalBucks: 20 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
     monthlyCareGems: 50,
   },
   familyPass: {
     monthlyPriceUsd: 9.99,
     progressMultiplier: 1.5,
-    dailyCareCoins: 40,
+    dailyRascalBucks: 40 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
     monthlyCareGems: 120,
     futureSharedProfiles: true,
   },
-  gameplayCareCoinsPerReputation: 1 / 5,
+  gameplayRascalBucksPerReputation: LEGACY_CARE_COIN_TO_RASCAL_BUCKS / 5,
   boostStacking: "reject-while-active" as const,
   rotations: {
     dailyDealProductIds: ["cosmetic_little_bucket_hat"],
@@ -136,8 +149,8 @@ const cosmeticProducts: MonetizationProduct[] = DRIP_CATALOG.filter(
     sections: [accessory ? "accessories" : "clothing"] as ShopSection[],
     price: premium
       ? Math.max(40, item.priceCash * 3)
-      : Math.max(10, item.priceCash * 2),
-    currency: premium ? ("care_gems" as const) : ("care_coins" as const),
+      : Math.max(500, item.priceCash * LEGACY_CARE_COIN_TO_RASCAL_BUCKS * 2),
+    currency: premium ? ("care_gems" as const) : ("rascal_bucks" as const),
     rarity: premium ? ("Premium" as const) : ("Everyday" as const),
     grant: { cosmetics: [item.id] },
     requirements: {
@@ -154,14 +167,14 @@ export const MONETIZATION_CATALOG: MonetizationProduct[] = [
     name: "Starter Kare Pack",
     kind: "bundle",
     description:
-      "A sunny outfit, 150 Care Coins, 40 Care Gems, and a gentle 15-minute REP boost.",
+      "A sunny outfit, 7,500 Rascal Bucks, 40 Care Gems, and a gentle 15-minute REP boost.",
     sections: ["featured", "bundles"],
     price: 2.99,
     currency: "usd",
     rarity: "Special",
     featured: true,
     grant: {
-      careCoins: 150,
+      rascalBucks: 150 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
       careGems: 40,
       cosmetics: ["sunbeam_tee"],
       boost: { durationMs: 15 * 60_000, multiplier: 1.25 },
@@ -175,7 +188,7 @@ export const MONETIZATION_CATALOG: MonetizationProduct[] = [
     name: "Kare Pass",
     kind: "subscription",
     description:
-      "35% REP bonus, daily Care Coins, monthly rewards, a member badge, and premium seasonal access.",
+      "35% REP bonus, daily Rascal Bucks, monthly rewards, a member badge, and premium seasonal access.",
     sections: ["featured", "kare-pass"],
     price: MONETIZATION_CONFIG.karePass.monthlyPriceUsd,
     currency: "usd",
@@ -183,7 +196,7 @@ export const MONETIZATION_CATALOG: MonetizationProduct[] = [
     featured: true,
     grant: {
       subscription: "kare_pass",
-      careCoins: 100,
+      rascalBucks: 100 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
       careGems: 50,
       cosmetics: ["playground_hoodie"],
       furniture: ["moonlight_story_lamp"],
@@ -204,7 +217,7 @@ export const MONETIZATION_CATALOG: MonetizationProduct[] = [
     rarity: "Premium",
     grant: {
       subscription: "family_pass",
-      careCoins: 250,
+      rascalBucks: 250 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
       careGems: 120,
       cosmetics: ["tiny_varsity_cardigan"],
       furniture: ["family_picnic_set"],
@@ -287,8 +300,8 @@ export const MONETIZATION_CATALOG: MonetizationProduct[] = [
     description:
       "An earnable soft-cushion decoration for the future room editor.",
     sections: ["furniture"],
-    price: 80,
-    currency: "care_coins",
+    price: 80 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
+    currency: "rascal_bucks",
     rarity: "Everyday",
     grant: { furniture: ["cozy_reading_nook"] },
     color: "#8ec7a1",
@@ -462,7 +475,9 @@ export function applyProgressMultiplier(
 
 export function formatProductPrice(product: MonetizationProduct) {
   if (product.currency === "usd") return `$${product.price.toFixed(2)}`;
-  return `${product.price} ${product.currency === "care_coins" ? "Care Coins" : "Care Gems"}`;
+  return product.currency === "rascal_bucks"
+    ? `${product.price.toLocaleString()} RB`
+    : `${product.price} Care Gems`;
 }
 
 export function dripSectionForCategory(category: DripCategory): ShopSection {

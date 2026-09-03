@@ -107,6 +107,7 @@ import { monetizedReputation } from './monetizationStore';
 import { GUMMY_FULL_CROP_CASH, GUMMY_HARVEST_SIZE, GUMMY_UNIT_CASH, absoluteGameMinute, createGummyCrop, cropIsReady, normalizeGummyCrop, type GummyCropState } from './gardenEconomy';
 import { STORYBOOK_CLOSE_MINUTE, storybookIsOpen } from './storybookLaneConfig';
 import { useStorybookLaneStore } from './storybookLaneStore';
+import { CAPER_HEIST_RB } from './finalMaster';
 import { getEscapeRetrievalSnapshot } from './escapeRetrieval';
 import {
   ART_CASH,
@@ -1075,7 +1076,7 @@ export const useGameStore = create<GameState>()(
         quality: isQualityPreset(quality) ? quality : initialState.quality,
       }),
       setTimeOfDay: (time) => set((state) => {
-         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 18.5);
+         const timeOfDay = safeNumber(time, initialState.timeOfDay, 9, 19.5);
         const schedule = getScheduleForTime(timeOfDay);
         const minute = timeOfDayToMinute(timeOfDay);
         return {
@@ -2246,14 +2247,21 @@ export const useGameStore = create<GameState>()(
             tokens: Math.min(MAX_TOKENS, state.progression.tokens + tokenReward),
             reputation: Math.min(MAX_REPUTATION, state.progression.reputation + monetizedReputation(2)),
           });
+          // The caper's Rascal Bucks are paid here, on the single transition
+          // into 'complete'. A reload restores a caper that is already
+          // complete and never re-enters this branch, so the payout cannot
+          // be duplicated by reconnecting.
+          useStorybookLaneStore.setState((wallet) => ({
+            ribbonBucks: wallet.ribbonBucks + CAPER_HEIST_RB,
+          }));
           return {
             caper,
             progression,
             districtProgress: advanceDistrictPreviewState(state.districtProgress, 'makerMarket'),
             rewardEvents: appendRewardEvent(state.rewardEvents, {
               id: `sticker-parade-${state.caper.attempts}`,
-              title: 'Sticker Parade complete!',
-              detail: 'Everyone had a safe role in the plan',
+              title: 'Sticker Parade Caper complete!',
+              detail: `Everyone had a safe role in the plan · +${CAPER_HEIST_RB.toLocaleString()} RB`,
               tokens: tokenReward,
               reputation: monetizedReputation(2),
               sticker: 'Kindness Crew',

@@ -4,7 +4,9 @@ import { RIDEABLES, claimantOf } from './rideables';
 import { useWeather } from './WeatherSystem';
 import { useGameStore } from './store';
 import { useQualitySettings } from './useQualitySettings';
+import * as THREE from 'three';
 import { getWorldSolidTransform, PLAY_SLIDE_RAMP, WORLD_SOLIDS } from './world';
+import { buildWall, type WindowPane as WindowPaneSpec } from './windows';
 
 export function Environment() {
   const isImaginationMode = useGameStore(s => s.isImaginationMode);
@@ -95,9 +97,12 @@ export function Environment() {
         <meshStandardMaterial color={floorGrass} />
       </mesh>
 
-      {/* Visible walls are derived from the same bounds used by collision. */}
+      {/* Visible walls are derived from the same bounds used by collision.
+          A wall with windows is drawn as the pieces around its openings, so
+          the glass is a real hole rather than a panel stuck to one face. */}
       {WORLD_SOLIDS.filter((solid) => solid.zone === 'hub' && (solid.kind === 'wall' || solid.kind === 'boundary')).map((solid) => {
         const transform = getWorldSolidTransform(solid.id, 3);
+        const { segments, panes } = buildWall(solid, 3);
         const color = isImaginationMode
           ? wallColor
           : solid.id.includes('divider')
@@ -107,7 +112,12 @@ export function Environment() {
               : wallColor;
         return (
           <group key={solid.id}>
-            <Wall position={transform.position} size={transform.size} color={color} />
+            {segments.map((segment, index) => (
+              <Wall key={index} position={segment.position} size={segment.size} color={color} />
+            ))}
+            {panes.map((pane, index) => (
+              <WindowPane key={`pane-${index}`} pane={pane} imaginationMode={isImaginationMode} />
+            ))}
             <WallTrim position={[transform.position[0], 0.18, transform.position[2]]} size={transform.size} color={isImaginationMode ? '#6e4aa5' : '#dcb68a'} />
           </group>
         );
@@ -264,6 +274,64 @@ function IdleRideables() {
           </group>
         );
       })}
+    </group>
+  );
+}
+
+/**
+ * One window: a frame around the opening and a pane of glass in it.
+ *
+ * The glass is double-sided and translucent, so it reads as a window from
+ * the playground as well as from the classroom, and the frame sits in the
+ * wall's own thickness rather than 2 cm proud of it, which is what used to
+ * make these z-fight.
+ */
+function WindowPane({ pane, imaginationMode }: { pane: WindowPaneSpec; imaginationMode: boolean }) {
+  const [width, height] = pane.size;
+  const frame = imaginationMode ? '#ff4da6' : '#ffffff';
+  const glass = imaginationMode ? '#6f7dff' : '#cfe9f2';
+  const bar = 0.09;
+  const depth = pane.thickness * 0.92;
+  const box = (w: number, h: number): [number, number, number] =>
+    pane.facesZ ? [w, h, depth] : [depth, h, w];
+  const at = (dx: number, dy: number): [number, number, number] =>
+    pane.facesZ
+      ? [pane.position[0] + dx, pane.position[1] + dy, pane.position[2]]
+      : [pane.position[0], pane.position[1] + dy, pane.position[2] + dx];
+  return (
+    <group>
+      <mesh position={at(0, height / 2 - bar / 2)}>
+        <boxGeometry args={box(width, bar)} />
+        <meshStandardMaterial color={frame} roughness={0.66} />
+      </mesh>
+      <mesh position={at(0, -height / 2 + bar / 2)}>
+        <boxGeometry args={box(width, bar)} />
+        <meshStandardMaterial color={frame} roughness={0.66} />
+      </mesh>
+      <mesh position={at(-width / 2 + bar / 2, 0)}>
+        <boxGeometry args={box(bar, height)} />
+        <meshStandardMaterial color={frame} roughness={0.66} />
+      </mesh>
+      <mesh position={at(width / 2 - bar / 2, 0)}>
+        <boxGeometry args={box(bar, height)} />
+        <meshStandardMaterial color={frame} roughness={0.66} />
+      </mesh>
+      {/* Muntin, purely so the glass reads as glazed at a glance. */}
+      <mesh position={at(0, 0)}>
+        <boxGeometry args={box(bar * 0.6, height - bar * 2)} />
+        <meshStandardMaterial color={frame} roughness={0.66} />
+      </mesh>
+      <mesh position={at(0, 0)}>
+        <planeGeometry args={[width - bar, height - bar]} />
+        <meshStandardMaterial
+          color={glass}
+          transparent
+          opacity={0.28}
+          roughness={0.12}
+          metalness={0.05}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
     </group>
   );
 }

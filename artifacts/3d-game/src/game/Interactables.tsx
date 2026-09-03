@@ -186,9 +186,12 @@ function Binky({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }
   const needsRecovery = objectiveIsActive(quests, 'where-binky', 'return-binky') && !inventory.includes('binky');
   const visible = (canSearch || needsRecovery) && !inventory.includes('binky');
   const position = useMemo(() => new THREE.Vector3(), []);
-  const source = dropped?.position ?? [-14, 0.2, 14];
+  // Binky's default spot was the middle of storage-box-a, so the quest item
+  // was inside the box rather than on it. It now rests on the lid, where a
+  // searching child would actually find it.
+  const source = dropped?.position ?? [-14, 1.14, 14.4];
   position.set(source[0], source[1], source[2]);
-  useCandidate('binky', position, visible, 1.7, 100, visible);
+  useCandidate('binky', position, visible, 2.3, 100, visible);
   useFrame((_, delta) => {
     if (ref.current) ref.current.rotation.y += delta * (active ? 1.6 : 0.35);
   });

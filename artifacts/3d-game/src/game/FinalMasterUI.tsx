@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Home, Map, Sparkles, Timer, Users, X } from 'lucide-react';
-import { ANIMATION_CLIPS, DEFAULT_AVATAR, FIRST_HEIST_RB, FULL_REDESIGN_PRICE, HEIST_STEPS, STARTER_HOME_PRICE, TUTORIAL_CHAPTERS, type AvatarProfile } from './finalMaster';
+import { ANIMATION_CLIPS, CAPER_HEIST_RB, DEFAULT_AVATAR, FIRST_HEIST_RB, FULL_REDESIGN_PRICE, HEIST_STEPS, REPLAY_HEIST_RB, STARTER_HOME_PRICE, TUTORIAL_CHAPTERS, type AvatarProfile } from './finalMaster';
 import { deleteDayKareSave, useFinalMasterStore } from './finalMasterStore';
 import { useGameStore } from './store';
+import { caperStepLabel } from './questBoard';
 import { useModeStore } from './modeStore';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { useToastStore } from './toastStore';
@@ -61,6 +62,45 @@ function Choice({ label, values, value, onChange, colors = false }: { label: str
  * rather than from React state, so the value judged on commit is the
  * value the player actually saw, and no per-frame re-render is needed.
  */
+/**
+ * Both jobs on the board.
+ *
+ * The Sticker Parade Caper is the original crew job and still lives in the
+ * game store; it is reconnected here rather than rebuilt, so its steps,
+ * roles and consequences are unchanged. Miss Leslie's Sticker Parade stays
+ * the primary story heist.
+ */
+function HeistJobList() {
+  const caper = useGameStore((game) => game.caper);
+  const trustedHelperPass = useGameStore((game) => game.progression.trustedHelperPass);
+  const heistStatus = useFinalMasterStore((state) => state.heistStatus);
+  const firstHeistComplete = useFinalMasterStore((state) => state.firstHeistComplete);
+
+  const caperStatus = !trustedHelperPass
+    ? 'Locked · return Binky to Leo first'
+    : caper.step === 'complete'
+      ? `Complete · ${caper.attempts} run${caper.attempts === 1 ? '' : 's'}`
+      : caper.step === 'idle'
+        ? 'Ready at the caper board by the playground'
+        : `In progress · ${caperStepLabel(caper.step)}`;
+
+  return <div className="final-board-jobs">
+    <h3>Jobs on the board</h3>
+    <article className="is-primary">
+      <strong>The Sticker Parade</strong>
+      <small>Miss Leslie · story heist</small>
+      <em>{heistStatus === 'active' ? 'In progress' : firstHeistComplete ? 'Daily replay available' : 'Talk to Miss Leslie to begin'}</em>
+      <b>{REPLAY_HEIST_RB.toLocaleString()} RB per replay</b>
+    </article>
+    <article className={trustedHelperPass ? '' : 'is-locked'}>
+      <strong>Sticker Parade Caper</strong>
+      <small>The original crew job · caper board by the playground</small>
+      <em>{caperStatus}</em>
+      <b>{CAPER_HEIST_RB.toLocaleString()} RB · +3 Star Tokens · +2 REP</b>
+    </article>
+  </div>;
+}
+
 function TimingGrid() {
   const completeTimingGrid = useFinalMasterStore((s) => s.completeTimingGrid);
   const bestScore = useFinalMasterStore((s) => s.timingGridBestScore);
@@ -167,6 +207,7 @@ function HeistBoardModal({ dayNumber, rb }: { dayNumber: number; rb: number }) {
     <header><div><small>MISS LESLIE'S HEIST HUB</small><h2>The Sticker Parade</h2><p>{state.firstHeistComplete ? 'Daily replay' : 'First story heist'} · {state.heistStatus}</p></div><button type="button" onClick={state.closeHeistBoard} aria-label="Close heist board"><X /></button></header>
     <div className="final-board-columns">
       <div className="final-board-progress">
+        <HeistJobList />
         <h3>Progress</h3>
         <strong>SCOPE</strong>
         {HEIST_STEPS[1].events.map((event) => <span key={event}>{done(1, event) ? '✓' : '○'} {event.replace('scope-', '').replaceAll('-', ' ')}</span>)}

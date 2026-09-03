@@ -66,10 +66,11 @@ const runFor = (clock: ReturnType<typeof createClockState>, realSeconds: number,
 }
 assert.equal(GAME_MINUTES_PER_REAL_SECOND * 60, 30, 'the base rate is 30x real time');
 
-// A full 9:00-18:30 day includes the after-hours Storybook hour: 19 real minutes at 1x.
+// A full 9:00-19:30 day includes the two-hour Stony Brook evening: 630 game
+// minutes at 30x is 21 real minutes.
 {
-  const { clock } = runFor(createClockState(1, DAY_START_MINUTE), 19 * 60, 2280);
-  assert.ok(clock.minute >= DAY_END_MINUTE - 1e-6, 'the daycare plus Storybook day takes 19 real minutes at 1x');
+  const { clock } = runFor(createClockState(1, DAY_START_MINUTE), 21 * 60, 2520);
+  assert.ok(clock.minute >= DAY_END_MINUTE - 1e-6, 'the daycare plus Stony Brook evening takes 21 real minutes at 1x');
 }
 
 // --- frame rate must not change game time ----------------------------------

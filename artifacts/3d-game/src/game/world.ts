@@ -299,38 +299,44 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   // The front door itself. Without it the doorway gap is a hole in the
   // shell and the player can simply walk out of the house.
   homeBox('home-front-door', 'wall', -1.9, -0.1, 8.0, 8.3),
-  homeBox('home-ground-east-north', 'wall', 2.0, 2.3, -8.3, -2.0),
-  homeBox('home-ground-east-south', 'wall', 2.0, 2.3, 2.0, 8.3),
+  homeBox('home-ground-east-north', 'wall', 2.0, 2.3, -8.3, -2.6),
+  homeBox('home-ground-east-south', 'wall', 2.0, 2.3, 2.6, 8.3),
+  // The middle stub of this spine turned the ground floor into a maze of
+  // short walls with dead pockets between them. Removing it leaves one
+  // wide opening from the kitchen through the dining area to the living
+  // room, and keeps the dining room's own walls standing.
   homeBox('home-ground-spine-a', 'wall', -3.15, -2.85, -8.3, -2.0),
-  homeBox('home-ground-spine-b', 'wall', -3.15, -2.85, -0.6, 2.0),
   homeBox('home-ground-spine-c', 'wall', -3.15, -2.85, 3.6, 8.3),
   homeBox('home-ground-kitchen-wall-a', 'wall', -10.3, -8.0, -0.15, 0.15),
   homeBox('home-ground-kitchen-wall-b', 'wall', -6.4, -2.85, -0.15, 0.15),
-  homeBox('home-ground-entry-wall-a', 'wall', -3.15, -1.6, 3.85, 4.15),
-  homeBox('home-ground-entry-wall-b', 'wall', 0.0, 2.3, 3.85, 4.15),
+  homeBox('home-ground-entry-wall-a', 'wall', -3.15, -2.2, 3.85, 4.15),
+  homeBox('home-ground-entry-wall-b', 'wall', 0.4, 2.3, 3.85, 4.15),
   homeBox('home-ground-bath-wall-a', 'wall', -1.2, 2.3, -3.15, -2.85),
-  homeBox('home-upstairs-north', 'wall', 1.7, 6.3, -2.3, -2.0),
-  homeBox('home-upstairs-south', 'wall', 1.7, 6.3, 2.0, 2.3),
+  // A 5.2 m stairwell rather than a 4 m slot: the approach was tight
+  // enough that the camera boxed in at the landing.
+  homeBox('home-upstairs-north', 'wall', 1.7, 6.3, -2.9, -2.6),
+  homeBox('home-upstairs-south', 'wall', 1.7, 6.3, 2.6, 2.9),
   homeBox('home-upper-north', 'wall', 5.7, 18.3, -8.3, -8.0),
   homeBox('home-upper-south', 'wall', 5.7, 18.3, 8.0, 8.3),
   homeBox('home-upper-east', 'wall', 18.0, 18.3, -8.3, 8.3),
-  homeBox('home-upper-west-north', 'wall', 5.7, 6.0, -8.3, -2.0),
-  homeBox('home-upper-west-south', 'wall', 5.7, 6.0, 2.0, 8.3),
+  homeBox('home-upper-west-north', 'wall', 5.7, 6.0, -8.3, -2.6),
+  homeBox('home-upper-west-south', 'wall', 5.7, 6.0, 2.6, 8.3),
+  // Two rooms upstairs, not three: the flex room was a corridor with a bed
+  // in it, so its footprint is now part of the primary bedroom. The hallway
+  // spine keeps one wide bedroom door and one bathroom door.
   homeBox('home-upper-spine-a', 'wall', 8.85, 9.15, -8.3, -5.6),
-  homeBox('home-upper-spine-b', 'wall', 8.85, 9.15, -4.0, -1.0),
-  homeBox('home-upper-spine-c', 'wall', 8.85, 9.15, 0.6, 3.0),
-  homeBox('home-upper-spine-d', 'wall', 8.85, 9.15, 4.6, 8.3),
-  homeBox('home-upper-room-wall-a', 'wall', 9.15, 18.3, 1.85, 2.15),
+  homeBox('home-upper-spine-b', 'wall', 8.85, 9.15, -4.0, 1.2),
+  homeBox('home-upper-spine-c', 'wall', 8.85, 9.15, 3.2, 8.3),
   homeBox('home-upper-room-wall-b', 'wall', 9.15, 18.3, -3.15, -2.85),
-  homeBox('home-downstairs-north', 'wall', -14.3, -9.7, -2.3, -2.0),
-  homeBox('home-downstairs-south', 'wall', -14.3, -9.7, 2.0, 2.3),
-  homeBox('home-ground-west-north', 'wall', -10.3, -10.0, -8.3, -2.0),
-  homeBox('home-ground-west-south', 'wall', -10.3, -10.0, 2.0, 8.3),
+  homeBox('home-downstairs-north', 'wall', -14.3, -9.7, -2.9, -2.6),
+  homeBox('home-downstairs-south', 'wall', -14.3, -9.7, 2.6, 2.9),
+  homeBox('home-ground-west-north', 'wall', -10.3, -10.0, -8.3, -2.6),
+  homeBox('home-ground-west-south', 'wall', -10.3, -10.0, 2.6, 8.3),
   homeBox('home-basement-north', 'wall', -26.3, -13.7, -7.3, -7.0),
   homeBox('home-basement-south', 'wall', -26.3, -13.7, 7.0, 7.3),
   homeBox('home-basement-west', 'wall', -26.3, -26.0, -7.3, 7.3),
-  homeBox('home-basement-east-north', 'wall', -14.0, -13.7, -7.3, -2.0),
-  homeBox('home-basement-east-south', 'wall', -14.0, -13.7, 2.0, 7.3),
+  homeBox('home-basement-east-north', 'wall', -14.0, -13.7, -7.3, -2.6),
+  homeBox('home-basement-east-south', 'wall', -14.0, -13.7, 2.6, 7.3),
   homeBox('home-basement-divider-a', 'wall', -22.15, -21.85, -7.3, -1.0),
   homeBox('home-basement-divider-b', 'wall', -22.15, -21.85, 1.0, 7.3),
   homeBox('home-sofa', 'furniture', -9.6, -6.4, 5.9, 7.0, { cameraRole: 'substantial', maxY: 0.85 }),
@@ -343,11 +349,15 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   homeBox('home-dining-table', 'table', -2.4, -0.4, 0.4, 2.4, { cameraRole: 'substantial', maxY: 0.74 }),
   homeBox('home-bath1-tub', 'furniture', -2.7, -0.8, -7.7, -6.4, { cameraRole: 'substantial', maxY: 0.6 }),
   homeBox('home-bath1-vanity', 'counter', 0.6, 1.9, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
-  homeBox('home-primary-bed', 'furniture', 10.2, 12.6, 4.6, 7.5, { cameraRole: 'substantial', maxY: 0.72 }),
-  homeBox('home-primary-dresser', 'furniture', 16.4, 17.8, 4.4, 6.4, { cameraRole: 'substantial', maxY: 1.15 }),
-  homeBox('home-primary-closet', 'furniture', 16.2, 17.8, 2.4, 4.0, { cameraRole: 'substantial', maxY: 2.2 }),
-  homeBox('home-flex-bed', 'furniture', 10.2, 12.4, -2.5, 0.1, { cameraRole: 'substantial', maxY: 0.72 }),
-  homeBox('home-flex-desk', 'table', 16.2, 17.8, -1.4, 0.8, { cameraRole: 'substantial', maxY: 0.76 }),
+  homeBox('home-primary-bed', 'furniture', 10.4, 12.5, 5.1, 7.4, { cameraRole: 'substantial', maxY: 0.62 }),
+  homeBox('home-primary-nightstand-west', 'furniture', 10.4, 11.0, 4.2, 4.8, { maxY: 0.56 }),
+  homeBox('home-primary-nightstand-east', 'furniture', 11.9, 12.5, 4.2, 4.8, { maxY: 0.56 }),
+  homeBox('home-primary-dresser', 'furniture', 16.6, 17.8, 5.0, 6.8, { cameraRole: 'substantial', maxY: 1.05 }),
+  homeBox('home-primary-closet', 'furniture', 16.4, 17.8, 1.6, 3.4, { cameraRole: 'substantial', maxY: 2.2 }),
+  // The flex room's furniture stays, now as the bedroom's reading end.
+  homeBox('home-primary-armchair', 'furniture', 10.4, 11.7, -2.2, -0.9, { maxY: 0.78 }),
+  homeBox('home-primary-desk', 'table', 16.4, 17.8, -1.8, 0.4, { cameraRole: 'substantial', maxY: 0.76 }),
+  homeBox('home-primary-bookshelf', 'furniture', 13.4, 15.2, -2.9, -2.2, { cameraRole: 'substantial', maxY: 1.6 }),
   homeBox('home-bath2-tub', 'furniture', 15.9, 17.8, -7.7, -6.2, { cameraRole: 'substantial', maxY: 0.6 }),
   homeBox('home-bath2-vanity', 'counter', 9.6, 11.2, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
   homeBox('home-rec-sofa', 'furniture', -20.6, -17.6, 5.4, 6.6, { cameraRole: 'substantial', maxY: 0.85 }),
@@ -405,9 +415,13 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   storybookBox('sb-manor-shell', 'wall', -18, -8, -17, -11, { cameraRole: 'structural', maxY: 6.2 }),
   storybookBox('sb-manor-porch-post-west', 'furniture', -15.15, -14.85, -10.9, -10.6, { maxY: 2.6 }),
   storybookBox('sb-manor-porch-post-east', 'furniture', -11.15, -10.85, -10.9, -10.6, { maxY: 2.6 }),
-  storybookBox('sb-manor-mailbox', 'furniture', -11.62, -11.18, -6.42, -5.98, { maxY: 1.2 }),
-  storybookBox('sb-manor-hedge-west', 'furniture', -18, -15.6, -10.95, -10.35, { maxY: 0.85 }),
-  storybookBox('sb-manor-hedge-east', 'furniture', -10.4, -8, -10.95, -10.35, { maxY: 0.85 }),
+  storybookBox('sb-manor-mailbox', 'furniture', -12.06, -11.62, -6.42, -5.98, { maxY: 1.2 }),
+  // The west hedge used to run across the driveway, so the one clear route
+  // to the garage front was walled off by shrubbery. The hedges now sit in
+  // the two gaps either side of the front walkway and leave both the drive
+  // and the doorway open.
+  storybookBox('sb-manor-hedge-west', 'furniture', -14.9, -13.95, -10.95, -10.35, { maxY: 0.85 }),
+  storybookBox('sb-manor-hedge-east', 'furniture', -12.15, -8.6, -10.95, -10.35, { maxY: 0.85 }),
 ];
 
 export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {

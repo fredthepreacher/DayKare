@@ -66,10 +66,13 @@ const FURNITURE_COLORS: Record<string, string> = {
   'home-bath1-tub': '#eef4f6',
   'home-bath1-vanity': '#e2e8ea',
   'home-primary-bed': '#c98fae',
+  'home-primary-nightstand-west': '#8d6244',
+  'home-primary-nightstand-east': '#8d6244',
   'home-primary-dresser': '#8d6244',
   'home-primary-closet': '#a3785a',
-  'home-flex-bed': '#8fb6c9',
-  'home-flex-desk': '#9c7248',
+  'home-primary-armchair': '#8fb6c9',
+  'home-primary-desk': '#9c7248',
+  'home-primary-bookshelf': '#8d6244',
   'home-bath2-tub': '#eef4f6',
   'home-bath2-vanity': '#e2e8ea',
   'home-rec-sofa': '#8c7fc4',
@@ -186,15 +189,27 @@ export function HomeInterior() {
     <mesh position={[1.25, 1.5, -7.9]}><boxGeometry args={[0.7, 0.62, 0.05]} /><meshStandardMaterial color="#cfe2e8" /></mesh>
     <RoomLabel x={-0.5} z={-5.5} y={0} text="BATHROOM" />
 
-    {/* Upper: primary bedroom */}
-    <Rug x={13} z={5.2} y={HOME_UPPER_Y} w={4.4} d={3.2} color="#e0b6cf" />
-    <mesh position={[13.4, HOME_UPPER_Y + 0.3, 6.4]} castShadow><boxGeometry args={[0.6, 0.6, 0.5]} /><meshStandardMaterial color="#8d6244" /></mesh>
-    <Lamp x={13.4} z={6.4} y={HOME_UPPER_Y + 0.6} />
-    <RoomLabel x={13} z={4} y={HOME_UPPER_Y} text="PRIMARY BEDROOM" />
-
-    {/* Upper: flex room */}
-    <mesh position={[15.4, HOME_UPPER_Y + 0.26, -0.3]} castShadow><boxGeometry args={[0.44, 0.52, 0.44]} /><meshStandardMaterial color="#8d6244" /></mesh>
-    <RoomLabel x={13.4} z={-1.4} y={HOME_UPPER_Y} text="FLEX ROOM" />
+    {/* Upper: one large primary bedroom, sleeping end and reading end */}
+    <Rug x={13.2} z={5.6} y={HOME_UPPER_Y} w={5.2} d={3.6} color="#e0b6cf" />
+    <Rug x={13.4} z={-1.2} y={HOME_UPPER_Y} w={4} d={2.6} color="#d3bfe0" />
+    {/* Headboard and pillows, so the bed reads as a bed and not a slab. */}
+    <mesh position={[11.45, HOME_UPPER_Y + 0.62, 7.5]} castShadow><boxGeometry args={[2.2, 1.05, 0.16]} /><meshStandardMaterial color="#8d6244" /></mesh>
+    {[-0.5, 0.5].map((offset) => (
+      <mesh key={offset} position={[11.45 + offset, HOME_UPPER_Y + 0.7, 7.05]} castShadow>
+        <boxGeometry args={[0.9, 0.18, 0.5]} /><meshStandardMaterial color="#fdf3f7" />
+      </mesh>
+    ))}
+    <mesh position={[11.45, HOME_UPPER_Y + 0.64, 5.9]} castShadow><boxGeometry args={[2.05, 0.08, 1.5]} /><meshStandardMaterial color="#a3688c" /></mesh>
+    <Lamp x={10.7} z={4.5} y={HOME_UPPER_Y + 0.56} />
+    <Lamp x={12.2} z={4.5} y={HOME_UPPER_Y + 0.56} />
+    {/* Closet doors, so the closet block reads as storage. */}
+    {[2.0, 2.9].map((z) => (
+      <mesh key={z} position={[16.36, HOME_UPPER_Y + 1.05, z]} castShadow>
+        <boxGeometry args={[0.06, 1.9, 0.82]} /><meshStandardMaterial color="#c7a184" />
+      </mesh>
+    ))}
+    <mesh position={[16.1, HOME_UPPER_Y + 1.75, 5.9]}><boxGeometry args={[0.06, 0.85, 1.2]} /><meshStandardMaterial color="#f0a0b8" /></mesh>
+    <RoomLabel x={13.2} z={3.6} y={HOME_UPPER_Y} text="PRIMARY BEDROOM" />
 
     {/* Upper: bathroom 2 + hallway */}
     <mesh position={[12.6, HOME_UPPER_Y + 0.3, -7.2]} castShadow><boxGeometry args={[0.5, 0.6, 0.62]} /><meshStandardMaterial color="#f4f8f9" /></mesh>

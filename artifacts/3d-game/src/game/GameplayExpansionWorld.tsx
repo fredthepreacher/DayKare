@@ -75,7 +75,12 @@ export function GameplayExpansionWorld() {
           <Marker id="lost-found-desk" position={[-6.8, 0, -4.7]} color="#e88b57" label="Lost & Found Job Board" />
           <Marker id="art-mini-activity" position={[-10.1, 0, -11.7]} color="#e76f8c" label="Art Activity" priority={96} range={3.2} forcePriority />
           <Marker id="show-and-tell-spot" position={[0, 0, 2.3]} color="#8a63c7" label="Show & Tell" />
-          <Marker id="tech-market" position={[9.3, 0, 14]} color="#38b6c8" label="Tech Market" />
+          {/* Moved east and forward. At [9.3, 14] the kiosk sat directly behind
+              Miss Leslie and against the heist hub's back wall, so approaching
+              it meant threading a gap barely wider than the player - on a
+              touchscreen that is a fight. This spot has clear floor on every
+              side. */}
+          <Marker id="tech-market" position={[11.3, 0, 14.3]} color="#38b6c8" label="Tech Market" range={3} />
           <Marker id="snack-window" position={[4.8, 0, -3]} color="#f2b85b" label="Juice & Crackers" />
         </>
       )}

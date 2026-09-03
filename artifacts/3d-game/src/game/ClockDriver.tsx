@@ -3,7 +3,7 @@ import { useGameStore } from './store';
 import { useModeStore } from './modeStore';
 import { isGameplayBlocked } from './gameplayGate';
 import type { PauseReason } from './gameClock';
-import { STORYBOOK_CLOSE_MINUTE, STORYBOOK_OPEN_MINUTE, STORYBOOK_WARNING_MINUTE } from './storybookLaneConfig';
+import { STORYBOOK_CLOSE_HOLD_SECONDS, STORYBOOK_CLOSE_MINUTE, STORYBOOK_OPEN_MINUTE, STORYBOOK_WARNING_MINUTE } from './storybookLaneConfig';
 
 /**
  * Drives the canonical clock from real elapsed time.
@@ -53,6 +53,9 @@ function currentPauseReason(): PauseReason | null {
 export function ClockDriver() {
   const lastTickRef = useRef<number>(0);
   const noticeRef = useRef('');
+  // When closing time was reached, so the day rolls over after the hold
+  // rather than the instant the clock crosses 7:30.
+  const closingSinceRef = useRef<number | null>(null);
 
   useEffect(() => {
     lastTickRef.current = performance.now();
@@ -66,10 +69,20 @@ export function ClockDriver() {
       const store = useGameStore.getState();
 
       if (store.clock.minute >= STORYBOOK_CLOSE_MINUTE) {
-        store.finishDay();
-        noticeRef.current = '';
+        // Closing time holds for a beat before the day turns over, so the
+        // end-of-day message is readable instead of a hard cut.
+        if (closingSinceRef.current === null) {
+          closingSinceRef.current = now;
+          store.setAmbientMessage('Stony Brook is closing for the night. Heading home...');
+        }
+        if ((now - closingSinceRef.current) / 1000 >= STORYBOOK_CLOSE_HOLD_SECONDS) {
+          closingSinceRef.current = null;
+          store.finishDay();
+          noticeRef.current = '';
+        }
         return;
       }
+      closingSinceRef.current = null;
 
       if (reason !== null) {
         if (!store.clock.paused || store.clock.pauseReason !== reason) {

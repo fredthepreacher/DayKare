@@ -1,4 +1,10 @@
 export const RASCAL_BUCKS_PER_GEM = 10_000;
+/**
+ * The Sticker Parade Caper - the original crew job, run from the caper board
+ * by the playground - now pays Rascal Bucks alongside its tokens and REP.
+ * Paid on the transition into 'complete', so a reload cannot re-award it.
+ */
+export const CAPER_HEIST_RB = 2_500;
 export const STARTER_HOME_PRICE = 25_000;
 export const FULL_REDESIGN_PRICE = 10_000;
 export const FIRST_HEIST_CASH = 1_000;

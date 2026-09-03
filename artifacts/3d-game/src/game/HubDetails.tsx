@@ -13,7 +13,6 @@ export function HubDetails() {
 
   return (
     <group>
-      <WindowRow imaginationMode={isImaginationMode} />
       <Cubbies imaginationMode={isImaginationMode} />
       <ReadingNook />
       <ActivityStationDressing imaginationMode={isImaginationMode} />
@@ -178,35 +177,9 @@ function RoomFinishing({ imaginationMode }: { imaginationMode: boolean }) {
   );
 }
 
-function WindowRow({ imaginationMode }: { imaginationMode: boolean }) {
-  const glass = imaginationMode ? '#3d5bd6' : '#a8dadc';
-  const frame = imaginationMode ? '#ff4da6' : '#ffffff';
-
-  return (
-    <group position={[0, 2.6, -7.64]}>
-      {[-4.4, -1.5, 1.5, 4.4].map((x) => (
-        <group key={x} position={[x, 0, 0]}>
-          <mesh castShadow>
-            <boxGeometry args={[2.1, 1.45, 0.08]} />
-            <meshStandardMaterial color={frame} roughness={0.68} />
-          </mesh>
-          <mesh position={[0, 0, -0.055]}>
-            <boxGeometry args={[1.72, 1.08, 0.02]} />
-            <meshStandardMaterial color={glass} roughness={0.32} metalness={0.05} />
-          </mesh>
-          <mesh position={[0, 0, -0.08]}>
-            <boxGeometry args={[0.06, 1.08, 0.025]} />
-            <meshStandardMaterial color={frame} roughness={0.68} />
-          </mesh>
-          <mesh position={[0, 0, -0.08]}>
-            <boxGeometry args={[1.72, 0.06, 0.025]} />
-            <meshStandardMaterial color={frame} roughness={0.68} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
+/** The classroom ceiling, and where the mobile's hub hangs below it. */
+export const CLASSROOM_CEILING_HEIGHT = 3.9;
+export const MOBILE_HUB_HEIGHT = 3.05;
 
 function Cubbies({ imaginationMode }: { imaginationMode: boolean }) {
   const colors = imaginationMode
@@ -320,38 +293,68 @@ function PlaygroundDetails() {
   );
 }
 
+/**
+ * The classroom mobile.
+ *
+ * These balls used to hang in space with nothing above them and turn on the
+ * spot forever, which read as three objects the physics had forgotten. Now
+ * there is a cord to the ceiling, a crossbar they hang from, and a slow sway
+ * instead of a spin - so they look suspended on purpose.
+ */
 function CeilingMobile({ imaginationMode }: { imaginationMode: boolean }) {
   const ref = useRef<THREE.Group>(null);
   const lastAnimationAt = useRef(0);
   const colors = imaginationMode ? ['#ff4da6', '#52e7ff', '#ffd166'] : ['#e76f51', '#457b9d', '#e9c46a'];
+  const cordColor = imaginationMode ? '#f7d9ff' : '#e9d8a6';
 
   useFrame((state) => {
     if (!ref.current || !shouldUpdateOptionalAnimation(lastAnimationAt, state.clock.elapsedTime * 1000)) return;
-    ref.current.rotation.y = state.clock.elapsedTime * 0.12;
-    ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.7) * 0.04;
+    // A gentle sway either side of rest, not a rotation that never ends.
+    ref.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.32) * 0.22;
+    ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.51) * 0.03;
   });
 
   return (
-    <group ref={ref} position={[0, 3.25, -1]}>
-      <mesh castShadow>
-        <cylinderGeometry args={[0.16, 0.16, 0.1, 12]} />
-        <meshStandardMaterial color="#bc6c25" roughness={0.78} />
+    <group position={[0, MOBILE_HUB_HEIGHT, -1]}>
+      {/* The cord to the ceiling. Without it the balls had no reason to be
+          up there at all. */}
+      <mesh position={[0, (CLASSROOM_CEILING_HEIGHT - MOBILE_HUB_HEIGHT) / 2, 0]}>
+        <cylinderGeometry args={[0.014, 0.014, CLASSROOM_CEILING_HEIGHT - MOBILE_HUB_HEIGHT, 6]} />
+        <meshBasicMaterial color={cordColor} />
       </mesh>
-      {colors.map((color, index) => {
-        const angle = (index / colors.length) * Math.PI * 2;
-        return (
-          <group key={color} position={[Math.cos(angle) * 0.85, -0.28, Math.sin(angle) * 0.85]}>
-            <mesh position={[0, 0.14, 0]}>
-              <cylinderGeometry args={[0.012, 0.012, 0.28, 6]} />
-              <meshBasicMaterial color="#e9d8a6" />
-            </mesh>
-            <mesh castShadow>
-              <sphereGeometry args={[0.19, 10, 8]} />
-              <meshStandardMaterial color={color} roughness={0.7} />
-            </mesh>
-          </group>
-        );
-      })}
+      <mesh position={[0, CLASSROOM_CEILING_HEIGHT - 0.05, 0]}>
+        <cylinderGeometry args={[0.13, 0.13, 0.1, 10]} />
+        <meshStandardMaterial color="#bc6c25" roughness={0.8} />
+      </mesh>
+      <group ref={ref}>
+        <mesh castShadow>
+          <cylinderGeometry args={[0.14, 0.14, 0.09, 12]} />
+          <meshStandardMaterial color="#bc6c25" roughness={0.78} />
+        </mesh>
+        {/* Crossbars, so the strings hang from something. */}
+        {[0, Math.PI / 3, (2 * Math.PI) / 3].map((angle) => (
+          <mesh key={angle} rotation={[0, angle, 0]} castShadow>
+            <boxGeometry args={[1.74, 0.035, 0.035]} />
+            <meshStandardMaterial color="#bc6c25" roughness={0.8} />
+          </mesh>
+        ))}
+        {colors.map((color, index) => {
+          const angle = (index / colors.length) * Math.PI * 2;
+          const drop = 0.3 + index * 0.11;
+          return (
+            <group key={color} position={[Math.cos(angle) * 0.85, 0, Math.sin(angle) * 0.85]}>
+              <mesh position={[0, -drop / 2, 0]}>
+                <cylinderGeometry args={[0.011, 0.011, drop, 6]} />
+                <meshBasicMaterial color={cordColor} />
+              </mesh>
+              <mesh position={[0, -drop, 0]} castShadow>
+                <sphereGeometry args={[0.19, 10, 8]} />
+                <meshStandardMaterial color={color} roughness={0.7} />
+              </mesh>
+            </group>
+          );
+        })}
+      </group>
     </group>
   );
 }
@@ -416,7 +419,8 @@ function LostAndFoundOrganizer() {
           <meshStandardMaterial color={['#457b9d', '#e76f51', '#e9c46a'][index]} roughness={0.7} />
         </mesh>
       ))}
-      <mesh position={[0, 1.35, 0]} castShadow>
+      {/* The sign used to hover 8 cm above the cabinet it belongs to. */}
+      <mesh position={[0, 1.27, 0]} castShadow>
         <boxGeometry args={[1.8, 0.34, 0.1]} />
         <meshStandardMaterial color="#fefae0" roughness={0.7} />
       </mesh>

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
   HOME_BASEMENT_Y, HOME_BASEMENT_LANDING, HOME_SPAWN, HOME_UPPER_LANDING, HOME_UPPER_Y,
-  PLAYER_RADIUS, STONY_BROOK_DOOR_RETURN, STORYBOOK_SPAWN, groundHeightAt, isWalkable,
+  PLAYER_RADIUS, STONY_BROOK_DOOR_RETURN, STORYBOOK_SPAWN, WORLD_SOLIDS, groundHeightAt, isWalkable,
   type GameZone,
 } from './world';
 import { CAFETERIA_SEATS } from './DaycareRoutineWorld';
@@ -104,6 +104,11 @@ const lane = floodFrom(STORYBOOK_SPAWN, 'storybook', { minX: -23, maxX: 23, minZ
 
 assert.ok(lane.reaches(STONY_BROOK_DOOR_RETURN), 'the front door of the owned home must be reachable from the Stony Brook entrance');
 assert.ok(lane.reaches([-13, 0, -6.5]), 'the front walkway must be walkable, not blocked by the hedges');
+assert.ok(lane.reaches([-13, 0, -10.2]), 'and the walkway runs all the way up to the front door');
+// The west hedge used to cross the driveway, so the garage front could not
+// be walked to at all.
+assert.ok(lane.reaches([-16.5, 0, -10.3]), 'the driveway reaches the garage front');
+assert.ok(lane.reaches([-9.2, 0, -9.2]), 'and the dog house has clear ground around it');
 assert.ok(lane.reaches([-6.4, 0, -4.6]), 'Mr. Brooks must be reachable on his patrol');
 assert.ok(lane.reaches([5.6, 0, -3.6]), 'Ms. Hartwell must be reachable on her patrol');
 assert.ok(!lane.reaches([-13, 0, -14]), 'and the solid mansion shell is not something to walk into');
@@ -123,7 +128,10 @@ const HOME_TARGETS: [string, readonly number[]][] = [
   ['upstairs landing', HOME_UPPER_LANDING],
   ['upstairs hall', [7.4, 0, 5]],
   ['primary bedroom', [13, 0, 5.2]],
-  ['flex room', [13.4, 0, -1]],
+  // The flex room was merged into the bedroom, so its old footprint has to
+  // still be walkable - as part of that one room, not sealed off behind a
+  // leftover wall.
+  ['primary bedroom reading end', [13.4, 0, -1]],
   ['bathroom 2', [13.4, 0, -5.4]],
   ['down-stairs corridor', [-12, 0, 0]],
   ['basement landing', HOME_BASEMENT_LANDING],
@@ -153,6 +161,23 @@ assert.ok(upperArea > 88, `the upper floor should offer real floor space, not ${
 assert.ok(!home.reaches([-1, 0, 8]), 'the front door seals its own doorway - without a solid there the player stands out in the gap');
 assert.ok(!home.reaches([4, 0, 6]), 'the dead space beside the stair corridor stays sealed off');
 assert.ok(!home.reaches([-20, 0, 8]), 'and so does the space behind the basement wall');
+
+// The flex room is gone as a room, not merely relabelled: no wall divides
+// the upper floor's east side any more, so the bedroom is one space from
+// the bathroom wall to the south wall.
+assert.equal(
+  WORLD_SOLIDS.some((solid) => solid.id.startsWith('home-flex')),
+  false,
+  'no flex-room geometry survives the merge',
+);
+assert.equal(
+  WORLD_SOLIDS.some((solid) => solid.id === 'home-upper-room-wall-a'),
+  false,
+  'and the wall that split the bedroom from it is gone',
+);
+for (const z of [-2.5, -1, 1, 3, 5, 7]) {
+  assert.ok(home.reaches([13, 0, z]), `the merged bedroom is one walkable room at z=${z}`);
+}
 
 /* ------------------------- stairs are continuous ------------------------- */
 

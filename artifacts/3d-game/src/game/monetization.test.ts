@@ -15,6 +15,8 @@ import {
 } from "./monetization";
 import { useMonetizationStore } from "./monetizationStore";
 import { useGameStore } from "./store";
+import { useStorybookLaneStore } from "./storybookLaneStore";
+import { LEGACY_CARE_COIN_TO_RASCAL_BUCKS } from "./monetization";
 
 assert.equal(getMonetizationProduct("kare_pass_monthly")?.price, 4.99);
 assert.equal(getMonetizationProduct("family_pass_monthly")?.price, 9.99);
@@ -58,7 +60,7 @@ const rainbowProduct = getMonetizationProduct("cosmetic_rainbow_runners")!;
 assert.equal(
   productRequirementsMet(rainbowProduct, { reputation: 999, achievements: [] }),
   false,
-  "achievement locks survive the Care Coin shop",
+  "achievement locks survive the Rascal Bucks shop",
 );
 assert.equal(
   productRequirementsMet(rainbowProduct, {
@@ -71,7 +73,7 @@ const rugbyProduct = getMonetizationProduct("cosmetic_crayon_stripe_rugby")!;
 assert.equal(
   productRequirementsMet(rugbyProduct, { reputation: 49, achievements: [] }),
   false,
-  "REP locks survive the Care Coin shop",
+  "REP locks survive the Rascal Bucks shop",
 );
 assert.equal(
   productRequirementsMet(rugbyProduct, { reputation: 50, achievements: [] }),
@@ -131,8 +133,8 @@ assert.equal(
 );
 
 const grantedCosmetics: string[] = [];
+useStorybookLaneStore.setState({ ribbonBucks: 0 });
 useMonetizationStore.setState({
-  careCoins: 0,
   careGems: 0,
   rewardedReputation: 0,
   entitlements: createInitialEntitlements(),
@@ -154,7 +156,11 @@ assert.equal(
     .fulfillVerifiedTransaction(tx, (ids) => grantedCosmetics.push(...ids)),
   "success",
 );
-assert.equal(useMonetizationStore.getState().careCoins, 150);
+assert.equal(
+  useStorybookLaneStore.getState().ribbonBucks,
+  150 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
+  'a bundle pays its Rascal Bucks into the wallet the player actually spends from',
+);
 assert.equal(useMonetizationStore.getState().careGems, 40);
 assert.deepEqual(grantedCosmetics, ["sunbeam_tee"]);
 assert.equal(
@@ -168,8 +174,8 @@ assert.equal(
   "duplicate",
 );
 assert.equal(
-  useMonetizationStore.getState().careCoins,
-  150,
+  useStorybookLaneStore.getState().ribbonBucks,
+  150 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
   "duplicate transaction cannot grant twice",
 );
 
@@ -186,8 +192,8 @@ assert.equal(
   "active boosts reject accidental stacking",
 );
 
+useStorybookLaneStore.setState({ ribbonBucks: 100 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS });
 useMonetizationStore.setState({
-  careCoins: 100,
   careGems: 100,
   entitlements: createInitialEntitlements(),
   rewardedReputation: 0,
@@ -199,7 +205,11 @@ assert.equal(
     .spendCurrencyProduct("furniture_reading_nook", eligible, () => undefined),
   true,
 );
-assert.equal(useMonetizationStore.getState().careCoins, 20);
+assert.equal(
+  useStorybookLaneStore.getState().ribbonBucks,
+  (100 - 80) * LEGACY_CARE_COIN_TO_RASCAL_BUCKS,
+  'a Rascal Bucks purchase debits exactly the asking price',
+);
 assert.ok(
   useMonetizationStore
     .getState()
@@ -212,8 +222,8 @@ assert.equal(
   false,
   "non-consumables cannot be repurchased",
 );
+useStorybookLaneStore.setState({ ribbonBucks: 1000 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS });
 useMonetizationStore.setState({
-  careCoins: 1000,
   entitlements: createInitialEntitlements(),
 });
 assert.equal(
@@ -277,22 +287,23 @@ assert.deepEqual(
   "cosmetic fulfillment cannot alter ranks, routes, areas, activities, achievements, quests, inventory, or progression",
 );
 
+useStorybookLaneStore.setState({ ribbonBucks: 0 });
 useMonetizationStore.setState({
-  careCoins: 0,
   rewardedReputation: 0,
   entitlements: createInitialEntitlements(),
 });
-assert.equal(useMonetizationStore.getState().reconcileGameplayRewards(24), 4);
-assert.equal(useMonetizationStore.getState().reconcileGameplayRewards(25), 1);
+const perRep = LEGACY_CARE_COIN_TO_RASCAL_BUCKS / 5;
+assert.equal(useMonetizationStore.getState().reconcileGameplayRewards(24), 24 * perRep);
+assert.equal(useMonetizationStore.getState().reconcileGameplayRewards(25), perRep);
 assert.equal(
   useMonetizationStore.getState().reconcileGameplayRewards(25),
   0,
-  "same REP cannot mint Care Coins twice",
+  "same REP cannot mint Rascal Bucks twice",
 );
 assert.equal(
-  useMonetizationStore.getState().careCoins,
-  5,
-  "free play earns Care Coins through REP progress",
+  useStorybookLaneStore.getState().ribbonBucks,
+  25 * perRep,
+  "free play earns Rascal Bucks through REP progress",
 );
 
 const dailyAt = Date.parse("2026-09-01T12:00:00Z");

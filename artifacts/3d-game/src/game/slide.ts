@@ -123,6 +123,17 @@ export function slideRideTumble(ride: SlideRide) {
 
 export const NPC_SLIDE_MIN_GAP_SECONDS = 25;
 export const NPC_SLIDE_MAX_GAP_SECONDS = 40;
+/**
+ * Free play is what the slide is for, so turns come round roughly twice as
+ * often during recess and outdoor play as they do the rest of the day.
+ */
+export const NPC_SLIDE_FREE_PLAY_MIN_GAP_SECONDS = 11;
+export const NPC_SLIDE_FREE_PLAY_MAX_GAP_SECONDS = 21;
+const FREE_PLAY_SCHEDULES = new Set(['outdoor-play', 'recess', 'morning-play']);
+
+export function npcSlideIsFreePlay(schedule: string) {
+  return FREE_PLAY_SCHEDULES.has(schedule);
+}
 
 /**
  * Schedules which child rides next.
@@ -140,14 +151,16 @@ export interface NpcSlideSchedule {
   lastRider: string | null;
 }
 
-export function createNpcSlideSchedule(seed = 0): NpcSlideSchedule {
-  return { nextInSeconds: npcSlideGap(seed), rider: null, lastRider: null };
+export function createNpcSlideSchedule(seed = 0, freePlay = false): NpcSlideSchedule {
+  return { nextInSeconds: npcSlideGap(seed, freePlay), rider: null, lastRider: null };
 }
 
-export function npcSlideGap(seed: number) {
+export function npcSlideGap(seed: number, freePlay = false) {
   // FNV-style mix so an integer seed spreads across the window.
   const mixed = Math.abs(Math.imul(Math.floor(seed) ^ 0x9e3779b9, 0x85ebca6b)) % 1000 / 1000;
-  return NPC_SLIDE_MIN_GAP_SECONDS + mixed * (NPC_SLIDE_MAX_GAP_SECONDS - NPC_SLIDE_MIN_GAP_SECONDS);
+  const min = freePlay ? NPC_SLIDE_FREE_PLAY_MIN_GAP_SECONDS : NPC_SLIDE_MIN_GAP_SECONDS;
+  const max = freePlay ? NPC_SLIDE_FREE_PLAY_MAX_GAP_SECONDS : NPC_SLIDE_MAX_GAP_SECONDS;
+  return min + mixed * (max - min);
 }
 
 /**
@@ -166,6 +179,7 @@ export function stepNpcSlideSchedule(
   delta: number,
   eligible: readonly string[],
   seed: number,
+  freePlay = false,
 ): NpcSlideSchedule {
   if (schedule.rider) return schedule;
   const nextInSeconds = schedule.nextInSeconds - (Number.isFinite(delta) ? Math.max(0, delta) : 0);
@@ -173,12 +187,12 @@ export function stepNpcSlideSchedule(
   const rider = pickNpcSlideRider(eligible, schedule.lastRider);
   // With nobody eligible the timer resets rather than firing repeatedly
   // for the rest of the block.
-  if (!rider) return { ...schedule, nextInSeconds: npcSlideGap(seed) };
-  return { nextInSeconds: npcSlideGap(seed), rider, lastRider: schedule.lastRider };
+  if (!rider) return { ...schedule, nextInSeconds: npcSlideGap(seed, freePlay) };
+  return { nextInSeconds: npcSlideGap(seed, freePlay), rider, lastRider: schedule.lastRider };
 }
 
-export function releaseNpcSlideRider(schedule: NpcSlideSchedule, seed: number): NpcSlideSchedule {
-  return { nextInSeconds: npcSlideGap(seed), rider: null, lastRider: schedule.rider ?? schedule.lastRider };
+export function releaseNpcSlideRider(schedule: NpcSlideSchedule, seed: number, freePlay = false): NpcSlideSchedule {
+  return { nextInSeconds: npcSlideGap(seed, freePlay), rider: null, lastRider: schedule.rider ?? schedule.lastRider };
 }
 
 /** Schedule blocks during which no child leaves what they are doing to slide. */

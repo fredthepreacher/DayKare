@@ -8,6 +8,7 @@ import { getTrackedPlayerPosition } from './world';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { useFinalMasterStore } from './finalMasterStore';
 import { REALTORS, realtorPatrolTarget, type RealtorProfile } from './realEstate';
+import { DOG_RECALL_RESCUE_DISTANCE, consumeDogRecall } from './dogRecall';
 
 const HOUSES = [
   { id: 'bluebell', label: 'BLUEBELL', position: [13, 0, -12] as const, color: '#75c9f1' },
@@ -103,23 +104,25 @@ function WavyManor() {
         <boxGeometry args={[4.6, 0.24, 1.2]} /><meshStandardMaterial color="#7d4a37" />
       </mesh>
 
-      {/* Windows. */}
-      {[-15.6, -10.4].map((x) => (
-        <mesh key={x} position={[x, 1.6, -10.94]}><boxGeometry args={[1.7, 1.2, 0.08]} /><meshStandardMaterial color="#9fd0e8" /></mesh>
-      ))}
-      {[-15.2, -13, -10.8].map((x) => (
-        <mesh key={`u${x}`} position={[x, 4.4, -11.62]}><boxGeometry args={[1.4, 1.1, 0.08]} /><meshStandardMaterial color="#9fd0e8" /></mesh>
-      ))}
+      {/* Windows: frame, sill and tinted glass rather than a flat blue slab.
+          The upper row lines up with the upper storey's own front face. */}
+      {[-15.6, -10.4].map((x) => <ManorWindow key={x} x={x} y={1.62} z={-10.94} width={1.7} height={1.2} />)}
+      {[-15.2, -13, -10.8].map((x) => <ManorWindow key={`u${x}`} x={x} y={4.4} z={-11.62} width={1.4} height={1.1} />)}
 
-      {/* Shrubs along the front. */}
-      {[-17.2, -16.2, -9.6, -8.6].map((x) => (
+      {/* Shrubs, planted on the hedge lines so nothing sits across the
+          driveway or the front door. */}
+      {[-14.5, -11.6, -10.4, -9.2].map((x) => (
         <mesh key={`s${x}`} position={[x, 0.42, -10.65]} castShadow>
-          <sphereGeometry args={[0.5, 12, 10]} /><meshStandardMaterial color="#5f9e63" roughness={1} />
+          <sphereGeometry args={[0.42, 12, 10]} /><meshStandardMaterial color="#5f9e63" roughness={1} />
         </mesh>
       ))}
 
+      {/* Dog house in the side yard, clear of the path and the driveway.
+          It is the dog's home spot as well as a sign the player owns one. */}
+      <DogHouse />
+
       {/* Mailbox on the curb. */}
-      <group position={[-11.4, 0, -6.2]}>
+      <group position={[-11.84, 0, -6.2]}>
         <mesh position={[0, 0.55, 0]} castShadow><cylinderGeometry args={[0.07, 0.07, 1.1, 8]} /><meshStandardMaterial color="#7f5a42" /></mesh>
         <mesh position={[0, 1.2, 0]} castShadow><boxGeometry args={[0.28, 0.28, 0.5]} /><meshStandardMaterial color="#c8483f" /></mesh>
       </group>
@@ -127,6 +130,60 @@ function WavyManor() {
       <Text position={[-13, 3.35, -10.55]} fontSize={0.4} color="#fffaf0" anchorX="center" anchorY="middle">
         {owned ? 'WAVY MANOR ★' : 'WAVY MANOR · FOR SALE'}
       </Text>
+    </group>
+  );
+}
+
+/** Where the dog lives, and where a recall brings it back from. */
+export const DOG_HOUSE_POSITION: [number, number, number] = [-9.2, 0, -9.2];
+
+/** A framed, glazed window on the manor's front elevation. */
+function ManorWindow({ x, y, z, width, height }: { x: number; y: number; z: number; width: number; height: number }) {
+  const bar = 0.1;
+  return (
+    <group position={[x, y, z]}>
+      <mesh position={[0, 0, 0.03]}>
+        <boxGeometry args={[width + bar, height + bar, 0.06]} />
+        <meshStandardMaterial color="#fffaf0" roughness={0.7} />
+      </mesh>
+      <mesh position={[0, 0, -0.01]}>
+        <boxGeometry args={[width, height, 0.05]} />
+        <meshStandardMaterial color="#bcdff0" roughness={0.16} metalness={0.12} transparent opacity={0.82} />
+      </mesh>
+      <mesh position={[0, 0, 0.045]}>
+        <boxGeometry args={[bar * 0.5, height, 0.05]} />
+        <meshStandardMaterial color="#fffaf0" roughness={0.7} />
+      </mesh>
+      <mesh position={[0, -height / 2 - bar / 2, 0.09]}>
+        <boxGeometry args={[width + bar * 2.4, bar * 0.8, 0.16]} />
+        <meshStandardMaterial color="#e8dcc4" roughness={0.8} />
+      </mesh>
+    </group>
+  );
+}
+
+function DogHouse() {
+  const ownsDog = useStorybookLaneStore((state) => state.ownedItems.includes('dog'));
+  if (!ownsDog) return null;
+  return (
+    <group position={DOG_HOUSE_POSITION}>
+      <mesh position={[0, 0.42, 0]} castShadow receiveShadow>
+        <boxGeometry args={[1.15, 0.84, 1.25]} />
+        <meshStandardMaterial color="#b9764a" roughness={0.9} />
+      </mesh>
+      <mesh position={[0, 0.98, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
+        <coneGeometry args={[0.98, 0.5, 4]} />
+        <meshStandardMaterial color="#8a4f33" roughness={0.86} />
+      </mesh>
+      <mesh position={[0, 0.34, 0.64]}>
+        <boxGeometry args={[0.5, 0.62, 0.06]} />
+        <meshStandardMaterial color="#43301f" />
+      </mesh>
+      <mesh position={[0.86, 0.06, 0.35]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.24, 14]} />
+        <meshStandardMaterial color="#d9c7a5" />
+      </mesh>
+      <Text position={[0, 1.42, 0]} fontSize={0.18} color="#5c3a21" anchorX="center">DOG HOUSE</Text>
     </group>
   );
 }
@@ -222,10 +279,24 @@ function VehicleSpot() {
 function DogFollower() {
   const ownsDog = useStorybookLaneStore((state) => state.ownedItems.includes('dog'));
   const ref = useRef<THREE.Group>(null);
+  // One dog, one component. A recall never spawns a second one; at worst it
+  // moves this one, and only when it is genuinely stranded.
+  useStorybookCandidate('storybook-whistle-dog', DOG_HOUSE_POSITION, 3.2, 30);
   useFrame((_, delta) => {
     if (!ref.current || !ownsDog) return;
     const [x, , z] = getTrackedPlayerPosition();
     const target = new THREE.Vector3(x - 1.1, 0, z + 1.2);
+    const recall = consumeDogRecall();
+    if (recall) {
+      // Close enough to hear you: it just hurries over. Genuinely lost -
+      // stuck on geometry, or left on the far side of the lane - and it
+      // comes home from the dog house rather than teleporting to your feet.
+      if (ref.current.position.distanceTo(target) > DOG_RECALL_RESCUE_DISTANCE) {
+        ref.current.position.set(...DOG_HOUSE_POSITION);
+      } else {
+        ref.current.position.lerp(target, 0.55);
+      }
+    }
     ref.current.position.lerp(target, 1 - Math.exp(-2.8 * delta));
     const offset = target.clone().sub(ref.current.position);
     if (offset.lengthSq() > 0.02) ref.current.rotation.y = Math.atan2(-offset.x, -offset.z);

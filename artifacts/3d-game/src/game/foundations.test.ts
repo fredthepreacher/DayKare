@@ -1310,7 +1310,7 @@ for (const scheduleName of ['breakfast', 'morning-play', 'show-and-tell', 'art-t
 }
 for (const [scheduleName, expectedPosition, expectedFocus] of [
   ['morning-play', [-2.8, 0, 1.4], [-1.8, 0, 1.4]],
-  ['art-time', [-12.4, 0, -10], [-11.4, 0, -10.8]],
+  ['art-time', [-12.5, 0, -10.6], [-11.4, 0, -11.2]],
   ['juice-club', [5.2, 0, -3.8], [4.4, 0, -3.2]],
   ['outdoor-play', [10.3, 0, -10.7], [11.2, 0, -10.7]],
   ['pickup', [-9.2, 0, -5.2], [-10.2, 0, -5.2]],

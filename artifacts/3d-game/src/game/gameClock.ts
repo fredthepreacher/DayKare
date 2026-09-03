@@ -34,7 +34,7 @@ export const GAME_MINUTES_PER_REAL_SECOND = 0.5;
  * with the phase that builds the clock. The bounds are one edit away when it is.
  */
 export const DAY_START_MINUTE = 9 * 60;      // 09:00
-export const DAY_END_MINUTE = 18 * 60 + 30;  // 18:30, after Storybook Lane
+export const DAY_END_MINUTE = 19 * 60 + 30;  // 19:30, after Stony Brook's evening
 
 export type ScheduleBlockId =
   | 'breakfast'

@@ -1,6 +1,6 @@
 import {
   advanceSlideRide, createNpcSlideSchedule, createSlideRide, npcSlideAllowed, releaseNpcSlideRider,
-  slideRidePosition, slideRideTumble, stepNpcSlideSchedule, type NpcSlideSchedule, type SlideRide,
+  npcSlideIsFreePlay, slideRidePosition, slideRideTumble, stepNpcSlideSchedule, type NpcSlideSchedule, type SlideRide,
 } from './slide';
 
 /**
@@ -40,12 +40,13 @@ export function tickNpcSlide(
   cutsceneActive: boolean,
   riderPosition: readonly [number, number, number] | null,
 ) {
+  const freePlay = npcSlideIsFreePlay(scheduleId);
   if (!npcSlideAllowed(scheduleId, heistActive, cutsceneActive)) {
     // A blocking activity started mid-ride: the child is released rather
     // than left tumbling through nap time.
     if (schedule.rider) {
       seed += 1;
-      schedule = releaseNpcSlideRider(schedule, seed);
+      schedule = releaseNpcSlideRider(schedule, seed, freePlay);
       ride = null;
     }
     return;
@@ -55,7 +56,7 @@ export function tickNpcSlide(
     if (next.shoutedThisStep) shoutRequested = true;
     if (next.phase === 'done') {
       seed += 1;
-      schedule = releaseNpcSlideRider(schedule, seed);
+      schedule = releaseNpcSlideRider(schedule, seed, freePlay);
       ride = null;
       return;
     }
@@ -63,7 +64,7 @@ export function tickNpcSlide(
     return;
   }
   const before = schedule.rider;
-  schedule = stepNpcSlideSchedule(schedule, delta, eligible, seed);
+  schedule = stepNpcSlideSchedule(schedule, delta, eligible, seed, freePlay);
   if (schedule.rider && schedule.rider !== before) {
     ride = createSlideRide();
     start = riderPosition ? [...riderPosition] as [number, number, number] : [12, 0, -1.9];
