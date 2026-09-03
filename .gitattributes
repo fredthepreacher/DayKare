@@ -1,0 +1,31 @@
+# Normalise line endings in the repository.
+#
+# The working tree had been rewritten with CRLF while every committed blob is
+# LF, so `git status` reported 84 files and ~34,500 changed lines when only ~291
+# lines were real edits. That made every diff unreviewable and would have buried
+# real changes inside line-ending churn.
+#
+# `text=auto eol=lf` converts on the way INTO the index, so committed content
+# stays LF while Windows checkouts keep whatever the editor wants. No file needs
+# rewriting for this to take effect.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg text eol=lf
+*.webp binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
+*.glb binary
+*.gltf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary
