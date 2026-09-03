@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Home, Map, Sparkles, Users, X } from 'lucide-react';
-import { ANIMATION_CLIPS, DEFAULT_AVATAR, FULL_REDESIGN_PRICE, HEIST_STEPS, STARTER_HOME_PRICE, TUTORIAL_CHAPTERS, type AvatarProfile } from './finalMaster';
+import { Home, Map, Sparkles, Timer, Users, X } from 'lucide-react';
+import { ANIMATION_CLIPS, DEFAULT_AVATAR, FIRST_HEIST_RB, FULL_REDESIGN_PRICE, HEIST_STEPS, STARTER_HOME_PRICE, TUTORIAL_CHAPTERS, type AvatarProfile } from './finalMaster';
 import { deleteDayKareSave, useFinalMasterStore } from './finalMasterStore';
 import { useGameStore } from './store';
 import { useModeStore } from './modeStore';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { useToastStore } from './toastStore';
 import { interactWithHeistTarget, interactWithMissLeslie } from './missLeslieInteraction';
-import { ROUTE_PLANNER_NODES, advanceRoutePlanner, createRoutePlannerState, routePlannerOptions, type RoutePlannerNodeId } from './heistPlanning';
+import { ROUTE_PLANNER_NODES, TIMING_GRID_ROUNDS, TIMING_GRID_PASS_SCORE, advanceRoutePlanner, commitTimingGrid, createRoutePlannerState, createTimingGridState, routePlannerOptions, timingGridPassed, timingGridRound, type RoutePlannerNodeId } from './heistPlanning';
 
 const skinTones = ['#f6d0b3', '#e7b48e', '#c98562', '#9a5d3c', '#6b3d2a'];
 const hairColors = ['#241a18', '#4a2d25', '#713f32', '#b46b3f', '#e3bc75'];
@@ -56,10 +56,70 @@ function Choice({ label, values, value, onChange, colors = false }: { label: str
   return <fieldset><legend>{label}</legend><div className="final-choice-row">{values.map((option) => <button type="button" key={option} className={value === option ? 'is-active' : ''} onClick={() => onChange(option)} aria-label={option} style={colors ? { backgroundColor: option } : undefined}>{colors ? '' : option}</button>)}</div></fieldset>;
 }
 
+/**
+ * Timing Grid practice. The marker's position is derived from the clock
+ * rather than from React state, so the value judged on commit is the
+ * value the player actually saw, and no per-frame re-render is needed.
+ */
+function TimingGrid() {
+  const completeTimingGrid = useFinalMasterStore((s) => s.completeTimingGrid);
+  const bestScore = useFinalMasterStore((s) => s.timingGridBestScore);
+  const [grid, setGrid] = useState(createTimingGridState);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const markerRef = useRef<HTMLDivElement>(null);
+  const startedAt = useRef(0);
+  const round = timingGridRound(grid);
+  const roundIndex = grid.round;
+
+  useEffect(() => {
+    if (!round) return undefined;
+    startedAt.current = performance.now();
+    let frame = 0;
+    const step = () => {
+      const marker = markerRef.current;
+      if (marker) marker.style.left = `${markerPosition(round.sweepSeconds) * 100}%`;
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [round, roundIndex]);
+
+  function markerPosition(sweepSeconds: number) {
+    const cycle = ((performance.now() - startedAt.current) / 1000) % (sweepSeconds * 2);
+    return cycle <= sweepSeconds ? cycle / sweepSeconds : 2 - cycle / sweepSeconds;
+  }
+
+  const commit = () => {
+    if (!round) return;
+    const next = commitTimingGrid(grid, markerPosition(round.sweepSeconds));
+    setGrid(next);
+    if (next.complete && timingGridPassed(next)) completeTimingGrid(next.score);
+  };
+
+  return <div className="final-timing-grid">
+    <p>Stop the marker inside the green window. {TIMING_GRID_PASS_SCORE} of {TIMING_GRID_ROUNDS.length} banks the practice score.</p>
+    {round ? <>
+      <strong className="final-timing-round">{round.label} · round {grid.round + 1}/{TIMING_GRID_ROUNDS.length}</strong>
+      <div className="final-timing-track" ref={trackRef} aria-label={`${round.label} timing track`}>
+        <span className="final-timing-safe" style={{ left: `${round.safeFrom * 100}%`, width: `${(round.safeTo - round.safeFrom) * 100}%` }} />
+        <div className="final-timing-marker" ref={markerRef} />
+      </div>
+      <button type="button" className="final-timing-commit" onClick={commit}>Go now</button>
+    </> : <div className="final-timing-result">
+      <strong>{timingGridPassed(grid) ? 'Timing banked!' : 'Not quite — try the rhythm again.'}</strong>
+      <span>{grid.score}/{TIMING_GRID_ROUNDS.length} safe windows</span>
+      <button type="button" className="final-route-reset" onClick={() => setGrid(createTimingGridState())}>Run it again</button>
+    </div>}
+    <div className="final-timing-dots">{grid.results.map((result, index) => <b key={index} className={result === 'hit' ? 'is-hit' : 'is-miss'}>{result === 'hit' ? '\u2713' : '\u00d7'}</b>)}</div>
+    {bestScore !== null && <small>Best run: {bestScore}/{TIMING_GRID_ROUNDS.length} · practice XP already banked</small>}
+  </div>;
+}
+
 function HeistBoardModal({ dayNumber, rb }: { dayNumber: number; rb: number }) {
   const state = useFinalMasterStore();
   const modalRef = useRef<HTMLElement>(null);
   const [route, setRoute] = useState(createRoutePlannerState);
+  const [practiceTab, setPracticeTab] = useState<'route' | 'timing'>('route');
   const options = routePlannerOptions(route);
   const activeStep = HEIST_STEPS[Math.min(state.heistStep, HEIST_STEPS.length - 1)];
   const done = (stepIndex: number, event: string) => state.heistStep > stepIndex || state.heistCompletedEvents.includes(event);
@@ -116,7 +176,12 @@ function HeistBoardModal({ dayNumber, rb }: { dayNumber: number; rb: number }) {
         <div className="final-board-current"><b>{state.heistStatus === 'active' ? activeStep.title : 'Current heist'}</b><p>{state.heistStatus === 'active' ? activeStep.objective : 'Talk to Miss Leslie to begin or replay.'}</p><small>Replay payout: 5,000 RB · Current wallet: {rb.toLocaleString()} RB</small></div>
       </div>
       <div className="final-route-planner">
-        <h3><Map /> Route Planner</h3><p>Connect the Hub to the Sticker Cart. Avoid the teacher marker and finish in five moves.</p>
+        <div className="final-practice-tabs" role="tablist" aria-label="Practice minigames">
+          <button type="button" role="tab" aria-selected={practiceTab === 'route'} className={practiceTab === 'route' ? 'is-active' : ''} onClick={() => setPracticeTab('route')}><Map /> Route Planner</button>
+          <button type="button" role="tab" aria-selected={practiceTab === 'timing'} className={practiceTab === 'timing' ? 'is-active' : ''} onClick={() => setPracticeTab('timing')}><Timer /> Timing Grid</button>
+        </div>
+        {practiceTab === 'timing' ? <TimingGrid /> : <>
+        <p>Connect the Hub to the Sticker Cart. Avoid the teacher marker and finish in five moves.</p>
         <div className="final-route-map" aria-label="Route planner map">
           {ROUTE_PLANNER_NODES.map((node) => {
             const visited = route.path.includes(node.id);
@@ -127,6 +192,7 @@ function HeistBoardModal({ dayNumber, rb }: { dayNumber: number; rb: number }) {
         <div className="final-route-status"><span>Moves {route.moves}/5</span><span>Risk {route.risk}</span><span>{route.complete ? 'Route ready!' : route.failed ? 'Route blocked' : 'Choose a glowing node'}</span></div>
         {(route.complete || route.failed) && <button type="button" className="final-route-reset" onClick={() => setRoute(createRoutePlannerState())}>{route.complete ? 'Plan another route' : 'Try again'}</button>}
         {state.routePlannerComplete && <small>✓ Setup advantage saved · Best risk: {state.routePlannerBestRisk}</small>}
+        </>}
       </div>
     </div>
     <footer className="final-board-stats"><span><b>{state.heistsCompleted}</b> Heists</span><span><b>{state.successfulFinales}</b> Finales</span><span><b>{state.totalHeistRbEarned.toLocaleString()}</b> Lifetime RB</span><span><b>{state.firstRewardChoice ?? 'Not yet'}</b> First-clear reward</span><span><b>{state.firstHeistComplete ? 'Sticker Parade' : 'None'}</b> Last heist</span><span><b>{state.lastReplayDay === dayNumber ? 'Claimed' : 'Available'}</b> Daily replay</span></footer>
@@ -161,14 +227,15 @@ export function FinalMasterOverlay() {
   const animationName = useMemo(() => ANIMATION_CLIPS.find(([id]) => id === state.activeAnimation)?.[1], [state.activeAnimation]);
   if (menuOpen) return null;
   if (!state.avatarConfirmed) return <AvatarCreator />;
-  if (state.insideHome) return <div className="final-home-banner"><Home />Your Starter Home <button onClick={() => { state.leaveHome(); useGameStore.getState().setPlayerPosition([-13, 0, -8.7]); useGameStore.getState().triggerTeleport(); }}>Exit to Storybook Lane</button></div>;
+  if (zone === 'home') return <div className="final-home-banner"><Home />Your Starter Home <button onClick={() => { state.leaveHome(); }}>Exit to Storybook Lane</button></div>;
   return <>
     {state.heistBoardOpen && <HeistBoardModal dayNumber={dayNumber} rb={rb} />}
     {objectiveMode === 'hidden' && <button className="final-objective-reopen" onClick={() => setObjectiveMode('collapsed')} aria-label="Reopen objective tracker" data-testid="final-objective-reopen">📋</button>}
     {objectiveMode !== 'hidden' && !state.tutorialComplete && chapter && <section className={`final-objective-card ${objectiveExpanded ? 'is-expanded' : ''}`} data-testid="final-tutorial"><div className="final-objective-header"><button className="final-objective-toggle" onClick={() => setObjectiveMode(objectiveExpanded ? 'collapsed' : 'expanded')}><span><small>Orientation {state.tutorialChapter + 1} / 7</small><strong>{chapter.title}</strong><em>{state.tutorialCompletedSteps.length}/{chapter.steps.length}</em></span><b>{objectiveExpanded ? '−' : '+'}</b></button><button className="final-objective-hide" onClick={() => setObjectiveMode('hidden')} aria-label="Hide objective tracker">×</button></div>{objectiveExpanded && <><span>{chapter.objective}</span><ul>{chapter.steps.map((step) => <li key={step.id} className={state.tutorialCompletedSteps.includes(step.id) ? 'is-done' : ''}>{state.tutorialCompletedSteps.includes(step.id) ? '✓' : '○'} {step.label}</li>)}</ul><em>Reward: +{chapter.xp} XP{'reputation' in chapter ? ` · +${chapter.reputation} REP` : ''}</em>{!state.tutorialStarted ? <button onClick={() => state.startTutorial()}>Start Guided Practice</button> : <button onClick={() => enqueueToast({ title: chapter.title, detail: chapter.objective })}>Show Me</button>}</>}</section>}
     {objectiveMode !== 'hidden' && state.tutorialComplete && <section className={`final-objective-card final-heist-card ${objectiveExpanded ? 'is-expanded' : ''}`} data-testid="final-heist-status"><div className="final-objective-header"><button className="final-objective-toggle" onClick={() => setObjectiveMode(objectiveExpanded ? 'collapsed' : 'expanded')}><span><small><Users /> Miss Leslie’s Heist Board</small><strong>{state.heistStatus === 'active' ? heist.title : state.firstHeistComplete ? 'Daily Sticker Parade Replay' : 'A new plan is waiting'}</strong><em>{state.heistStatus === 'active' ? `${heist.events.filter((event) => state.heistCompletedEvents.includes(event)).length}/${heist.events.length}` : 'Optional story'}</em></span><b>{objectiveExpanded ? '−' : '+'}</b></button><button className="final-objective-hide" onClick={() => setObjectiveMode('hidden')} aria-label="Hide objective tracker">×</button></div>{objectiveExpanded && <><span>{state.heistStatus === 'active' ? heist.objective : state.firstHeistComplete ? 'Complete one replay per in-game day for 5,000 RB, $1,000, and 250 XP.' : 'Physically find and interact with Miss Leslie near the Heist Board.'}</span>{state.heistStatus === 'active' && <ul>{heist.events.map((event) => <li key={event} className={state.heistCompletedEvents.includes(event) ? 'is-done' : ''}>{state.heistCompletedEvents.includes(event) ? '✓' : '○'} {event.replaceAll('-', ' ')}</li>)}</ul>}</>}</section>}
     {(activeInteractable === 'final-miss-leslie' || activeInteractable?.startsWith('final-heist-')) && !state.heistBoardOpen && <button className="final-world-interact" onClick={interact}>{activeInteractable === 'final-miss-leslie' ? 'Talk to Miss Leslie' : activeInteractable === 'final-heist-board' ? 'View Heist Board' : `Interact: ${activeInteractable.replace('final-heist-', '').replaceAll('-', ' ')}`}</button>}
-    {state.heistStatus === 'reward-choice' && <div className="final-modal-backdrop"><section className="final-reward-choice"><Sparkles /><small>First finale complete · $1,000 + 250 XP already awarded</small><h2>Choose one permanent reward</h2><button onClick={() => state.chooseFirstReward('rb')}><strong>14,000 Rascal Bucks</strong><span>Build toward any property or collectible.</span></button><button onClick={() => state.chooseFirstReward('home')}><strong>Free 25,000 RB starter home</strong><span>A one-use voucher for the eligible Storybook home.</span></button></section></div>}
+    {state.homeRewardRecoveryPending && state.heistStatus !== 'reward-choice' && <div className="final-modal-backdrop"><section className="final-reward-choice" data-testid="home-reward-recovery"><Sparkles /><small>Your finished heist never recorded which reward you took</small><h2>Pick the one you are owed</h2><button onClick={() => state.resolveHomeRewardRecovery('rb')}><strong>{FIRST_HEIST_RB.toLocaleString()} Rascal Bucks</strong><span>Paid straight into your wallet.</span></button><button onClick={() => state.resolveHomeRewardRecovery('home')}><strong>Free starter-home voucher</strong><span>Claim Wavy Manor from a Stony Brook realtor.</span></button></section></div>}
+        {state.heistStatus === 'reward-choice' && <div className="final-modal-backdrop"><section className="final-reward-choice"><Sparkles /><small>First finale complete · $1,000 + 250 XP already awarded</small><h2>Choose one permanent reward</h2><button onClick={() => state.chooseFirstReward('rb')}><strong>14,000 Rascal Bucks</strong><span>Build toward any property or collectible.</span></button><button onClick={() => state.chooseFirstReward('home')}><strong>Free 25,000 RB starter home</strong><span>A one-use voucher for the eligible Storybook home.</span></button></section></div>}
     {zone === 'storybook' && <div className="final-property-tip"><Home /><span>{state.ownedStarterHome ? 'Your home is ready—use the MY HOME door.' : `Starter home: ${STARTER_HOME_PRICE.toLocaleString()} RB${state.homeVoucher ? ' · voucher ready' : ''}`}</span></div>}
     {animationName && <div className="final-animation-banner">Now playing: {animationName}</div>}
   </>;

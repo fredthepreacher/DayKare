@@ -25,7 +25,8 @@ import { GraphicsUnavailable } from './GraphicsUnavailable';
 import { probeWebGL, watchContextLoss, type WebGLStatus } from './webglSupport';
 import { startCloudSync } from './cloudSync';
 import { MultiplayerWorld } from './MultiplayerWorld';
-import { FinalMasterWorld, StarterHomeInterior } from './FinalMasterWorld';
+import { FinalMasterWorld } from './FinalMasterWorld';
+import { HomeInterior } from './HomeInterior';
 import { FinalMasterOverlay } from './FinalMasterUI';
 import { ToastViewport } from './ToastViewport';
 import { useFinalMasterStore } from './finalMasterStore';
@@ -93,7 +94,7 @@ function GameScene() {
       <WeatherEffects />
       <PerformanceTelemetry />
       
-      {insideHome ? <StarterHomeInterior /> : zone === 'hub' ? (
+      {zone === 'home' ? <HomeInterior /> : zone === 'hub' ? (
         <>
           <Environment />
           <HubDetails />

@@ -52,6 +52,8 @@ import {
   GARDEN_SPAWN,
   GARDEN_RETURN_SPAWN,
   STORYBOOK_SPAWN,
+  HOME_SPAWN,
+  STONY_BROOK_DOOR_RETURN,
   getTrackedPlayerPosition,
   isWalkable,
   type GameZone,
@@ -346,6 +348,8 @@ export interface GameState {
   setPlayerPosition: (position: [number, number, number]) => void;
   enterGarden: (tutorialAccess?: boolean) => boolean;
   enterStorybookLane: () => boolean;
+  enterOwnedHome: () => boolean;
+  leaveOwnedHome: () => boolean;
   leaveStorybookLane: () => boolean;
   finishDay: () => boolean;
   returnToHub: () => boolean;
@@ -2415,6 +2419,44 @@ export const useGameStore = create<GameState>()(
         });
         return changed;
       },
+      /**
+       * Step through the front door of an owned home. The interior is a
+       * zone of its own, so collision, the camera and the walkable
+       * bounds all switch with it instead of being special-cased.
+       */
+      enterOwnedHome: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'storybook' || state.zoneTransitioning) return state;
+          changed = true;
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'home' as GameZone,
+            storybookPosition: currentPosition(state),
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
+      leaveOwnedHome: () => {
+        let changed = false;
+        set((state) => {
+          if (state.zone !== 'home' || state.zoneTransitioning) return state;
+          changed = true;
+          return {
+            zoneTransitioning: true,
+            pendingZone: 'storybook' as GameZone,
+            // Back onto the front path, never inside the wall.
+            storybookPosition: STONY_BROOK_DOOR_RETURN,
+            activeInteractable: null,
+            activeDialogue: null,
+            ambientMessage: null,
+          };
+        });
+        return changed;
+      },
       leaveStorybookLane: () => {
         let changed = false;
         set((state) => {
@@ -2482,7 +2524,13 @@ export const useGameStore = create<GameState>()(
       completeZoneTransition: () => set((state) => {
         if (!state.zoneTransitioning || !state.pendingZone) return state;
         const zone = state.pendingZone;
-        const position = zone === 'garden' ? state.gardenPosition : zone === 'storybook' ? state.storybookPosition : state.hubPosition;
+        const position = zone === 'garden'
+          ? state.gardenPosition
+          : zone === 'storybook'
+            ? state.storybookPosition
+            : zone === 'home'
+              ? HOME_SPAWN
+              : state.hubPosition;
         resetTouchInput();
         return {
           zone,

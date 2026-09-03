@@ -7,6 +7,8 @@ import { useGameStore } from './store';
 import { SuppliedArtwork } from './Artwork';
 import { shouldUpdateOptionalAnimation } from './performanceTelemetry';
 import { SHINY_ROCK_SPAWN } from './world';
+import { SLIDE_QUEUE_POINT } from './slide';
+import { useSlideStore } from './slideStore';
 
 export function Interactables({ playerRef }: { playerRef: React.RefObject<THREE.Group | null> }) {
   return (
@@ -16,10 +18,30 @@ export function Interactables({ playerRef }: { playerRef: React.RefObject<THREE.
       <ShinyRock />
       <Tricycle playerRef={playerRef} />
       <ParadeBanner />
+      <WavySlideStation />
       <CaperBubbleTable />
       <ToyBlock playerRef={playerRef} position={[-3, 0.25, -2]} id="blue-block" color="#3a86ff" />
       <ToyBlock playerRef={playerRef} position={[2, 0.25, 4]} id="red-block" color="#ff006e" />
       <ToyBlock playerRef={playerRef} position={[5.2, 0.25, -5.6]} id="yellow-block" color="#ffbe0b" />
+    </group>
+  );
+}
+
+/**
+ * The walk-up spot at the foot of the Wavy slide. It goes quiet while a
+ * ride is running so the prompt cannot restart a ride mid-tumble.
+ */
+function WavySlideStation() {
+  const riding = useSlideStore((state) => state.ride !== null);
+  const position = useMemo(() => new THREE.Vector3(...SLIDE_QUEUE_POINT), []);
+  useCandidate('wavy-slide', position, !riding, 2.3, 30);
+  if (riding) return null;
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.5, 0.72, 24]} />
+        <meshBasicMaterial color="#ffd84d" transparent opacity={0.62} />
+      </mesh>
     </group>
   );
 }

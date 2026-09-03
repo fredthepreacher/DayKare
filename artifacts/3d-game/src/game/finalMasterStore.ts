@@ -9,6 +9,7 @@ import {
   type AvatarProfile, type HeistEvent, type HeistStatus, type TutorialEvent,
 } from './finalMaster';
 import { useToastStore } from './toastStore';
+import { TIMING_GRID_ROUNDS } from './heistPlanning';
 
 export const FINAL_MASTER_STORAGE_KEY = 'daykare-final-master';
 
@@ -32,6 +33,15 @@ interface FinalMasterState {
   totalHeistRbEarned: number;
   routePlannerComplete: boolean;
   routePlannerBestRisk: number | null;
+  timingGridComplete: boolean;
+  timingGridBestScore: number | null;
+  /**
+   * A legacy save finished the first heist but never recorded which
+   * reward the player took. We owe them exactly one of the two, so the
+   * recovery prompt is shown once rather than silently granting both
+   * or silently granting neither.
+   */
+  homeRewardRecoveryPending: boolean;
   heistBoardOpen: boolean;
   leoHeistHintCount: number;
   leoHeistIntroCompleted: boolean;
@@ -57,6 +67,8 @@ interface FinalMasterState {
   openHeistBoard: () => void;
   closeHeistBoard: () => void;
   completeRoutePlanner: (risk: number) => boolean;
+  completeTimingGrid: (score: number) => boolean;
+  resolveHomeRewardRecovery: (choice: 'rb' | 'home') => boolean;
   requestLeoHeistApproach: (absoluteMinute: number, eligible: boolean, leoStoryComplete: boolean) => boolean;
   completeLeoHeistHint: (absoluteMinute: number) => 1 | 2 | null;
   buyStarterHome: () => 'purchased' | 'owned' | 'insufficient';
@@ -121,6 +133,9 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
   totalHeistRbEarned: 0,
   routePlannerComplete: false,
   routePlannerBestRisk: null,
+  timingGridComplete: false,
+  timingGridBestScore: null,
+  homeRewardRecoveryPending: false,
   heistBoardOpen: false,
   leoHeistHintCount: 0,
   leoHeistIntroCompleted: false,
@@ -204,6 +219,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     if (state.heistStatus !== 'reward-choice' || state.firstRewardChoice) return false;
     if (choice === 'rb') useStorybookLaneStore.getState().grantRibbonBucks(FIRST_HEIST_RB);
     set({ firstRewardChoice: choice, firstHeistComplete: true, heistStatus: 'complete', homeVoucher: choice === 'home', totalHeistRbEarned: state.totalHeistRbEarned + (choice === 'rb' ? FIRST_HEIST_RB : 0) });
+    set({ homeRewardRecoveryPending: false });
     return true;
   },
   claimReplayReward: (dayNumber) => {
@@ -224,6 +240,42 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
       useToastStore.getState().enqueue({ title: 'Low-risk route planned! +25 XP', detail: 'Setup advantage saved. Major heist payouts are unchanged.', kind: 'success' });
     }
     return firstClear;
+  },
+  completeTimingGrid: (score) => {
+    const state = get();
+    const safeScore = Math.max(0, Math.min(TIMING_GRID_ROUNDS.length, Math.floor(Number.isFinite(score) ? score : 0)));
+    const firstClear = !state.timingGridComplete;
+    set({
+      timingGridComplete: true,
+      timingGridBestScore: state.timingGridBestScore === null ? safeScore : Math.max(state.timingGridBestScore, safeScore),
+    });
+    if (firstClear) {
+      // Practice pays a token amount of XP and no Rascal Bucks, so the
+      // board can never be farmed in place of an actual heist.
+      grantCoreReward(25, 0);
+      useToastStore.getState().enqueue({ title: 'Timing read! +25 XP', detail: 'Practice only \u2014 heist payouts are unchanged.', kind: 'success' });
+    }
+    return firstClear;
+  },
+  /**
+   * The one-time make-good for a legacy first-clear. It grants exactly
+   * one reward and clears the flag whether or not the player picks the
+   * home, so the prompt cannot come back for a second helping.
+   */
+  resolveHomeRewardRecovery: (choice) => {
+    const state = get();
+    if (!state.homeRewardRecoveryPending || state.firstRewardChoice !== null) {
+      set({ homeRewardRecoveryPending: false });
+      return false;
+    }
+    set({
+      homeRewardRecoveryPending: false,
+      firstRewardChoice: choice,
+      homeVoucher: choice === 'home',
+      totalHeistRbEarned: state.totalHeistRbEarned + (choice === 'rb' ? FIRST_HEIST_RB : 0),
+    });
+    if (choice === 'rb') useStorybookLaneStore.setState({ ribbonBucks: useStorybookLaneStore.getState().ribbonBucks + FIRST_HEIST_RB });
+    return true;
   },
   requestLeoHeistApproach: (absoluteMinute, eligible, leoStoryComplete) => {
     const state = get();
@@ -256,10 +308,16 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
   },
   enterHome: () => {
     if (!get().ownedStarterHome) return false;
+    // The interior is its own zone; the travel does the fade, the spawn
+    // and the collision switch, so this only records that we are inside.
+    if (!useGameStore.getState().enterOwnedHome()) return false;
     set({ insideHome: true });
     return true;
   },
-  leaveHome: () => set({ insideHome: false }),
+  leaveHome: () => {
+    useGameStore.getState().leaveOwnedHome();
+    set({ insideHome: false });
+  },
   convertRbToGem: () => {
     const rb = useStorybookLaneStore.getState().ribbonBucks;
     if (rb < RASCAL_BUCKS_PER_GEM) return false;
@@ -279,6 +337,8 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     firstHeistComplete: state.firstHeistComplete, firstRewardChoice: state.firstRewardChoice,
     lastReplayDay: state.lastReplayDay, heistsCompleted: state.heistsCompleted, successfulFinales: state.successfulFinales, totalHeistRbEarned: state.totalHeistRbEarned,
     routePlannerComplete: state.routePlannerComplete, routePlannerBestRisk: state.routePlannerBestRisk,
+    timingGridComplete: state.timingGridComplete, timingGridBestScore: state.timingGridBestScore,
+    homeRewardRecoveryPending: state.homeRewardRecoveryPending,
     leoHeistHintCount: state.leoHeistHintCount, leoHeistIntroCompleted: state.leoHeistIntroCompleted, leoHeistNextHintMinute: state.leoHeistNextHintMinute,
     leoHeistWaypointActive: state.leoHeistWaypointActive, missLeslieHeistIntroduced: state.missLeslieHeistIntroduced,
     ownedStarterHome: state.ownedStarterHome, homeVoucher: state.homeVoucher,
@@ -291,7 +351,31 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
       ? saved.tutorialRewardedChapters.filter((id) => TUTORIAL_CHAPTERS.some((item) => item.id === id))
       : TUTORIAL_CHAPTERS.slice(0, chapter).map((item) => item.id);
     const routeRisk = saved.routePlannerBestRisk;
-    return { ...current, ...saved, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Number.isFinite(Number(saved.tutorialMovementDistance)) ? Math.max(0, Number(saved.tutorialMovementDistance)) : 0, heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [], heistsCompleted: safeCount(saved.heistsCompleted ?? 0, Number.MAX_SAFE_INTEGER), successfulFinales: safeCount(saved.successfulFinales ?? 0, Number.MAX_SAFE_INTEGER), totalHeistRbEarned: safeCount(saved.totalHeistRbEarned ?? 0, Number.MAX_SAFE_INTEGER), routePlannerComplete: saved.routePlannerComplete === true, routePlannerBestRisk: typeof routeRisk === 'number' && Number.isFinite(routeRisk) ? Math.max(0, Math.min(9, Math.floor(routeRisk))) : null, heistBoardOpen: false, leoHeistHintCount: safeCount(saved.leoHeistHintCount ?? 0, 2), leoHeistIntroCompleted: saved.leoHeistIntroCompleted === true, leoHeistNextHintMinute: typeof saved.leoHeistNextHintMinute === 'number' && Number.isFinite(saved.leoHeistNextHintMinute) ? Math.max(0, Math.floor(saved.leoHeistNextHintMinute)) : null, leoHeistApproachActive: false, leoHeistWaypointActive: saved.leoHeistWaypointActive === true && saved.missLeslieHeistIntroduced !== true, missLeslieHeistIntroduced: saved.missLeslieHeistIntroduced === true || saved.heistStatus === 'active' || saved.firstHeistComplete === true };
+    const gridScore = saved.timingGridBestScore;
+    const firstReward = saved.firstRewardChoice === 'rb' || saved.firstRewardChoice === 'home' ? saved.firstRewardChoice : null;
+    const ownsHome = saved.ownedStarterHome === true;
+    // A player who took the Rascal Bucks was never owed a house, so a
+    // stray voucher on such a save is dropped rather than honoured.
+    const voucher = saved.homeVoucher === true && firstReward !== 'rb' && !ownsHome;
+    // Unresolved legacy first-clear: the heist is finished, but the save
+    // carries neither a recorded choice, nor a house, nor a voucher, and
+    // the choice modal is not pending. That player is owed exactly one
+    // reward, offered once.
+    const owedRecovery = saved.firstHeistComplete === true
+      && firstReward === null
+      && !ownsHome
+      && !voucher
+      && saved.heistStatus !== 'reward-choice';
+    return { ...current, ...saved,
+      firstRewardChoice: firstReward,
+      ownedStarterHome: ownsHome,
+      homeVoucher: voucher,
+      insideHome: false,
+      homeRewardRecoveryPending: owedRecovery,
+      timingGridComplete: saved.timingGridComplete === true,
+      timingGridBestScore: typeof gridScore === 'number' && Number.isFinite(gridScore)
+        ? Math.max(0, Math.min(TIMING_GRID_ROUNDS.length, Math.floor(gridScore)))
+        : null, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Number.isFinite(Number(saved.tutorialMovementDistance)) ? Math.max(0, Number(saved.tutorialMovementDistance)) : 0, heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [], heistsCompleted: safeCount(saved.heistsCompleted ?? 0, Number.MAX_SAFE_INTEGER), successfulFinales: safeCount(saved.successfulFinales ?? 0, Number.MAX_SAFE_INTEGER), totalHeistRbEarned: safeCount(saved.totalHeistRbEarned ?? 0, Number.MAX_SAFE_INTEGER), routePlannerComplete: saved.routePlannerComplete === true, routePlannerBestRisk: typeof routeRisk === 'number' && Number.isFinite(routeRisk) ? Math.max(0, Math.min(9, Math.floor(routeRisk))) : null, heistBoardOpen: false, leoHeistHintCount: safeCount(saved.leoHeistHintCount ?? 0, 2), leoHeistIntroCompleted: saved.leoHeistIntroCompleted === true, leoHeistNextHintMinute: typeof saved.leoHeistNextHintMinute === 'number' && Number.isFinite(saved.leoHeistNextHintMinute) ? Math.max(0, Math.floor(saved.leoHeistNextHintMinute)) : null, leoHeistApproachActive: false, leoHeistWaypointActive: saved.leoHeistWaypointActive === true && saved.missLeslieHeistIntroduced !== true, missLeslieHeistIntroduced: saved.missLeslieHeistIntroduced === true || saved.heistStatus === 'active' || saved.firstHeistComplete === true };
   },
 }));
 

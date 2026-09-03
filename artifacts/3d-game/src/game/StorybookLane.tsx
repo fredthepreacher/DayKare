@@ -6,9 +6,10 @@ import { CharacterModel } from './CharacterModel';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { getTrackedPlayerPosition } from './world';
 import { useStorybookLaneStore } from './storybookLaneStore';
+import { useFinalMasterStore } from './finalMasterStore';
+import { REALTORS, realtorPatrolTarget, type RealtorProfile } from './realEstate';
 
 const HOUSES = [
-  { id: 'my-home', label: 'MY HOME', position: [-13, 0, -12] as const, color: '#ffb35c' },
   { id: 'bluebell', label: 'BLUEBELL', position: [13, 0, -12] as const, color: '#75c9f1' },
   { id: 'sunny', label: 'SUNNY', position: [-16, 0, 1] as const, color: '#f5d76e' },
   { id: 'mint', label: 'MINT', position: [16, 0, 1] as const, color: '#8fd4a8' },
@@ -23,10 +24,10 @@ function useStorybookCandidate(id: string, position: readonly [number, number, n
   useFrame(() => updateInteractionCandidate(id, { position: vector, valid: true, range, priority }));
 }
 
-function House({ house, upgraded = false }: { house: typeof HOUSES[number]; upgraded?: boolean }) {
+function House({ house }: { house: typeof HOUSES[number] }) {
   const [x, , z] = house.position;
   const door = [x, 0, z + 2.65] as const;
-  useStorybookCandidate(`storybook-home-${house.id}`, door, 2.4, house.id === 'my-home' ? 32 : 18);
+  useStorybookCandidate(`storybook-home-${house.id}`, door, 2.4, 18);
   return (
     <group position={house.position}>
       <mesh position={[0, 1.6, -2.45]} castShadow receiveShadow><boxGeometry args={[6.2, 3.2, 0.3]} /><meshStandardMaterial color={house.color} roughness={0.86} /></mesh>
@@ -35,10 +36,10 @@ function House({ house, upgraded = false }: { house: typeof HOUSES[number]; upgr
       <mesh position={[0, 0.06, 0]} receiveShadow><boxGeometry args={[6.2, 0.12, 5.2]} /><meshStandardMaterial color="#ead3ad" roughness={0.94} /></mesh>
       <mesh position={[0, 3.65, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
         <coneGeometry args={[4.6, 2.3, 4]} />
-        <meshStandardMaterial color={upgraded ? '#7c4dff' : '#9a5639'} roughness={0.82} />
+        <meshStandardMaterial color="#9a5639" roughness={0.82} />
       </mesh>
       <Text position={[0, 2.7, 2.76]} fontSize={0.38} color="#fffaf0" anchorX="center" anchorY="middle">
-        {house.label}{upgraded ? ' ★' : ''}
+        {house.label}
       </Text>
       <mesh position={[-1.4, 0.35, 1.8]} castShadow>
         <boxGeometry args={[1.6, 0.7, 0.7]} />
@@ -49,6 +50,123 @@ function House({ house, upgraded = false }: { house: typeof HOUSES[number]; upgr
         <meshStandardMaterial color="#b17b5a" />
       </mesh>
       <mesh position={[0, 0.04, 2.72]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[2.2, 1.1]} /><meshStandardMaterial color="#fff5d9" /></mesh>
+    </group>
+  );
+}
+
+
+/**
+ * Wavy Manor — the property the player can own.
+ *
+ * The shell is a single collider (nobody walks through the exterior; the
+ * front door loads the interior zone), so everything here is skin over
+ * that one solid plus flat surfaces for the drive and the path.
+ */
+function WavyManor() {
+  const owned = useFinalMasterStore((state) => state.ownedStarterHome);
+  useStorybookCandidate('storybook-home-my-home', [-13, 0, -9.6], 2.6, 40);
+  return (
+    <group>
+      {/* Driveway and front path: flat surfaces, walked straight over. */}
+      <mesh position={[-16.5, 0.02, -8]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[3, 6]} /><meshStandardMaterial color="#8d8983" roughness={0.96} />
+      </mesh>
+      <mesh position={[-13, 0.02, -8.6]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[1.6, 5]} /><meshStandardMaterial color="#cfc3a8" roughness={0.96} />
+      </mesh>
+      <mesh position={[-13, 0.04, -10.6]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[4.4, 1.1]} /><meshStandardMaterial color="#d8cbb0" />
+      </mesh>
+
+      {/* Shell: ground storey, upper storey, roof. */}
+      <mesh position={[-13, 1.6, -14]} castShadow receiveShadow>
+        <boxGeometry args={[10, 3.2, 6]} /><meshStandardMaterial color="#f2d9a8" roughness={0.88} />
+      </mesh>
+      <mesh position={[-13, 4.4, -14.3]} castShadow receiveShadow>
+        <boxGeometry args={[9, 2.4, 5.4]} /><meshStandardMaterial color="#e9c98d" roughness={0.88} />
+      </mesh>
+      <mesh position={[-13, 6.1, -14.3]} rotation={[0, Math.PI / 4, 0]} castShadow>
+        <coneGeometry args={[6.4, 1.9, 4]} /><meshStandardMaterial color="#7d4a37" roughness={0.85} />
+      </mesh>
+
+      {/* Garage front and door. */}
+      <mesh position={[-16.4, 1.2, -10.94]} castShadow>
+        <boxGeometry args={[2.8, 2.4, 0.16]} /><meshStandardMaterial color="#d7d2c6" roughness={0.8} />
+      </mesh>
+
+      {/* Front door and porch. */}
+      <mesh position={[-13, 1.15, -10.94]} castShadow>
+        <boxGeometry args={[1.5, 2.3, 0.16]} /><meshStandardMaterial color="#8a5a44" />
+      </mesh>
+      <mesh position={[-12.5, 1.12, -10.83]}><sphereGeometry args={[0.08, 10, 8]} /><meshStandardMaterial color="#e8c15a" metalness={0.5} /></mesh>
+      <mesh position={[-13, 2.72, -10.6]} castShadow>
+        <boxGeometry args={[4.6, 0.24, 1.2]} /><meshStandardMaterial color="#7d4a37" />
+      </mesh>
+
+      {/* Windows. */}
+      {[-15.6, -10.4].map((x) => (
+        <mesh key={x} position={[x, 1.6, -10.94]}><boxGeometry args={[1.7, 1.2, 0.08]} /><meshStandardMaterial color="#9fd0e8" /></mesh>
+      ))}
+      {[-15.2, -13, -10.8].map((x) => (
+        <mesh key={`u${x}`} position={[x, 4.4, -11.62]}><boxGeometry args={[1.4, 1.1, 0.08]} /><meshStandardMaterial color="#9fd0e8" /></mesh>
+      ))}
+
+      {/* Shrubs along the front. */}
+      {[-17.2, -16.2, -9.6, -8.6].map((x) => (
+        <mesh key={`s${x}`} position={[x, 0.42, -10.65]} castShadow>
+          <sphereGeometry args={[0.5, 12, 10]} /><meshStandardMaterial color="#5f9e63" roughness={1} />
+        </mesh>
+      ))}
+
+      {/* Mailbox on the curb. */}
+      <group position={[-11.4, 0, -6.2]}>
+        <mesh position={[0, 0.55, 0]} castShadow><cylinderGeometry args={[0.07, 0.07, 1.1, 8]} /><meshStandardMaterial color="#7f5a42" /></mesh>
+        <mesh position={[0, 1.2, 0]} castShadow><boxGeometry args={[0.28, 0.28, 0.5]} /><meshStandardMaterial color="#c8483f" /></mesh>
+      </group>
+
+      <Text position={[-13, 3.35, -10.55]} fontSize={0.4} color="#fffaf0" anchorX="center" anchorY="middle">
+        {owned ? 'WAVY MANOR ★' : 'WAVY MANOR · FOR SALE'}
+      </Text>
+    </group>
+  );
+}
+
+function Realtor({ profile }: { profile: RealtorProfile }) {
+  const ref = useRef<THREE.Group>(null);
+  const target = useMemo(() => new THREE.Vector3(), []);
+  const candidateId = `storybook-realtor-${profile.id}`;
+  const candidatePosition = useMemo(() => new THREE.Vector3(...profile.patrol[0]), [profile]);
+  useEffect(() => registerInteractionCandidate({
+    id: candidateId, position: candidatePosition.clone(), valid: true, range: 2.6, priority: 44,
+  }), [candidateId, candidatePosition]);
+  useFrame((state, delta) => {
+    if (!ref.current) return;
+    candidatePosition.copy(ref.current.position);
+    updateInteractionCandidate(candidateId, { position: candidatePosition, valid: true });
+    target.set(...realtorPatrolTarget(profile, state.clock.elapsedTime));
+    const offset = target.clone().sub(ref.current.position);
+    offset.y = 0;
+    if (offset.lengthSq() > 0.05) {
+      ref.current.position.addScaledVector(offset.normalize(), Math.min(1.05 * delta, 1));
+      ref.current.rotation.y = Math.atan2(-offset.x, -offset.z);
+    }
+  });
+  return (
+    <group ref={ref} position={profile.patrol[0]}>
+      <CharacterModel
+        bodyColor={profile.bodyColor}
+        accentColor={profile.accentColor}
+        bottomColor={profile.bottomColor}
+        hairColor={profile.hairColor}
+        hairStyle={profile.hairStyle}
+        skinColor={profile.skinColor}
+        isTeacher
+        activityMode="conversation"
+        idleVariant="look-around"
+        motionSeed={profile.id === 'realtor_male_01' ? 21 : 22}
+      />
+      <Text position={[0, 2.3, 0]} fontSize={0.22} color="#3d2f24" anchorX="center">{profile.name.toUpperCase()}</Text>
+      <Text position={[0, 2.05, 0]} fontSize={0.13} color="#6b5a4a" anchorX="center">{profile.title}</Text>
     </group>
   );
 }
@@ -146,7 +264,9 @@ export function StorybookLane() {
       <mesh position={[0, 0.28, 3]} castShadow><cylinderGeometry args={[1.5, 1.8, 0.56, 24]} /><meshStandardMaterial color="#e9d7b2" /></mesh>
       <Text position={[0, 1.1, 3]} fontSize={0.62} color="#5c3a21" rotation={[-Math.PI / 9, 0, 0]} anchorX="center">STORYBOOK LANE</Text>
       <IceCreamStand />
-      {HOUSES.map((house) => <House key={house.id} house={house} upgraded={house.id === 'my-home' && cribTier > 0} />)}
+      <WavyManor />
+      {REALTORS.map((profile) => <Realtor key={profile.id} profile={profile} />)}
+      {HOUSES.map((house) => <House key={house.id} house={house} />)}
       <VehicleSpot />
       <DogFollower />
       <group position={[0, 0, 22]}>

@@ -14,6 +14,7 @@ import { useQualitySettings } from './useQualitySettings';
 import { resolveMovement } from './world';
 import { playGameSound } from './audio';
 import { playVoice } from './audioDirector';
+import { consumeNpcSlideShout, npcSlideTransform, resetNpcSlide, tickNpcSlide } from './npcSlideDirector';
 import { voiceGroupForAmbientContext } from './audioAssets';
 import { objectiveIsActive } from './quests';
 import { useFinalMasterStore } from './finalMasterStore';
@@ -123,12 +124,33 @@ export function teacherPatrolProfile(name: string): TeacherPatrolProfile {
  */
 function NpcTierCoordinator() {
   const quality = useQualitySettings();
-  useFrame((state) => {
+  useEffect(() => resetNpcSlide, []);
+  useFrame((state, delta) => {
     updateNpcTiers(state.clock.elapsedTime * 1000, {
       animationDistance: quality.settings.npcAnimationDistance,
       simulationDistance: quality.settings.npcSimulationDistance,
       maxFullySimulatedNpcs: quality.settings.maxFullySimulatedNpcs,
     });
+    // One child at a time takes a turn on the Wavy slide. Anyone the ride
+    // must not interrupt - a heist companion, a child in a cutscene, the
+    // Juice Club customer mid-lifecycle - is filtered out here rather than
+    // inside the director, which knows nothing about the daycare.
+    const game = useGameStore.getState();
+    const final = useFinalMasterStore.getState();
+    const busy = new Set([game.juiceClubActiveCustomer, game.juiceClubServedCustomer].filter(Boolean) as string[]);
+    if (final.heistStatus === 'active') { busy.add('Mia'); busy.add('Noah'); }
+    const eligible = game.zone === 'hub' && !game.zoneTransitioning
+      ? KID_CAST.map((kid) => kid.name).filter((name) => !busy.has(name))
+      : [];
+    tickNpcSlide(
+      delta,
+      eligible,
+      game.schedule,
+      final.heistStatus === 'active',
+      Boolean(game.activeDialogue) || game.zoneTransitioning,
+      null,
+    );
+    if (consumeNpcSlideShout()) playVoice('child-wavy', { ambient: true, attenuation: 0.7 });
   });
   return null;
 }
@@ -648,6 +670,17 @@ function Kid({
 
   useFrame((state, delta) => {
     if (!ref.current) return;
+
+    // A turn on the Wavy slide overrides this child's normal routine for
+    // the length of the ride, then hands them back to it.
+    const slideTransform = npcSlideTransform(name);
+    if (slideTransform) {
+      ref.current.position.set(...slideTransform.position);
+      ref.current.rotation.z = slideTransform.tumble;
+      ref.current.rotation.y = Math.PI;
+      return;
+    }
+    if (ref.current.rotation.z !== 0) ref.current.rotation.z = 0;
 
     // Report where this child is, then read the tier the coordinator assigned.
     // The report is two cheap numbers; the ranking happens elsewhere, for

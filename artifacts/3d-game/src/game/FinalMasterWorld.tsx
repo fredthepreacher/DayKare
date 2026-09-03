@@ -122,28 +122,3 @@ export function FinalMasterWorld() {
   const zone = useFinalMasterStore((state) => state.heistStatus);
   return <group><TutorialMovementValidator /><HeistRoom /><MissLeslie /><HeistBoard /><AnimationVignette />{zone === 'active' && <><Companion name="Mia" color="#54b9bd" offset={[-1.2, 1.1]} /><Companion name="Noah" color="#7654bd" offset={[1.2, 1.35]} /></>}</group>;
 }
-
-export function StarterHomeInterior() {
-  useCandidate('final-home-exit', [0, 0, 4.15], true, 100, 2.7, true);
-  return <group>
-    <ambientLight intensity={0.95} /><directionalLight position={[4, 8, 5]} intensity={1.1} />
-    <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow><planeGeometry args={[12, 10]} /><meshStandardMaterial color="#f0d7aa" /></mesh>
-    <mesh position={[0, 2, -5]}><boxGeometry args={[12, 4, 0.25]} /><meshStandardMaterial color="#f7b267" /></mesh>
-    <mesh position={[-6, 2, 0]}><boxGeometry args={[0.25, 4, 10]} /><meshStandardMaterial color="#f9c784" /></mesh>
-    <mesh position={[6, 2, 0]}><boxGeometry args={[0.25, 4, 10]} /><meshStandardMaterial color="#f9c784" /></mesh>
-    <mesh position={[-2.8, 0.55, -2.8]} castShadow><boxGeometry args={[2.4, 1.1, 1.5]} /><meshStandardMaterial color="#8ecae6" /></mesh>
-    <mesh position={[2.8, 0.75, -2.6]} castShadow><boxGeometry args={[2.4, 1.5, 0.7]} /><meshStandardMaterial color="#b07d62" /></mesh>
-    <mesh position={[0, 0.5, 1]} castShadow><cylinderGeometry args={[1.1, 1.1, 1, 20]} /><meshStandardMaterial color="#90be6d" /></mesh>
-    <mesh position={[0, .025, .5]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[4.4, 3]} /><meshStandardMaterial color="#d89bd0" /></mesh>
-    <mesh position={[3.4, .55, 1.8]} castShadow><boxGeometry args={[2.5, 1.1, .8]} /><meshStandardMaterial color="#6fb2bd" /></mesh>
-    <mesh position={[3.4, .95, 2.13]} castShadow><boxGeometry args={[2.5, .75, .22]} /><meshStandardMaterial color="#5894a2" /></mesh>
-    <mesh position={[-4.5, .85, -.8]} castShadow><boxGeometry args={[1.25, 1.7, .65]} /><meshStandardMaterial color="#b77b55" /></mesh>
-    <mesh position={[4.6, 1.15, -3.7]}><cylinderGeometry args={[.1, .14, 2.3, 12]} /><meshStandardMaterial color="#e3a73c" /></mesh>
-    <mesh position={[4.6, 2.22, -3.7]}><coneGeometry args={[.62, .7, 16]} /><meshStandardMaterial color="#fff0a8" emissive="#ffd567" emissiveIntensity={.2} /></mesh>
-    <mesh position={[-1.7, 2.1, -4.82]}><boxGeometry args={[1.5, 1.1, .08]} /><meshStandardMaterial color="#f0a0b8" /></mesh>
-    <mesh position={[1.4, 2.1, -4.82]}><boxGeometry args={[1.5, 1.1, .08]} /><meshStandardMaterial color="#8dc9df" /></mesh>
-    <mesh position={[0, 1.4, 4.75]}><boxGeometry args={[1.7, 2.8, .3]} /><meshStandardMaterial color="#8a5a44" /></mesh>
-    <Text position={[0, 1.6, 4.56]} rotation={[0, Math.PI, 0]} fontSize={.18} color="#fff3c7" anchorX="center">EXIT TO STONY BROOK</Text>
-    <Text position={[0, 2.8, -4.8]} fontSize={0.52} color="#6b3f24" anchorX="center">YOUR STARTER HOME</Text>
-  </group>;
-}

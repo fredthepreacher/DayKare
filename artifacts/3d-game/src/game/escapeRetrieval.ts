@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { ScheduleBlockId } from './gameClock';
+import type { GameZone } from './world';
 import { isMandatorySchedule, playerFollowsSchedule, schedulePolicy, SCHEDULE_DETECTION_GRACE_SECONDS, SCHEDULE_RECAPTURE_GRACE_SECONDS } from './schedulePolicy';
 
 export const ESCAPE_GRACE_SECONDS = 12;
@@ -32,7 +33,7 @@ let retrieval: EscapeRetrievalSnapshot = {
 let observedSchedule: ScheduleBlockId | null = null;
 let scheduleObservedAt = 0;
 
-export function isDaycareEscape(position: readonly number[], zone: 'hub' | 'garden' | 'storybook', storageAuthorized: boolean) {
+export function isDaycareEscape(position: readonly number[], zone: GameZone, storageAuthorized: boolean) {
   const x = position[0] ?? 0;
   const z = position[2] ?? 0;
   if (zone !== 'hub') return false;
@@ -61,7 +62,7 @@ export interface ScheduleRetrievalExemptions {
 export function evaluateScheduleRetrieval(
   now: number,
   scheduleId: ScheduleBlockId,
-  zone: 'hub' | 'garden' | 'storybook',
+  zone: GameZone,
   playerPosition: readonly number[],
   exemptions: ScheduleRetrievalExemptions = {},
 ) {

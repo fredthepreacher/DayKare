@@ -1,6 +1,8 @@
 import { RewardPulse } from './RewardPulse';
 import { useIsRainy, useWeatherLabel } from './WeatherSystem';
 import { useGameStore } from './store';
+import { useSlideStore } from './slideStore';
+import { REALTORS, STARTER_PROPERTY_ID, STONY_BROOK_PROPERTIES, propertyAction, type StonyBrookProperty } from './realEstate';
 import { zoneLabel } from './world';
 import { formatClock, timeOfDayToMinute } from './gameClock';
 import { lazy, Suspense, useEffect, useRef, useState, type KeyboardEvent } from 'react';
@@ -488,6 +490,8 @@ export function UI() {
               text: 'Carry the block to the Rainbow Tidy-Up station, then place it in the matching spot.',
             });
           }
+        } else if (activeInteractable === 'wavy-slide') {
+          useSlideStore.getState().startPlayerSlide();
         } else if (activeInteractable === 'juice-stand') {
           if (schedule === 'juice-club') {
             setActiveDialogue({
@@ -558,7 +562,87 @@ export function UI() {
           } else {
             setActiveDialogue({ name: 'Rainbow Tidy-Up', text: 'Bring the highlighted toy here before sorting the next one.' });
           }
-        } else if (activeInteractable === 'storybook-ice-cream') {
+        } else if (activeInteractable.startsWith('storybook-realtor-') || activeInteractable === 'storybook-ice-cream') {
+          /**
+           * The realtor desk. Built on the existing dialogue system so it
+           * works unchanged on desktop, touch and controller rather than
+           * needing a third input path of its own.
+           */
+          const propertyView = () => ({
+            ownedStarterHome: useFinalMasterStore.getState().ownedStarterHome,
+            homeVoucher: useFinalMasterStore.getState().homeVoucher,
+            rascalBucks: useStorybookLaneStore.getState().ribbonBucks,
+          });
+          const showProperty = (agent: string, property: StonyBrookProperty) => {
+            const view = propertyView();
+            const action = propertyAction(property, view);
+            const options: { label: string; action: () => void }[] = [];
+            if (action.kind === 'enter') {
+              options.push({ label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } });
+            } else if (action.kind === 'claim' || action.kind === 'buy') {
+              options.push({
+                label: action.kind === 'claim' ? 'Claim with my voucher' : `Buy for ${property.price.toLocaleString()} RB`,
+                action: () => {
+                  const result = useFinalMasterStore.getState().buyStarterHome();
+                  setActiveDialogue({
+                    name: agent,
+                    text: result === 'purchased'
+                      ? `Congratulations — ${property.name} is yours. The keys are in the mailbox and the front door is unlocked.`
+                      : result === 'owned'
+                        ? `${property.name} already belongs to you.`
+                        : `You are short on Rascal Bucks and nothing was charged.`,
+                    options: result === 'purchased' || result === 'owned'
+                      ? [
+                        { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } },
+                        { label: 'Later', action: () => setActiveDialogue(null) },
+                      ]
+                      : [{ label: 'Back', action: () => openPropertyMenu(agent) }],
+                  });
+                },
+              });
+            }
+            options.push({ label: 'Back', action: () => openPropertyMenu(agent) });
+            const status = action.kind === 'enter'
+              ? 'Owned by you.'
+              : action.kind === 'claim'
+                ? 'Your free-home voucher covers this in full.'
+                : action.kind === 'short'
+                  ? `${action.balance.toLocaleString()} RB of ${action.price.toLocaleString()} RB — ${action.shortfall.toLocaleString()} RB to go.`
+                  : action.kind === 'unavailable'
+                    ? 'Not on the market yet.'
+                    : `${property.price.toLocaleString()} RB · you have ${view.rascalBucks.toLocaleString()} RB.`;
+            setActiveDialogue({ name: `${property.name}`, text: `${property.blurb}\n\n${status}`, options });
+          };
+          const openPropertyMenu = (agent: string) => {
+            const view = propertyView();
+            const options: { label: string; action: () => void }[] = STONY_BROOK_PROPERTIES.map((property) => ({
+              label: `${property.name} · ${property.id === STARTER_PROPERTY_ID && view.ownedStarterHome ? 'Owned' : `${property.price.toLocaleString()} RB`}`,
+              action: () => showProperty(agent, property),
+            }));
+            if (view.ownedStarterHome) {
+              options.push({ label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } });
+            }
+            options.push({
+              label: 'How do Rascal Bucks work?',
+              action: () => setActiveDialogue({
+                name: agent,
+                text: 'Rascal Bucks come from finishing heists with Miss Leslie, daily replays, and jobs around DayKare. They are never bought with real money, and a purchase here only ever spends what you already earned.',
+                options: [{ label: 'Back', action: () => openPropertyMenu(agent) }],
+              }),
+            });
+            options.push({ label: 'Cancel', action: () => setActiveDialogue(null) });
+            setActiveDialogue({
+              name: agent,
+              text: `Stony Brook Realty. You have ${view.rascalBucks.toLocaleString()} RB${view.homeVoucher ? ' and one free-home voucher' : ''}. What can I show you?`,
+              options,
+            });
+          };
+          if (activeInteractable.startsWith('storybook-realtor-')) {
+            const realtor = REALTORS.find((profile) => activeInteractable === `storybook-realtor-${profile.id}`);
+            openPropertyMenu(realtor?.name ?? 'Stony Brook Realty');
+            return;
+          }
+
           const buyScoop = async () => {
             let result: 'purchased' | 'insufficient' | 'recovering' | 'sick';
             if (useModeStore.getState().activeMode === 'multiplayer') {
@@ -607,19 +691,12 @@ export function UI() {
           } else {
             const finalMaster = useFinalMasterStore.getState();
             if (!finalMaster.ownedStarterHome) {
-              const hadVoucher = finalMaster.homeVoucher;
-              const result = finalMaster.buyStarterHome();
+              // Nothing is bought by walking into a door. The realtors run
+              // the purchase, with the price and the balance on screen first.
               setActiveDialogue({
-                name: 'Storybook Property Office',
-                text: result === 'purchased'
-                  ? `Welcome home! Your starter house is yours${hadVoucher ? ' with your finale voucher' : ` for ${STARTER_HOME_PRICE.toLocaleString()} RB`}.`
-                  : result === 'owned'
-                    ? 'This starter home already belongs to you.'
-                    : `The starter home costs ${STARTER_HOME_PRICE.toLocaleString()} RB. Your ${storybook.ribbonBucks.toLocaleString()} RB balance was not changed.`,
-                options: result === 'purchased' || result === 'owned' ? [
-                  { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); useGameStore.getState().setPlayerPosition([0, 0, 2]); useGameStore.getState().triggerTeleport(); setActiveDialogue(null); } },
-                  { label: 'Not now', action: () => setActiveDialogue(null) },
-                ] : [{ label: 'Keep earning through heists', action: () => setActiveDialogue(null) }],
+                name: 'Wavy Manor · For Sale',
+                text: `${STARTER_HOME_PRICE.toLocaleString()} RB. You have ${storybook.ribbonBucks.toLocaleString()} RB.${finalMaster.homeVoucher ? ' Your free-home voucher covers it in full.' : ''} Mr. Brooks or Ms. Hartwell can handle the paperwork — they walk the lane by the ice cream stand.`,
+                options: [{ label: 'Got it', action: () => setActiveDialogue(null) }],
               });
               return;
             }
@@ -643,7 +720,7 @@ export function UI() {
               name: 'My Home & Garage',
               text: `Owned property. Balance: ${storybook.ribbonBucks} RB. Crib tier ${storybook.cribTier} is saved. Enter the furnished interior or manage the garage.`,
               options: [
-                { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); useGameStore.getState().setPlayerPosition([0, 0, 2]); useGameStore.getState().triggerTeleport(); setActiveDialogue(null); } },
+                { label: 'Enter my home', action: () => { useFinalMasterStore.getState().enterHome(); setActiveDialogue(null); } },
                 { label: owned.includes('tricycle') ? 'Tricycle · Owned' : `Tricycle · ${STORYBOOK_PRICES.tricycle} RB`, action: () => { void buyItem('tricycle', 'Tricycle'); } },
                 { label: owned.includes('dog') ? 'Dog · Owned' : `Dog · ${STORYBOOK_PRICES.dog} RB`, action: () => { void buyItem('dog', 'Dog companion'); } },
                 { label: owned.includes('crib') ? 'Personal Crib · Owned' : `Personal Crib · ${STORYBOOK_PRICES.crib} RB`, action: () => { void buyItem('crib', 'Personal Crib'); } },
@@ -1184,6 +1261,8 @@ export function UI() {
     if (activeInteractable.startsWith('cafeteria-seat-')) return 'Sit for Meal';
     if (activeInteractable === 'player-nap-mat') return 'Lie Down / Nap';
     if (activeInteractable === 'shiny-rock') return 'Pick up Shiny Rock';
+    if (activeInteractable === 'wavy-slide') return 'Ride the Wavy Slide';
+    if (activeInteractable.startsWith('storybook-realtor-')) return 'Ask about properties';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Use Juice Stand' : 'Check Juice Stand';
     if (activeInteractable === 'tricycle') return 'Use Tricycle';
     if (activeInteractable === 'activity-rainbow-tidy-up') {
@@ -1296,6 +1375,8 @@ export function UI() {
             : 'Route prepared'
         : `Locked · ${requirementProgressLabel(route, progression)}`;
     }
+    if (activeInteractable === 'wavy-slide') return 'Playground fun';
+    if (activeInteractable.startsWith('storybook-realtor-')) return 'Stony Brook Realty';
     if (activeInteractable === 'juice-stand') return schedule === 'juice-club' ? 'Business activity' : 'Opens at 12:00 PM';
     if (activeInteractable === 'tricycle') return 'Ride or customize';
     if (activeInteractable.startsWith('teacher-')) return 'Teacher guidance';
@@ -1630,6 +1711,7 @@ export function UI() {
       )}
 
       {/* Interaction Prompt - Bottom Center */}
+      <WavyShout />
       {interactionLabel && !journalOpen && !activeDialogue && (
         <div className="daykare-desktop-interact daykare-interaction-prompt absolute bottom-12 left-1/2 -translate-x-1/2 bg-card border-2 border-primary p-4 rounded-2xl shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-4">
           <div className="bg-primary text-primary-foreground font-mono font-bold w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner">
@@ -1675,6 +1757,26 @@ export function UI() {
           <div className="flex justify-between gap-4"><span>Journal</span> <span className="text-gray-300">J/Tab</span></div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** The "Wavy!" call-out on the way down the slide. */
+function WavyShout() {
+  const until = useSlideStore((state) => state.shoutFallbackUntil);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (until <= Date.now()) { setVisible(false); return undefined; }
+    setVisible(true);
+    const timer = window.setTimeout(() => setVisible(false), until - Date.now());
+    return () => window.clearTimeout(timer);
+  }, [until]);
+  if (!visible) return null;
+  return (
+    <div className="daykare-wavy-shout pointer-events-none absolute left-1/2 top-1/3 -translate-x-1/2 z-30">
+      <div className="rounded-3xl border-4 border-primary bg-card px-7 py-4 text-4xl font-black text-primary shadow-2xl">
+        Wavy!
+      </div>
     </div>
   );
 }

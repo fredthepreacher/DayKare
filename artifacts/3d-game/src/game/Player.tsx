@@ -10,7 +10,7 @@ import { getTouchInput } from './touchInput';
 import { CharacterModel } from './CharacterModel';
 import { addCameraOrbit, consumeCameraRecenterRequest, getCameraInput, getCameraProfile, recenterCamera, stepCameraInput } from './cameraInput';
 import { isGameplayBlocked } from './gameplayGate';
-import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, resolveMovement, trackPlayerPosition } from './world';
+import { CAMERA_BLOCKERS, MIN_CAMERA_DISTANCE, PLAYER_RADIUS, TRICYCLE_RADIUS, groundHeightAt, resolveMovement, trackPlayerPosition, type GameZone } from './world';
 import { CameraRig, advanceCameraPosition } from './cameraRig';
 import { useModeStore } from './modeStore';
 import { useStorybookLaneStore } from './storybookLaneStore';
@@ -18,6 +18,8 @@ import { ESCAPE_GRACE_SECONDS, advanceCarriedPlayer, beginEscapeRetrieval, evalu
 import { objectiveIsActive } from './quests';
 import { playGameSound } from './audio';
 import { playVoice } from './audioDirector';
+import { useSlideStore } from './slideStore';
+import { SLIDE_QUEUE_POINT, slideRidePosition, slideRideTumble } from './slide';
 import { SCHEDULE_RECAPTURE_GRACE_SECONDS } from './schedulePolicy';
 
 export const Player = forwardRef<THREE.Group>((props, ref) => {
@@ -45,6 +47,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
   // State
   const velocity = useRef(new THREE.Vector3());
   const lastFootstepAt = useRef(0);
+  const slideStartPosition = useRef<[number, number, number] | null>(null);
   const desiredVelocity = useRef(new THREE.Vector3());
   const yVelocity = useRef(0);
   const forward = useRef(new THREE.Vector3());
@@ -192,7 +195,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
 
     if (velocity.current.length() > 0.08) {
       const stepGap = running ? 0.24 : crouching ? 0.52 : 0.36;
-      if (state.clock.elapsedTime - lastFootstepAt.current >= stepGap && localRef.current.position.y <= 0.02) {
+      if (state.clock.elapsedTime - lastFootstepAt.current >= stepGap && localRef.current.position.y <= groundHeightAt(localRef.current.position.x, zone) + 0.02) {
         lastFootstepAt.current = state.clock.elapsedTime;
         playGameSound('footstep', 'ambient');
       }
@@ -228,7 +231,9 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       || ((liveGame.caper.step === 'retrieve' || liveGame.caper.step === 'escape')
         && liveGame.caper.teacherApproved && liveGame.caper.patrolObserved && liveGame.caper.setupReady);
     let retrieval = updateEscapeGrace(state.clock.elapsedTime);
-    if (!blocked) {
+    // No teacher walks into the player's own house to collect them. The
+    // home is off the daycare clock entirely.
+    if (!blocked && zone !== 'home') {
       const heistOverride = useFinalMasterStore.getState().heistStatus === 'active'
         || (liveGame.caper.step !== 'idle' && liveGame.caper.step !== 'complete');
       retrieval = evaluateScheduleRetrieval(
@@ -253,6 +258,33 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
       liveGame.setAmbientMessage(retrieval.reason === 'schedule'
         ? `${retrieval.assignedTeacher}: “${retrieval.scheduleId === 'nap' ? 'Nap time, kiddo!' : 'Come on, back this way.'}”`
         : `${retrieval.assignedTeacher}: “Oh no you don’t!”`);
+    }
+    // The Wavy slide drives the player the same way a retrieval does:
+    // the ride owns the transform, and normal locomotion is stilled for
+    // its duration rather than fighting it. The camera block below still
+    // runs, so the shot keeps following instead of freezing mid-ride.
+    const slideBefore = useSlideStore.getState().ride;
+    if (slideBefore) {
+      if (!slideStartPosition.current) slideStartPosition.current = localRef.current.position.toArray() as [number, number, number];
+      const stepped = useSlideStore.getState().stepPlayerSlide(delta);
+      const active = stepped ?? slideBefore;
+      const [sx, sy, sz] = slideRidePosition(active, slideStartPosition.current);
+      localRef.current.position.set(sx, sy, sz);
+      localRef.current.rotation.z = slideRideTumble(active);
+      velocity.current.set(0, 0, 0);
+      desiredVelocity.current.set(0, 0, 0);
+      yVelocity.current = 0;
+      if (stepped?.shoutedThisStep) {
+        // The clip is the primary cue; the speech bubble also shows so
+        // the moment still reads with audio off or muted.
+        playVoice('child-wavy', { force: true });
+        useSlideStore.getState().showShoutFallback();
+      }
+      if (!stepped || stepped.phase === 'done') {
+        slideStartPosition.current = null;
+        localRef.current.rotation.z = 0;
+        localRef.current.position.set(...SLIDE_QUEUE_POINT);
+      }
     }
     const carried = advanceCarriedPlayer(state.clock.elapsedTime, localRef.current.position, delta);
     if (getEscapeRetrievalSnapshot().phase === 'carrying' || carried.released) {
@@ -285,11 +317,14 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
     }
 
     // Jumping and Gravity
-    if (!blocked) {
-      const isGrounded = localRef.current.position.y <= 0;
+    if (!blocked && !slideBefore) {
+      // Outside the home this is a constant 0 and behaves exactly as it
+      // did; inside, it is the stair or floor height under the player.
+      const groundY = groundHeightAt(localRef.current.position.x, zone);
+      const isGrounded = localRef.current.position.y <= groundY;
 
       if (isGrounded) {
-        localRef.current.position.y = 0;
+        localRef.current.position.y = groundY;
         yVelocity.current = 0;
         if ((keys.jump || touch.jump) && !crouching && !isRiding) {
           yVelocity.current = 6;
@@ -381,7 +416,7 @@ export const Player = forwardRef<THREE.Group>((props, ref) => {
           camera: [number, number, number];
           cameraTarget: [number, number, number];
           cameraSide: string | null;
-          zone: 'hub' | 'garden' | 'storybook';
+          zone: GameZone;
           updatedAt: number;
         };
       };

@@ -91,6 +91,7 @@ export type VoiceGroup =
   | "child-playful"
   | "child-food"
   | "child-social"
+  | "child-wavy"
   | "teacher-class"
   | "teacher-art"
   | "teacher-show"
@@ -126,6 +127,10 @@ export const VOICES_BY_GROUP: Record<VoiceGroup, readonly string[]> = {
     "new_voice_variant_01.wav",
     "new_voice_variant_02.wav",
   ],
+  // The owner-supplied "Wavy!" clips. The slide plays these directly
+  // rather than through child-social, so the shout on the way down is
+  // always the line the ride is named for.
+  "child-wavy": ["child_wavy_01.wav", "child_wavy_02.wav"],
   "teacher-class": [
     "teacher_get_back_to_class_01.wav",
     "teacher_get_back_to_class_02.wav",

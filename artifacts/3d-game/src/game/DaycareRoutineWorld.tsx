@@ -5,11 +5,16 @@ import * as THREE from 'three';
 import { registerInteractionCandidate, updateInteractionCandidate } from './interactionFocus';
 import { useGameStore } from './store';
 
+// A seat has to clear the tabletop it belongs to. Both tables are circles
+// of radius 0.78 at (-14.4, 10) and (-9.6, 10); with the player's 0.42 m
+// radius a seat must sit at least 1.20 m from the centre. The two
+// head-of-table seats were left on the centres when the cafeteria moved,
+// which put the player inside the table and cut those seats off entirely.
 export const CAFETERIA_SEATS = [
-  { id: 'cafeteria-seat-0', position: [-14.5, 0, 10] },
+  { id: 'cafeteria-seat-0', position: [-14.4, 0, 11.3] },
   { id: 'cafeteria-seat-1', position: [-13.35, 0, 9.05] },
   { id: 'cafeteria-seat-2', position: [-13.35, 0, 10.95] },
-  { id: 'cafeteria-seat-3', position: [-9.5, 0, 10] },
+  { id: 'cafeteria-seat-3', position: [-9.6, 0, 11.3] },
   { id: 'cafeteria-seat-4', position: [-10.65, 0, 9.05] },
   { id: 'cafeteria-seat-5', position: [-10.65, 0, 10.95] },
 ] as const;

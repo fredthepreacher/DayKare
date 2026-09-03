@@ -120,6 +120,22 @@ export function Environment() {
           <boxGeometry args={PLAY_SLIDE_RAMP.size} />
           <meshStandardMaterial color="#e76f51" />
         </mesh>
+        {/* Steps up the tower, so the climb the ride plays has something
+            to climb. They sit inside the tower's own collider, which is
+            why they add no solid of their own. */}
+        {[0, 1, 2, 3].map((step) => (
+          <mesh key={step} position={[12, 0.32 + step * 0.42, -4.42 - step * 0.3]} castShadow>
+            <boxGeometry args={[1.05, 0.14, 0.34]} />
+            <meshStandardMaterial color="#f4a261" />
+          </mesh>
+        ))}
+        {/* Side rails, so the top of the tower reads as a platform. */}
+        {[-0.62, 0.62].map((offset) => (
+          <mesh key={offset} position={[12 + offset, 2.32, -5.5]} castShadow>
+            <boxGeometry args={[0.1, 0.62, 1.3]} />
+            <meshStandardMaterial color="#2a9d8f" />
+          </mesh>
+        ))}
       </group>
       
       {/* Playground Sandbox */}

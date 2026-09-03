@@ -14,7 +14,7 @@ export type SolidKind =
   | 'activity-station'
   | 'camera-blocker';
 
-export type GameZone = 'hub' | 'garden' | 'storybook';
+export type GameZone = 'hub' | 'garden' | 'storybook' | 'home';
 
 export interface WorldSolid {
   id: string;
@@ -142,6 +142,64 @@ const storybookBox = (
   options: Partial<WorldSolid> = {},
 ): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'storybook', ...options });
 
+/* ------------------------------------------------------------------ *
+ * The owned Stony Brook home.
+ *
+ * Collision in DayKare is a 2D footprint test, so three storeys cannot
+ * be stacked on the same X/Z ground. They are laid out end to end
+ * instead and rendered at their own heights, joined by two real stair
+ * corridors. The player walks every step of it; nothing teleports.
+ *
+ *   basement            stairs        ground floor      stairs    upper
+ *   x -26 .. -14    x -14 .. -10     x -10 .. 2      x 2 .. 6   x 6 .. 18
+ *   y = -2.8         -2.8 -> 0          y = 0          0 -> 3.2   y = 3.2
+ * ------------------------------------------------------------------ */
+
+export const HOME_BASEMENT_Y = -2.8;
+export const HOME_UPPER_Y = 3.2;
+export const HOME_BASEMENT_MAX_X = -14;
+export const HOME_GROUND_MIN_X = -10;
+export const HOME_GROUND_MAX_X = 2;
+export const HOME_UPPER_MIN_X = 6;
+
+/** Where the player lands when they step through their own front door. */
+export const HOME_SPAWN: [number, number, number] = [-1, 0, 6.4];
+/** The inside face of the front door, and the way back to Stony Brook. */
+export const HOME_EXIT_POINT: [number, number, number] = [-1, 0, 7.4];
+/** Where the player stands on the front path after leaving the house. */
+export const STONY_BROOK_DOOR_RETURN: [number, number, number] = [-13, 0, -8.6];
+export const HOME_UPPER_LANDING: [number, number, number] = [7.4, HOME_UPPER_Y, 0];
+export const HOME_BASEMENT_LANDING: [number, number, number] = [-15.4, HOME_BASEMENT_Y, 0];
+
+const homeBox = (
+  id: string,
+  kind: SolidKind,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number,
+  options: Omit<Partial<WorldSolid>, 'id' | 'kind' | 'minX' | 'maxX' | 'minZ' | 'maxZ'> = {},
+): WorldSolid => box(id, kind, minX, maxX, minZ, maxZ, { zone: 'home', ...options });
+
+/**
+ * The floor a rider stands on at a given X inside the home. Every other
+ * zone is flat, so this returns 0 for them and costs one comparison.
+ */
+export function groundHeightAt(x: number, zone: GameZone = 'hub') {
+  if (zone !== 'home') return 0;
+  if (x <= HOME_BASEMENT_MAX_X) return HOME_BASEMENT_Y;
+  if (x < HOME_GROUND_MIN_X) {
+    const t = (x - HOME_BASEMENT_MAX_X) / (HOME_GROUND_MIN_X - HOME_BASEMENT_MAX_X);
+    return HOME_BASEMENT_Y * (1 - t);
+  }
+  if (x <= HOME_GROUND_MAX_X) return 0;
+  if (x < HOME_UPPER_MIN_X) {
+    const t = (x - HOME_GROUND_MAX_X) / (HOME_UPPER_MIN_X - HOME_GROUND_MAX_X);
+    return HOME_UPPER_Y * t;
+  }
+  return HOME_UPPER_Y;
+}
+
 export const PLAY_SLIDE_RAMP = {
   position: [12, 0.5, -3.5] as [number, number, number],
   size: [1, 3, 0.2] as [number, number, number],
@@ -257,6 +315,69 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   // to two 0.86 m lanes, or 0.30 m on the tricycle. Now it reads as the floor
   // decoration it looks like.
   box('sandbox', 'playground', 10, 14, 3, 7, { cameraRole: 'substantial', maxY: 0.07 }),
+  /* ---- The owned Stony Brook home interior ---- */
+  homeBox('home-ground-north', 'wall', -10.3, 2.3, -8.3, -8.0),
+  homeBox('home-ground-south-west', 'wall', -10.3, -1.9, 8.0, 8.3),
+  homeBox('home-ground-south-east', 'wall', -0.1, 2.3, 8.0, 8.3),
+  // The front door itself. Without it the doorway gap is a hole in the
+  // shell and the player can simply walk out of the house.
+  homeBox('home-front-door', 'wall', -1.9, -0.1, 8.0, 8.3),
+  homeBox('home-ground-east-north', 'wall', 2.0, 2.3, -8.3, -2.0),
+  homeBox('home-ground-east-south', 'wall', 2.0, 2.3, 2.0, 8.3),
+  homeBox('home-ground-spine-a', 'wall', -3.15, -2.85, -8.3, -2.0),
+  homeBox('home-ground-spine-b', 'wall', -3.15, -2.85, -0.6, 2.0),
+  homeBox('home-ground-spine-c', 'wall', -3.15, -2.85, 3.6, 8.3),
+  homeBox('home-ground-kitchen-wall-a', 'wall', -10.3, -8.0, -0.15, 0.15),
+  homeBox('home-ground-kitchen-wall-b', 'wall', -6.4, -2.85, -0.15, 0.15),
+  homeBox('home-ground-entry-wall-a', 'wall', -3.15, -1.6, 3.85, 4.15),
+  homeBox('home-ground-entry-wall-b', 'wall', 0.0, 2.3, 3.85, 4.15),
+  homeBox('home-ground-bath-wall-a', 'wall', -1.2, 2.3, -3.15, -2.85),
+  homeBox('home-upstairs-north', 'wall', 1.7, 6.3, -2.3, -2.0),
+  homeBox('home-upstairs-south', 'wall', 1.7, 6.3, 2.0, 2.3),
+  homeBox('home-upper-north', 'wall', 5.7, 18.3, -8.3, -8.0),
+  homeBox('home-upper-south', 'wall', 5.7, 18.3, 8.0, 8.3),
+  homeBox('home-upper-east', 'wall', 18.0, 18.3, -8.3, 8.3),
+  homeBox('home-upper-west-north', 'wall', 5.7, 6.0, -8.3, -2.0),
+  homeBox('home-upper-west-south', 'wall', 5.7, 6.0, 2.0, 8.3),
+  homeBox('home-upper-spine-a', 'wall', 8.85, 9.15, -8.3, -5.6),
+  homeBox('home-upper-spine-b', 'wall', 8.85, 9.15, -4.0, -1.0),
+  homeBox('home-upper-spine-c', 'wall', 8.85, 9.15, 0.6, 3.0),
+  homeBox('home-upper-spine-d', 'wall', 8.85, 9.15, 4.6, 8.3),
+  homeBox('home-upper-room-wall-a', 'wall', 9.15, 18.3, 1.85, 2.15),
+  homeBox('home-upper-room-wall-b', 'wall', 9.15, 18.3, -3.15, -2.85),
+  homeBox('home-downstairs-north', 'wall', -14.3, -9.7, -2.3, -2.0),
+  homeBox('home-downstairs-south', 'wall', -14.3, -9.7, 2.0, 2.3),
+  homeBox('home-ground-west-north', 'wall', -10.3, -10.0, -8.3, -2.0),
+  homeBox('home-ground-west-south', 'wall', -10.3, -10.0, 2.0, 8.3),
+  homeBox('home-basement-north', 'wall', -26.3, -13.7, -7.3, -7.0),
+  homeBox('home-basement-south', 'wall', -26.3, -13.7, 7.0, 7.3),
+  homeBox('home-basement-west', 'wall', -26.3, -26.0, -7.3, 7.3),
+  homeBox('home-basement-east-north', 'wall', -14.0, -13.7, -7.3, -2.0),
+  homeBox('home-basement-east-south', 'wall', -14.0, -13.7, 2.0, 7.3),
+  homeBox('home-basement-divider-a', 'wall', -22.15, -21.85, -7.3, -1.0),
+  homeBox('home-basement-divider-b', 'wall', -22.15, -21.85, 1.0, 7.3),
+  homeBox('home-sofa', 'furniture', -9.6, -6.4, 5.9, 7.0, { cameraRole: 'substantial', maxY: 0.85 }),
+  homeBox('home-tv-stand', 'furniture', -9.6, -6.4, 1.0, 1.8, { cameraRole: 'substantial', maxY: 0.62 }),
+  homeBox('home-bookshelf', 'furniture', -4.6, -3.3, 5.6, 6.5, { cameraRole: 'substantial', maxY: 1.9 }),
+  homeBox('home-kitchen-counter-north', 'counter', -9.7, -3.3, -7.7, -6.8, { cameraRole: 'substantial', maxY: 0.95 }),
+  homeBox('home-kitchen-counter-west', 'counter', -9.7, -8.8, -6.8, -3.4, { cameraRole: 'substantial', maxY: 0.95 }),
+  homeBox('home-kitchen-island', 'counter', -7.0, -5.0, -4.4, -3.2, { cameraRole: 'substantial', maxY: 0.95 }),
+  homeBox('home-fridge', 'furniture', -4.4, -3.4, -7.7, -6.6, { cameraRole: 'substantial', maxY: 1.9 }),
+  homeBox('home-dining-table', 'table', -2.4, -0.4, 0.4, 2.4, { cameraRole: 'substantial', maxY: 0.74 }),
+  homeBox('home-bath1-tub', 'furniture', -2.7, -0.8, -7.7, -6.4, { cameraRole: 'substantial', maxY: 0.6 }),
+  homeBox('home-bath1-vanity', 'counter', 0.6, 1.9, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
+  homeBox('home-primary-bed', 'furniture', 10.2, 12.6, 4.6, 7.5, { cameraRole: 'substantial', maxY: 0.72 }),
+  homeBox('home-primary-dresser', 'furniture', 16.4, 17.8, 4.4, 6.4, { cameraRole: 'substantial', maxY: 1.15 }),
+  homeBox('home-primary-closet', 'furniture', 16.2, 17.8, 2.4, 4.0, { cameraRole: 'substantial', maxY: 2.2 }),
+  homeBox('home-flex-bed', 'furniture', 10.2, 12.4, -2.5, 0.1, { cameraRole: 'substantial', maxY: 0.72 }),
+  homeBox('home-flex-desk', 'table', 16.2, 17.8, -1.4, 0.8, { cameraRole: 'substantial', maxY: 0.76 }),
+  homeBox('home-bath2-tub', 'furniture', 15.9, 17.8, -7.7, -6.2, { cameraRole: 'substantial', maxY: 0.6 }),
+  homeBox('home-bath2-vanity', 'counter', 9.6, 11.2, -7.7, -6.9, { cameraRole: 'substantial', maxY: 0.85 }),
+  homeBox('home-rec-sofa', 'furniture', -20.6, -17.6, 5.4, 6.6, { cameraRole: 'substantial', maxY: 0.85 }),
+  homeBox('home-rec-arcade', 'furniture', -15.6, -14.4, -6.6, -5.0, { cameraRole: 'substantial', maxY: 1.85 }),
+  homeBox('home-rec-shelf', 'furniture', -21.8, -20.8, -6.6, -3.6, { cameraRole: 'substantial', maxY: 1.6 }),
+  homeBox('home-storage-crates', 'furniture', -25.7, -24.2, -6.6, -3.4, { cameraRole: 'substantial', maxY: 1.1 }),
+  homeBox('home-storage-shelf', 'furniture', -25.7, -24.6, 2.0, 6.6, { cameraRole: 'substantial', maxY: 1.7 }),
   box('route-garden-district', 'route-gate', 13, 15.4, -14.3, -12.3),
   box('route-storybook-lane', 'route-gate', -15.4, -13, -14.3, -12.3),
   box('route-maker-market', 'route-gate', 13, 15.4, 12.2, 14.3),
@@ -300,6 +421,16 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   storybookBox('storybook-west-boundary', 'boundary', -24.3, -23.7, -24, 24),
   storybookBox('storybook-east-boundary', 'boundary', 23.7, 24.3, -24, 24),
   storybookBox('storybook-ice-cream-stand', 'counter', -2.1, 2.1, -9.1, -6.9, { cameraRole: 'substantial', maxY: 2.6 }),
+  /* ---- Wavy Manor: the owned Stony Brook property ----
+     The shell is one solid because the player never walks through the
+     exterior; the front door is an interaction that loads the interior
+     zone. The driveway and walkway are surfaces, not obstacles. */
+  storybookBox('sb-manor-shell', 'wall', -18, -8, -17, -11, { cameraRole: 'structural', maxY: 6.2 }),
+  storybookBox('sb-manor-porch-post-west', 'furniture', -15.15, -14.85, -10.9, -10.6, { maxY: 2.6 }),
+  storybookBox('sb-manor-porch-post-east', 'furniture', -11.15, -10.85, -10.9, -10.6, { maxY: 2.6 }),
+  storybookBox('sb-manor-mailbox', 'furniture', -11.62, -11.18, -6.42, -5.98, { maxY: 1.2 }),
+  storybookBox('sb-manor-hedge-west', 'furniture', -18, -15.6, -10.95, -10.35, { maxY: 0.85 }),
+  storybookBox('sb-manor-hedge-east', 'furniture', -10.4, -8, -10.95, -10.35, { maxY: 0.85 }),
 ];
 
 export function getWorldSolidTransform(id: string, height: number, centerY = height / 2): WorldSolidTransform {
@@ -417,6 +548,12 @@ export const WORLD_WALKABLE_REGIONS: WalkableRegion[] = [
   { id: 'playground', zone: 'hub', minX: 8.3, maxX: 15.7, minZ: -15.7, maxZ: 15.7 },
   { id: 'garden', zone: 'garden', minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 },
   { id: 'storybook-neighborhood', zone: 'storybook', minX: -23.7, maxX: 23.7, minZ: -23.7, maxZ: 23.7 },
+  // One region, not five. Walkable regions are inset by the player's
+  // radius, so two abutting regions leave an 0.84 m seam the player
+  // cannot cross - which is exactly what sealed the staircases. The
+  // home is fully enclosed by its own walls, so the walls can do all
+  // the containing and the region only has to be large enough.
+  { id: 'home-interior', zone: 'home', minX: -26.5, maxX: 18.5, minZ: -8.5, maxZ: 8.5 },
 ];
 
 export const GARDEN_SPAWN: [number, number, number] = [0, 0, 14];
@@ -713,6 +850,7 @@ export function findApproachPoint(
  * Hub" instead of failing to compile.
  */
 export const ZONE_LABELS: Record<GameZone, string> = {
+  home: 'Your Stony Brook Home',
   hub: 'DayKare Hub',
   garden: 'Garden District',
   storybook: 'Storybook Lane',
