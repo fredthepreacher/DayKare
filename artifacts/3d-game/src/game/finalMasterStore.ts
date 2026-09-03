@@ -30,6 +30,15 @@ interface FinalMasterState {
   heistsCompleted: number;
   successfulFinales: number;
   totalHeistRbEarned: number;
+  routePlannerComplete: boolean;
+  routePlannerBestRisk: number | null;
+  heistBoardOpen: boolean;
+  leoHeistHintCount: number;
+  leoHeistIntroCompleted: boolean;
+  leoHeistNextHintMinute: number | null;
+  leoHeistApproachActive: boolean;
+  leoHeistWaypointActive: boolean;
+  missLeslieHeistIntroduced: boolean;
   ownedStarterHome: boolean;
   homeVoucher: boolean;
   insideHome: boolean;
@@ -45,6 +54,11 @@ interface FinalMasterState {
   recordHeistEvent: (event: HeistEvent) => boolean;
   chooseFirstReward: (choice: 'rb' | 'home') => boolean;
   claimReplayReward: (dayNumber: number) => boolean;
+  openHeistBoard: () => void;
+  closeHeistBoard: () => void;
+  completeRoutePlanner: (risk: number) => boolean;
+  requestLeoHeistApproach: (absoluteMinute: number, eligible: boolean, leoStoryComplete: boolean) => boolean;
+  completeLeoHeistHint: (absoluteMinute: number) => 1 | 2 | null;
   buyStarterHome: () => 'purchased' | 'owned' | 'insufficient';
   enterHome: () => boolean;
   leaveHome: () => void;
@@ -90,6 +104,15 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
   heistsCompleted: 0,
   successfulFinales: 0,
   totalHeistRbEarned: 0,
+  routePlannerComplete: false,
+  routePlannerBestRisk: null,
+  heistBoardOpen: false,
+  leoHeistHintCount: 0,
+  leoHeistIntroCompleted: false,
+  leoHeistNextHintMinute: null,
+  leoHeistApproachActive: false,
+  leoHeistWaypointActive: false,
+  missLeslieHeistIntroduced: false,
   ownedStarterHome: false,
   homeVoucher: false,
   insideHome: false,
@@ -135,7 +158,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     const state = get();
     const dayNumber = useGameStore.getState().dayNumber;
     if (!state.tutorialComplete || state.heistStatus === 'active' || state.heistStatus === 'reward-choice' || (state.firstHeistComplete && state.lastReplayDay === dayNumber)) return false;
-    set({ heistStatus: 'active', heistStep: 0, heistCompletedEvents: [], companionCommand: 'follow', activeAnimation: 'anim_miss_leslie_board_intro' });
+    set({ heistStatus: 'active', heistStep: 0, heistCompletedEvents: [], companionCommand: 'follow', activeAnimation: 'anim_miss_leslie_board_intro', missLeslieHeistIntroduced: true, leoHeistApproachActive: false, leoHeistWaypointActive: false });
     return true;
   },
   recordHeistEvent: (event) => {
@@ -174,6 +197,39 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     set({ heistStatus: 'active', heistStep: 0, heistCompletedEvents: [], companionCommand: 'follow', activeAnimation: 'anim_miss_leslie_board_intro' });
     return true;
   },
+  openHeistBoard: () => set({ heistBoardOpen: true }),
+  closeHeistBoard: () => set({ heistBoardOpen: false }),
+  completeRoutePlanner: (risk) => {
+    const state = get();
+    const safeRisk = Math.max(0, Math.min(9, Math.floor(Number.isFinite(risk) ? risk : 9)));
+    const firstClear = !state.routePlannerComplete;
+    set({ routePlannerComplete: true, routePlannerBestRisk: state.routePlannerBestRisk === null ? safeRisk : Math.min(state.routePlannerBestRisk, safeRisk) });
+    if (firstClear) {
+      grantCoreReward(25, 0);
+      useToastStore.getState().enqueue({ title: 'Low-risk route planned! +25 XP', detail: 'Setup advantage saved. Major heist payouts are unchanged.', kind: 'success' });
+    }
+    return firstClear;
+  },
+  requestLeoHeistApproach: (absoluteMinute, eligible, leoStoryComplete) => {
+    const state = get();
+    if (!eligible || !leoStoryComplete || state.missLeslieHeistIntroduced || state.heistStatus === 'active' || state.heistStatus === 'reward-choice' || state.leoHeistHintCount >= 2 || state.leoHeistApproachActive) return false;
+    if (state.leoHeistHintCount === 1 && absoluteMinute < (state.leoHeistNextHintMinute ?? Number.POSITIVE_INFINITY)) return false;
+    set({ leoHeistApproachActive: true });
+    return true;
+  },
+  completeLeoHeistHint: (absoluteMinute) => {
+    const state = get();
+    if (!state.leoHeistApproachActive || state.missLeslieHeistIntroduced || state.leoHeistHintCount >= 2) return null;
+    const next = (state.leoHeistHintCount + 1) as 1 | 2;
+    set({
+      leoHeistHintCount: next,
+      leoHeistIntroCompleted: true,
+      leoHeistNextHintMinute: next === 1 ? absoluteMinute + 60 : null,
+      leoHeistApproachActive: false,
+      leoHeistWaypointActive: true,
+    });
+    return next;
+  },
   buyStarterHome: () => {
     const state = get();
     if (state.ownedStarterHome) return 'owned';
@@ -206,7 +262,11 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     tutorialCompletedSteps: state.tutorialCompletedSteps, tutorialRewardedChapters: state.tutorialRewardedChapters, tutorialMovementDistance: state.tutorialMovementDistance,
     tutorialComplete: state.tutorialComplete, heistStatus: state.heistStatus, heistStep: state.heistStep, heistCompletedEvents: state.heistCompletedEvents,
     firstHeistComplete: state.firstHeistComplete, firstRewardChoice: state.firstRewardChoice,
-    lastReplayDay: state.lastReplayDay, heistsCompleted: state.heistsCompleted, successfulFinales: state.successfulFinales, totalHeistRbEarned: state.totalHeistRbEarned, ownedStarterHome: state.ownedStarterHome, homeVoucher: state.homeVoucher,
+    lastReplayDay: state.lastReplayDay, heistsCompleted: state.heistsCompleted, successfulFinales: state.successfulFinales, totalHeistRbEarned: state.totalHeistRbEarned,
+    routePlannerComplete: state.routePlannerComplete, routePlannerBestRisk: state.routePlannerBestRisk,
+    leoHeistHintCount: state.leoHeistHintCount, leoHeistIntroCompleted: state.leoHeistIntroCompleted, leoHeistNextHintMinute: state.leoHeistNextHintMinute,
+    leoHeistWaypointActive: state.leoHeistWaypointActive, missLeslieHeistIntroduced: state.missLeslieHeistIntroduced,
+    ownedStarterHome: state.ownedStarterHome, homeVoucher: state.homeVoucher,
     gems: state.gems,
   }),
   merge: (persisted, current) => {
@@ -215,7 +275,8 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
     const rewarded = Array.isArray(saved.tutorialRewardedChapters)
       ? saved.tutorialRewardedChapters.filter((id) => TUTORIAL_CHAPTERS.some((item) => item.id === id))
       : TUTORIAL_CHAPTERS.slice(0, chapter).map((item) => item.id);
-    return { ...current, ...saved, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Math.max(0, Number(saved.tutorialMovementDistance) || 0), heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [], heistsCompleted: Math.max(0, Math.floor(saved.heistsCompleted ?? 0)), successfulFinales: Math.max(0, Math.floor(saved.successfulFinales ?? 0)), totalHeistRbEarned: Math.max(0, Math.floor(saved.totalHeistRbEarned ?? 0)) };
+    const routeRisk = saved.routePlannerBestRisk;
+    return { ...current, ...saved, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Math.max(0, Number(saved.tutorialMovementDistance) || 0), heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [], heistsCompleted: Math.max(0, Math.floor(saved.heistsCompleted ?? 0)), successfulFinales: Math.max(0, Math.floor(saved.successfulFinales ?? 0)), totalHeistRbEarned: Math.max(0, Math.floor(saved.totalHeistRbEarned ?? 0)), routePlannerComplete: saved.routePlannerComplete === true, routePlannerBestRisk: typeof routeRisk === 'number' && Number.isFinite(routeRisk) ? Math.max(0, Math.min(9, Math.floor(routeRisk))) : null, heistBoardOpen: false, leoHeistHintCount: Math.max(0, Math.min(2, Math.floor(saved.leoHeistHintCount ?? 0))), leoHeistIntroCompleted: saved.leoHeistIntroCompleted === true, leoHeistNextHintMinute: typeof saved.leoHeistNextHintMinute === 'number' && Number.isFinite(saved.leoHeistNextHintMinute) ? Math.max(0, Math.floor(saved.leoHeistNextHintMinute)) : null, leoHeistApproachActive: false, leoHeistWaypointActive: saved.leoHeistWaypointActive === true && saved.missLeslieHeistIntroduced !== true, missLeslieHeistIntroduced: saved.missLeslieHeistIntroduced === true || saved.heistStatus === 'active' || saved.firstHeistComplete === true };
   },
 }));
 

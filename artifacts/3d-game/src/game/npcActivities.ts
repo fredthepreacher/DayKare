@@ -48,11 +48,17 @@ type Station = Omit<ChildActivityPlan, 'duration' | 'soloFallback'> & {
 };
 
 const CHILD_ORDER = ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 'Ruby', 'Max', 'Mae'];
+const CAFETERIA_NPC_SEATS: [number, number, number][] = [
+  [-14.5, 0, 10], [-13.35, 0, 9.05], [-13.35, 0, 10.95],
+  [-9.5, 0, 10], [-10.65, 0, 9.05], [-10.65, 0, 10.95],
+  [-14.65, 0, 11.45], [-9.35, 0, 11.45], [-14.65, 0, 8.9],
+  [-9.35, 0, 8.9], [-12, 0, 11.25],
+];
 export const MIN_CHILD_ACTIVITY_DWELL_SECONDS = 7.2;
 export const MAX_CHILD_ACTIVITY_DWELL_SECONDS = 8.5;
 
 const HUB_STATIONS: Record<string, Station[]> = {
-  breakfast: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [9.1 + (index % 3) * 1.9, 0, 3.1 + Math.floor(index / 3) * 1.2], focus: [11.5, 0, 4.8], duration: 6.4 })),
+  breakfast: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: CAFETERIA_NPC_SEATS[index], focus: [-12, 0, 10], duration: 6.4 })),
   'morning-play': [
     { activity: 'blocks', mode: 'toy-play', position: [-2.8, 0, 1.4], focus: [-1.8, 0, 1.4], duration: 6.2 },
     { activity: 'picture-books', mode: 'reading', position: [4.05, 0, -5.05], focus: [4.8, 0, -5.5], duration: 6 },
@@ -80,7 +86,7 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'drawing', mode: 'coloring', position: [-9.8, 0, -15], focus: [-9.8, 0, -14], duration: 6.1 },
   ],
   'show-and-tell': CHILD_ORDER.map((_, index) => { const angle = index / CHILD_ORDER.length * Math.PI * 2; return { activity: 'circle-time', mode: 'circle-time', position: [Math.cos(angle) * 2.1, 0, 2.3 + Math.sin(angle) * 2.1], focus: [0, 0, 2.3], duration: 6.4 }; }),
-  lunch: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: [9.1 + (index % 3) * 1.9, 0, 3.1 + Math.floor(index / 3) * 1.2], focus: [11.5, 0, 4.8], duration: 6.4 })),
+  lunch: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: CAFETERIA_NPC_SEATS[index], focus: [-12, 0, 10], duration: 6.4 })),
   'juice-club': [
     { activity: 'snacking', mode: 'snacking', position: [5.2, 0, -3.8], focus: [4.4, 0, -3.2], duration: 4.6 },
     { activity: 'conversation', mode: 'conversation', position: [4.8, 0, -0.7], focus: [3.8, 0, -0.7], duration: 4.2 },

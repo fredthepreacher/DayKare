@@ -24,7 +24,7 @@ export const HEIST_STEPS = [
   { id: 'scope', title: 'Scope the route', objective: 'Inspect the classroom window, hall corner, and playground gate.', events: ['scope-window', 'scope-hall', 'scope-gate'] },
   { id: 'access', title: 'Set up access', objective: 'Reach Mia and ask her to hold the art-room shortcut.', events: ['mia-door'] },
   { id: 'distraction', title: 'Create a distraction', objective: 'Reach Noah and start the toy-box commotion.', events: ['noah-distraction'] },
-  { id: 'equipment', title: 'Prepare the shortcut', objective: 'Collect the grabber tool beside the storage shelves.', events: ['grabber-collected'] },
+  { id: 'equipment', title: 'Prepare the shortcut', objective: 'Collect the grabber tool beside the Lost & Found shelves.', events: ['grabber-collected'] },
   { id: 'finale', title: 'Parade finale', objective: 'Physically regroup with Mia and Noah at the Heist Board.', events: ['finale-regroup'] },
 ] as const;
 

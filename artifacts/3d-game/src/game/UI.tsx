@@ -156,6 +156,7 @@ export function UI() {
   const tidyTutorialSeen = useGameStore((state) => state.tidyTutorialSeen);
   const markTidyTutorialSeen = useGameStore((state) => state.markTidyTutorialSeen);
   const recordTutorialEvent = useFinalMasterStore((state) => state.recordTutorialEvent);
+  const heistBoardOpen = useFinalMasterStore((state) => state.heistBoardOpen);
   const rankProgress = rankFromLifetimeXp(progression.experience ?? 0);
   const rainyNow = useIsRainy();
 
@@ -448,6 +449,8 @@ export function UI() {
           }
         } else if (activeInteractable === 'final-miss-leslie') {
           interactWithMissLeslie();
+        } else if (activeInteractable === 'final-heist-board') {
+          useFinalMasterStore.getState().openHeistBoard();
         } else if (activeInteractable.startsWith('final-heist-')) {
           interactWithHeistTarget(activeInteractable);
         } else if (activeInteractable === 'binky') {
@@ -1212,6 +1215,7 @@ export function UI() {
     if (activeInteractable === 'garden-fishing-shop') return 'Visit Tackle Kiosk';
     if (activeInteractable === 'seed-inspection') return 'Inspect Held Seeds';
     if (activeInteractable === 'final-miss-leslie') return 'Talk to Miss Leslie';
+    if (activeInteractable === 'final-heist-board') return 'View Heist Board';
     if (activeInteractable.startsWith('final-heist-')) return `Scope ${activeInteractable.replace('final-heist-', '').replaceAll('-', ' ')}`;
     if (activeInteractable.startsWith('expansion-collectible-')) return 'Collect Item';
     if (activeInteractable === 'lost-found-desk') return expansion.lostFoundJob?.status === 'found' ? 'Return Lost Item' : 'Check Job Board';
@@ -1268,6 +1272,7 @@ export function UI() {
     if (activeInteractable === 'garden-fishing-shop') return 'Fishing safety and supplies';
     if (activeInteractable === 'seed-inspection') return `${expansion.seedPackets} seed packets · crop and yield report`;
     if (activeInteractable === 'final-miss-leslie') return 'Story heist · shared across keyboard, touch, and controller';
+    if (activeInteractable === 'final-heist-board') return 'Walk-up planning · Route Planner and career stats';
     if (activeInteractable.startsWith('final-heist-')) return 'Active story objective · generous interaction range';
     if (activeInteractable.startsWith('expansion-collectible-')) return 'Rotating daycare and Garden hunt';
     if (activeInteractable === 'lost-found-desk' || activeInteractable === 'lost-found-item') return '10-minute rotating job · RNG reward';
@@ -1309,7 +1314,7 @@ export function UI() {
     } catch { /* local save warning already explains unavailable storage */ }
     useToastStore.getState().enqueue({ title: 'Optional Job Discovered', detail: 'Rainbow Tidy-Up earns XP and money whenever you want to play.' });
   }, [activeQuest?.id]);
-  const gameplayBlocked = journalOpen || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked || Boolean(expansion.lastDayReport);
+  const gameplayBlocked = journalOpen || heistBoardOpen || Boolean(activeDialogue) || zoneTransitioning || frontEndBlocked || Boolean(expansion.lastDayReport);
 
   return (
     <div className="absolute inset-0 pointer-events-none select-none z-10 font-sans">

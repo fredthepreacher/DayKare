@@ -16,6 +16,8 @@ import { playGameSound } from './audio';
 import { playVoice } from './audioDirector';
 import { voiceGroupForAmbientContext } from './audioAssets';
 import { objectiveIsActive } from './quests';
+import { useFinalMasterStore } from './finalMasterStore';
+import { leoHeistApproachAllowed } from './heistPlanning';
 import {
   activitySessionIsInterrupted,
   getSharedActivitySession,
@@ -553,7 +555,7 @@ export function teacherPatrolSpots(
   defaultPos: [number, number, number],
 ): [number, number, number][] {
   if (name === 'Ms. Harper') {
-    if (schedule === 'breakfast' || schedule === 'lunch') return [[8.7, 0, 2.2], [8.7, 0, 7.2]];
+    if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-14.4, 0, 9.1]];
     if (schedule === 'show-and-tell') return [[0, 0, 0.2], [0, 0, 4.8]];
     if (schedule === 'nap') return [[-5.8, 0, 4.8], [5.8, 0, 4.8]];
     if (schedule === 'art-time') return [[-12.35, 0, -10], [-12.35, 0, -13.8]];
@@ -561,7 +563,7 @@ export function teacherPatrolSpots(
     if (schedule === 'pickup') return [[-6, 0, -1.6], [-6, 0, 2]];
     return [defaultPos, [-4.5, 0, 2.8]];
   }
-  if (schedule === 'breakfast' || schedule === 'lunch') return [[8.7, 0, 7.2], [8.7, 0, 2.2]];
+  if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-14.4, 0, 9.1]];
   if (schedule === 'show-and-tell') return [[0, 0, 0.2], [2.8, 0, 2.3]];
   if (schedule === 'nap') return [[5.8, 0, 4.8], [-5.8, 0, 4.8]];
   if (schedule === 'art-time') return [[-12.35, 0, -9.8], [-12.35, 0, -14.2], [-12, 0, -7]];
@@ -667,6 +669,24 @@ function Kid({
     const capabilities = capabilitiesForTier(tier);
 
     const questRequired = questPriorityForKid(name, quests);
+    const gameNow = useGameStore.getState();
+    const absoluteMinute = gameNow.dayNumber * 1440 + gameNow.clock.minute;
+    if (name === 'Leo') {
+      const final = useFinalMasterStore.getState();
+      const eligible = gameNow.zone === 'hub'
+        && leoHeistApproachAllowed(schedule)
+        && !gameNow.activeDialogue
+        && !gameNow.journalOpen
+        && !gameNow.zoneTransitioning
+        && !final.heistBoardOpen
+        && distanceToPlayer > 3
+        && distanceToPlayer < 22;
+      final.requestLeoHeistApproach(absoluteMinute, eligible, gameNow.quests['where-binky']?.status === 'complete');
+      if (final.leoHeistApproachActive && !eligible && !leoHeistApproachAllowed(schedule)) {
+        useFinalMasterStore.setState({ leoHeistApproachActive: false });
+      }
+    }
+    const leoHeistApproach = name === 'Leo' && useFinalMasterStore.getState().leoHeistApproachActive;
     const currentPlan = getChildActivityPlan(name, schedule, isRainy, activityState.current.cycle, phase);
     const liveChildIntervention = getChildIntervention(name, state.clock.elapsedTime);
     const sharedSession = getSharedActivitySession(
@@ -692,7 +712,7 @@ function Kid({
       sessionVisualRef.current = visibleParticipant;
       setSessionVisual(visibleParticipant);
     }
-    const activityKey = `${schedule}:${isRainy}:${servedCustomer ?? ''}:${activeJuiceClubCustomer ?? ''}:${juiceClubPhase}:${questRequired}:${sharedSession?.id ?? ''}:${sharedSession?.phase ?? ''}:${sharedSession?.startsAt ?? ''}:${liveChildIntervention?.phase ?? ''}`;
+    const activityKey = `${schedule}:${isRainy}:${servedCustomer ?? ''}:${activeJuiceClubCustomer ?? ''}:${juiceClubPhase}:${questRequired}:${sharedSession?.id ?? ''}:${sharedSession?.phase ?? ''}:${sharedSession?.startsAt ?? ''}:${liveChildIntervention?.phase ?? ''}:${leoHeistApproach}`;
     if (activityState.current.key !== activityKey) {
       activityState.current.key = activityKey;
       activityState.current.dwellUntil = 0;
@@ -729,6 +749,23 @@ function Kid({
       }
       distanceToActivity = ref.current.position.distanceTo(activityTarget);
     }
+    if (leoHeistApproach && playerRef.current) {
+      activityTarget.copy(playerRef.current.position);
+      distanceToActivity = ref.current.position.distanceTo(activityTarget);
+      if (distanceToPlayer <= 1.95) {
+        const hint = useFinalMasterStore.getState().completeLeoHeistHint(absoluteMinute);
+        if (hint) {
+          releaseApproach(name);
+          if (!playVoice('child-greeting', { attenuation: 1 })) playGameSound('greeting', 'social');
+          gameNow.setActiveDialogue({
+            name: 'Leo',
+            text: hint === 1
+              ? "Yo—Miss Leslie plans special team jobs called heists. You scope the route, finish setup missions with kids like Mia and Noah, then do the finale. That's how you earn Rascal Bucks for Stony Brook homes. Her purple Heist Hub is past the playground. Go check her board!"
+              : "You still haven't checked Miss Leslie's Heist Hub? Follow the yellow marker past the playground. Her setup jobs are the best way to start earning real Rascal Bucks.",
+          });
+        }
+      }
+    }
 
     // Ride-ons. A child on a tricycle overrides its station target with the
     // ride's own waypoint loop; everything downstream - pathfinding, tier
@@ -739,7 +776,7 @@ function Kid({
     // intervention, so a ride can never interrupt something that matters.
     let mountedRide = false;
     let rideSpeed = 1.15;
-    if (!questRequired && !liveChildIntervention) {
+    if (!questRequired && !liveChildIntervention && !leoHeistApproach) {
       const seconds = state.clock.elapsedTime;
       const existing = riderFor(name);
       if (

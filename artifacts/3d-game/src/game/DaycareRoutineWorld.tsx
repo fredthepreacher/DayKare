@@ -6,12 +6,12 @@ import { registerInteractionCandidate, updateInteractionCandidate } from './inte
 import { useGameStore } from './store';
 
 export const CAFETERIA_SEATS = [
-  { id: 'cafeteria-seat-0', position: [9.4, 0, 3.5] },
-  { id: 'cafeteria-seat-1', position: [11.2, 0, 3.5] },
-  { id: 'cafeteria-seat-2', position: [13, 0, 3.5] },
-  { id: 'cafeteria-seat-3', position: [9.4, 0, 6.2] },
-  { id: 'cafeteria-seat-4', position: [11.2, 0, 6.2] },
-  { id: 'cafeteria-seat-5', position: [13, 0, 6.2] },
+  { id: 'cafeteria-seat-0', position: [-14.5, 0, 10] },
+  { id: 'cafeteria-seat-1', position: [-13.35, 0, 9.05] },
+  { id: 'cafeteria-seat-2', position: [-13.35, 0, 10.95] },
+  { id: 'cafeteria-seat-3', position: [-9.5, 0, 10] },
+  { id: 'cafeteria-seat-4', position: [-10.65, 0, 9.05] },
+  { id: 'cafeteria-seat-5', position: [-10.65, 0, 10.95] },
 ] as const;
 export const PLAYER_NAP_POSITION: [number, number, number] = [5.2, 0, 6.1];
 
@@ -29,9 +29,17 @@ function Candidate({ id, position, valid }: { id: string; position: readonly [nu
 
 function KidTable({ position }: { position: [number, number, number] }) {
   return <group position={position}>
-    <mesh position={[0, .52, 0]} castShadow><cylinderGeometry args={[1.05, 1.05, .14, 20]} /><meshStandardMaterial color="#f5c765" /></mesh>
-    {[0, 1, 2, 3].map((index) => <mesh key={index} position={[Math.cos(index * Math.PI / 2) * .62, .68, Math.sin(index * Math.PI / 2) * .62]}><boxGeometry args={[.3, .05, .22]} /><meshStandardMaterial color={index % 2 ? '#75c9b7' : '#ef7d67'} /></mesh>)}
+    <mesh position={[0, .52, 0]} castShadow><cylinderGeometry args={[.78, .78, .14, 20]} /><meshStandardMaterial color="#f5c765" /></mesh>
+    {[0, 1, 2].map((index) => <mesh key={index} position={[Math.cos(index * Math.PI * 2 / 3) * .46, .64, Math.sin(index * Math.PI * 2 / 3) * .46]}><boxGeometry args={[.24, .05, .18]} /><meshStandardMaterial color={index % 2 ? '#75c9b7' : '#ef7d67'} /></mesh>)}
     <mesh position={[0, .25, 0]}><cylinderGeometry args={[.18, .28, .5, 14]} /><meshStandardMaterial color="#9d6b53" /></mesh>
+  </group>;
+}
+
+function FoodTray({ position, color }: { position: [number, number, number]; color: string }) {
+  return <group position={position}>
+    <mesh><boxGeometry args={[.54, .035, .34]} /><meshStandardMaterial color="#f1e4c2" /></mesh>
+    <mesh position={[-.13, .06, 0]}><sphereGeometry args={[.09, 10, 7]} /><meshStandardMaterial color={color} /></mesh>
+    <mesh position={[.13, .055, 0]}><cylinderGeometry args={[.07, .07, .11, 10]} /><meshStandardMaterial color="#f7be4c" /></mesh>
   </group>;
 }
 
@@ -42,17 +50,24 @@ export function DaycareRoutineWorld() {
   const mealOpen = schedule === 'breakfast' || schedule === 'lunch';
   return <group>
     <group>
-      <mesh position={[11.3, .015, 4.8]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[6.4, 5.8]} /><meshStandardMaterial color="#f7e2a1" /></mesh>
-      <KidTable position={[10.2, 0, 4.8]} /><KidTable position={[12.5, 0, 4.8]} />
-      <mesh position={[14.55, .62, 4.8]} castShadow><boxGeometry args={[.7, 1.24, 4.8]} /><meshStandardMaterial color="#8bc6a8" /></mesh>
-      <Text position={[14.15, 1.45, 4.8]} rotation={[0, -Math.PI / 2, 0]} fontSize={.28} color="#55351f" anchorX="center">DAYKARE CAFETERIA</Text>
-      <Text position={[14.14, 1.08, 4.8]} rotation={[0, -Math.PI / 2, 0]} fontSize={.13} color="#55351f" anchorX="center">JUICE · CRACKERS · FRUIT</Text>
+      <mesh position={[-12, .015, 10.55]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[7.1, 4.35]} /><meshStandardMaterial color="#f7e2a1" /></mesh>
+      <KidTable position={[-13.35, 0, 10]} /><KidTable position={[-10.65, 0, 10]} />
+      <FoodTray position={[-13.35, .69, 10]} color="#ef7d67" />
+      <FoodTray position={[-10.65, .69, 10]} color="#78b968" />
+      <mesh position={[-12, .58, 12.18]} castShadow><boxGeometry args={[5.55, 1.16, .72]} /><meshStandardMaterial color="#8bc6a8" /></mesh>
+      <mesh position={[-12, 1.19, 12.18]} castShadow><boxGeometry args={[5.8, .1, .82]} /><meshStandardMaterial color="#6aa887" /></mesh>
+      {[-13.8, -13.15, -12.5, -11.85, -11.2].map((x, index) => <mesh key={x} position={[x, 1.32, 12.1]}><cylinderGeometry args={[.12, .14, .26, 10]} /><meshStandardMaterial color={['#f08a6b', '#f4c65c', '#70b6cd'][index % 3]} /></mesh>)}
+      <Text position={[-12, 2.15, 13.01]} rotation={[0, Math.PI, 0]} fontSize={.3} color="#55351f" anchorX="center">DAYKARE CAFETERIA</Text>
+      <Text position={[-12, 1.76, 13.005]} rotation={[0, Math.PI, 0]} fontSize={.14} color="#55351f" anchorX="center">TINY TRAYS · BIG APPETITES</Text>
       {CAFETERIA_SEATS.map((seat, index) => <group key={seat.id} position={seat.position}>
-        <mesh position={[0, .26, 0]} castShadow><boxGeometry args={[.72, .52, .72]} /><meshStandardMaterial color={index % 2 ? '#79b8dc' : '#ef8f73'} /></mesh>
+        <mesh position={[0, .25, 0]} castShadow><boxGeometry args={[.58, .5, .58]} /><meshStandardMaterial color={index % 2 ? '#79b8dc' : '#ef8f73'} /></mesh>
+        <mesh position={[0, .57, index < 3 ? -.23 : .23]} castShadow><boxGeometry args={[.58, .48, .12]} /><meshStandardMaterial color={index % 2 ? '#619fca' : '#d77461'} /></mesh>
         <Candidate id={seat.id} position={seat.position} valid={mealOpen && !seated && !napping} />
       </group>)}
-      <mesh position={[8.65, .38, 7.15]}><boxGeometry args={[.7, .76, .7]} /><meshStandardMaterial color="#5e9d72" /></mesh>
-      <Text position={[8.65, .9, 7.15]} fontSize={.12} color="#31543b" anchorX="center">RECYCLE</Text>
+      <mesh position={[-15.05, .38, 12.05]}><boxGeometry args={[.65, .76, .65]} /><meshStandardMaterial color="#5e9d72" /></mesh>
+      <Text position={[-15.05, .9, 12.05]} rotation={[0, Math.PI / 2, 0]} fontSize={.12} color="#31543b" anchorX="center">RECYCLE</Text>
+      <mesh position={[-12, 1.25, 13.18]}><boxGeometry args={[1.8, 2.35, .18]} /><meshStandardMaterial color="#70a695" /></mesh>
+      <Text position={[-12, 1.55, 13.075]} rotation={[0, Math.PI, 0]} maxWidth={1.45} textAlign="center" fontSize={.15} color="#fff6da" anchorX="center">FUTURE CLASSROOM{`\n`}COMING LATER</Text>
     </group>
     {schedule === 'nap' && <group position={PLAYER_NAP_POSITION}>
       <mesh position={[0, .03, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[1.7, 1]} /><meshStandardMaterial color="#91c9d8" /></mesh>

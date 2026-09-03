@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Gem, Home, Sparkles, Users, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Home, Map, Sparkles, Users, X } from 'lucide-react';
 import { ANIMATION_CLIPS, DEFAULT_AVATAR, FULL_REDESIGN_PRICE, HEIST_STEPS, STARTER_HOME_PRICE, TUTORIAL_CHAPTERS, type AvatarProfile } from './finalMaster';
 import { deleteDayKareSave, useFinalMasterStore } from './finalMasterStore';
 import { useGameStore } from './store';
@@ -7,6 +7,7 @@ import { useModeStore } from './modeStore';
 import { useStorybookLaneStore } from './storybookLaneStore';
 import { useToastStore } from './toastStore';
 import { interactWithHeistTarget, interactWithMissLeslie } from './missLeslieInteraction';
+import { ROUTE_PLANNER_NODES, advanceRoutePlanner, createRoutePlannerState, routePlannerOptions, type RoutePlannerNodeId } from './heistPlanning';
 
 const skinTones = ['#f6d0b3', '#e7b48e', '#c98562', '#9a5d3c', '#6b3d2a'];
 const hairColors = ['#241a18', '#4a2d25', '#713f32', '#b46b3f', '#e3bc75'];
@@ -55,6 +56,83 @@ function Choice({ label, values, value, onChange, colors = false }: { label: str
   return <fieldset><legend>{label}</legend><div className="final-choice-row">{values.map((option) => <button type="button" key={option} className={value === option ? 'is-active' : ''} onClick={() => onChange(option)} aria-label={option} style={colors ? { backgroundColor: option } : undefined}>{colors ? '' : option}</button>)}</div></fieldset>;
 }
 
+function HeistBoardModal({ dayNumber, rb }: { dayNumber: number; rb: number }) {
+  const state = useFinalMasterStore();
+  const modalRef = useRef<HTMLElement>(null);
+  const [route, setRoute] = useState(createRoutePlannerState);
+  const options = routePlannerOptions(route);
+  const activeStep = HEIST_STEPS[Math.min(state.heistStep, HEIST_STEPS.length - 1)];
+  const done = (stepIndex: number, event: string) => state.heistStep > stepIndex || state.heistCompletedEvents.includes(event);
+  const chooseNode = (node: RoutePlannerNodeId) => {
+    const next = advanceRoutePlanner(route, node);
+    setRoute(next);
+    if (!route.complete && next.complete) state.completeRoutePlanner(next.risk);
+  };
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => modalRef.current?.querySelector<HTMLElement>('button:not([disabled])')?.focus());
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); state.closeHeistBoard(); return; }
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      const controls = Array.from(modalRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      if (!controls.length) return;
+      event.preventDefault();
+      const current = Math.max(0, controls.indexOf(document.activeElement as HTMLButtonElement));
+      controls[(current + (event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1) + controls.length) % controls.length].focus();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('keydown', onKey); };
+  }, [state.closeHeistBoard]);
+  useEffect(() => {
+    let frame = 0;
+    let previousConfirm = false;
+    let previousDirection = false;
+    const poll = () => {
+      const pad = typeof navigator !== 'undefined' ? Array.from(navigator.getGamepads?.() ?? []).find(Boolean) : null;
+      const confirm = Boolean(pad?.buttons[0]?.pressed);
+      const direction = Boolean(pad && (pad.buttons[12]?.pressed || pad.buttons[13]?.pressed || pad.buttons[14]?.pressed || pad.buttons[15]?.pressed));
+      const controls = Array.from(modalRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? []);
+      if (direction && !previousDirection && controls.length) {
+        const current = Math.max(0, controls.indexOf(document.activeElement as HTMLButtonElement));
+        controls[(current + 1) % controls.length].focus();
+      }
+      if (confirm && !previousConfirm && document.activeElement instanceof HTMLButtonElement && modalRef.current?.contains(document.activeElement)) document.activeElement.click();
+      previousConfirm = confirm;
+      previousDirection = direction;
+      frame = requestAnimationFrame(poll);
+    };
+    frame = requestAnimationFrame(poll);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return <div className="final-modal-backdrop final-board-backdrop" data-testid="heist-board-modal"><section ref={modalRef} className="final-heist-board-ui" role="dialog" aria-modal="true" aria-label="Miss Leslie heist planning board">
+    <header><div><small>MISS LESLIE'S HEIST HUB</small><h2>The Sticker Parade</h2><p>{state.firstHeistComplete ? 'Daily replay' : 'First story heist'} · {state.heistStatus}</p></div><button type="button" onClick={state.closeHeistBoard} aria-label="Close heist board"><X /></button></header>
+    <div className="final-board-columns">
+      <div className="final-board-progress">
+        <h3>Progress</h3>
+        <strong>SCOPE</strong>
+        {HEIST_STEPS[1].events.map((event) => <span key={event}>{done(1, event) ? '✓' : '○'} {event.replace('scope-', '').replaceAll('-', ' ')}</span>)}
+        <strong>SETUPS</strong>
+        {HEIST_STEPS.slice(2, 5).map((step, offset) => <span key={step.id}>{state.heistStep > offset + 2 ? '✓' : state.heistStep === offset + 2 ? '◐' : '○'} {step.title}</span>)}
+        <strong>FINALE</strong><span>{state.heistStep >= 5 ? `${done(5, 'finale-regroup') ? '✓' : '◐'} Parade finale` : '🔒 Locked'}</span>
+        <div className="final-board-current"><b>{state.heistStatus === 'active' ? activeStep.title : 'Current heist'}</b><p>{state.heistStatus === 'active' ? activeStep.objective : 'Talk to Miss Leslie to begin or replay.'}</p><small>Replay payout: 5,000 RB · Current wallet: {rb.toLocaleString()} RB</small></div>
+      </div>
+      <div className="final-route-planner">
+        <h3><Map /> Route Planner</h3><p>Connect the Hub to the Sticker Cart. Avoid the teacher marker and finish in five moves.</p>
+        <div className="final-route-map" aria-label="Route planner map">
+          {ROUTE_PLANNER_NODES.map((node) => {
+            const visited = route.path.includes(node.id);
+            const available = options.includes(node.id);
+            return <button key={node.id} type="button" style={{ left: `${node.x}%`, top: `${node.y}%` }} className={`${visited ? 'is-visited' : ''} ${available ? 'is-next' : ''} ${node.id === 'patrol' ? 'is-risk' : ''}`} disabled={!available} onClick={() => chooseNode(node.id)}>{node.label}</button>;
+          })}
+        </div>
+        <div className="final-route-status"><span>Moves {route.moves}/5</span><span>Risk {route.risk}</span><span>{route.complete ? 'Route ready!' : route.failed ? 'Route blocked' : 'Choose a glowing node'}</span></div>
+        {(route.complete || route.failed) && <button type="button" className="final-route-reset" onClick={() => setRoute(createRoutePlannerState())}>{route.complete ? 'Plan another route' : 'Try again'}</button>}
+        {state.routePlannerComplete && <small>✓ Setup advantage saved · Best risk: {state.routePlannerBestRisk}</small>}
+      </div>
+    </div>
+    <footer className="final-board-stats"><span><b>{state.heistsCompleted}</b> Heists</span><span><b>{state.successfulFinales}</b> Finales</span><span><b>{state.totalHeistRbEarned.toLocaleString()}</b> Lifetime RB</span><span><b>{state.firstRewardChoice ?? 'Not yet'}</b> First-clear reward</span><span><b>{state.firstHeistComplete ? 'Sticker Parade' : 'None'}</b> Last heist</span><span><b>{state.lastReplayDay === dayNumber ? 'Claimed' : 'Available'}</b> Daily replay</span></footer>
+  </section></div>;
+}
+
 export function FinalMasterOverlay() {
   const state = useFinalMasterStore();
   const activeInteractable = useGameStore((game) => game.activeInteractable);
@@ -62,7 +140,6 @@ export function FinalMasterOverlay() {
   const zone = useGameStore((game) => game.zone);
   const menuOpen = useModeStore((mode) => mode.menuOpen);
   const rb = useStorybookLaneStore((lane) => lane.ribbonBucks);
-  const economyRelevant = zone === 'storybook' || activeInteractable === 'final-miss-leslie' || activeInteractable === 'tech-market' || Boolean(activeInteractable?.startsWith('final-heist-'));
   const enqueueToast = useToastStore((toast) => toast.enqueue);
   const [objectiveMode, setObjectiveMode] = useState<'expanded' | 'collapsed' | 'hidden'>('collapsed');
   const objectiveExpanded = objectiveMode === 'expanded';
@@ -70,6 +147,7 @@ export function FinalMasterOverlay() {
   const heist = HEIST_STEPS[Math.min(state.heistStep, HEIST_STEPS.length - 1)];
   const interact = () => {
     if (activeInteractable === 'final-miss-leslie') interactWithMissLeslie();
+    else if (activeInteractable === 'final-heist-board') state.openHeistBoard();
     else if (activeInteractable?.startsWith('final-heist-')) interactWithHeistTarget(activeInteractable);
   };
   useEffect(() => {
@@ -77,16 +155,19 @@ export function FinalMasterOverlay() {
     const timer = window.setTimeout(() => state.playAnimation(null), 2800);
     return () => window.clearTimeout(timer);
   }, [state.activeAnimation]);
+  useEffect(() => {
+    if ((menuOpen || zone !== 'hub' || state.insideHome) && state.heistBoardOpen) state.closeHeistBoard();
+  }, [menuOpen, zone, state.insideHome, state.heistBoardOpen, state.closeHeistBoard]);
   const animationName = useMemo(() => ANIMATION_CLIPS.find(([id]) => id === state.activeAnimation)?.[1], [state.activeAnimation]);
   if (menuOpen) return null;
   if (!state.avatarConfirmed) return <AvatarCreator />;
-  if (state.insideHome) return <><div className="final-home-banner"><Home />Your Starter Home <button onClick={() => { state.leaveHome(); useGameStore.getState().setPlayerPosition([-13, 0, -8.7]); useGameStore.getState().triggerTeleport(); }}>Exit to Storybook Lane</button></div><div className="final-economy-pill is-relevant">🎭 {rb.toLocaleString()} RB · <Gem /> {state.gems}</div></>;
+  if (state.insideHome) return <div className="final-home-banner"><Home />Your Starter Home <button onClick={() => { state.leaveHome(); useGameStore.getState().setPlayerPosition([-13, 0, -8.7]); useGameStore.getState().triggerTeleport(); }}>Exit to Storybook Lane</button></div>;
   return <>
-    <div className={`final-economy-pill ${economyRelevant ? 'is-relevant' : ''}`} data-testid="final-economy"><span>🎭 {rb.toLocaleString()} Rascal Bucks</span><span><Gem /> {state.gems} Gems</span>{rb >= 10_000 && <button onClick={() => state.convertRbToGem()}>10,000 RB → 1 Gem</button>}</div>
+    {state.heistBoardOpen && <HeistBoardModal dayNumber={dayNumber} rb={rb} />}
     {objectiveMode === 'hidden' && <button className="final-objective-reopen" onClick={() => setObjectiveMode('collapsed')} aria-label="Reopen objective tracker" data-testid="final-objective-reopen">📋</button>}
     {objectiveMode !== 'hidden' && !state.tutorialComplete && chapter && <section className={`final-objective-card ${objectiveExpanded ? 'is-expanded' : ''}`} data-testid="final-tutorial"><div className="final-objective-header"><button className="final-objective-toggle" onClick={() => setObjectiveMode(objectiveExpanded ? 'collapsed' : 'expanded')}><span><small>Orientation {state.tutorialChapter + 1} / 7</small><strong>{chapter.title}</strong><em>{state.tutorialCompletedSteps.length}/{chapter.steps.length}</em></span><b>{objectiveExpanded ? '−' : '+'}</b></button><button className="final-objective-hide" onClick={() => setObjectiveMode('hidden')} aria-label="Hide objective tracker">×</button></div>{objectiveExpanded && <><span>{chapter.objective}</span><ul>{chapter.steps.map((step) => <li key={step.id} className={state.tutorialCompletedSteps.includes(step.id) ? 'is-done' : ''}>{state.tutorialCompletedSteps.includes(step.id) ? '✓' : '○'} {step.label}</li>)}</ul><em>Reward: +{chapter.xp} XP{'reputation' in chapter ? ` · +${chapter.reputation} REP` : ''}</em>{!state.tutorialStarted ? <button onClick={() => state.startTutorial()}>Start Guided Practice</button> : <button onClick={() => enqueueToast({ title: chapter.title, detail: chapter.objective })}>Show Me</button>}</>}</section>}
     {objectiveMode !== 'hidden' && state.tutorialComplete && <section className={`final-objective-card final-heist-card ${objectiveExpanded ? 'is-expanded' : ''}`} data-testid="final-heist-status"><div className="final-objective-header"><button className="final-objective-toggle" onClick={() => setObjectiveMode(objectiveExpanded ? 'collapsed' : 'expanded')}><span><small><Users /> Miss Leslie’s Heist Board</small><strong>{state.heistStatus === 'active' ? heist.title : state.firstHeistComplete ? 'Daily Sticker Parade Replay' : 'A new plan is waiting'}</strong><em>{state.heistStatus === 'active' ? `${heist.events.filter((event) => state.heistCompletedEvents.includes(event)).length}/${heist.events.length}` : 'Optional story'}</em></span><b>{objectiveExpanded ? '−' : '+'}</b></button><button className="final-objective-hide" onClick={() => setObjectiveMode('hidden')} aria-label="Hide objective tracker">×</button></div>{objectiveExpanded && <><span>{state.heistStatus === 'active' ? heist.objective : state.firstHeistComplete ? 'Complete one replay per in-game day for 5,000 RB, $1,000, and 250 XP.' : 'Physically find and interact with Miss Leslie near the Heist Board.'}</span>{state.heistStatus === 'active' && <ul>{heist.events.map((event) => <li key={event} className={state.heistCompletedEvents.includes(event) ? 'is-done' : ''}>{state.heistCompletedEvents.includes(event) ? '✓' : '○'} {event.replaceAll('-', ' ')}</li>)}</ul>}</>}</section>}
-    {(activeInteractable === 'final-miss-leslie' || activeInteractable?.startsWith('final-heist-')) && <button className="final-world-interact" onClick={interact}>{activeInteractable === 'final-miss-leslie' ? 'Talk to Miss Leslie' : `Interact: ${activeInteractable.replace('final-heist-', '').replaceAll('-', ' ')}`}</button>}
+    {(activeInteractable === 'final-miss-leslie' || activeInteractable?.startsWith('final-heist-')) && !state.heistBoardOpen && <button className="final-world-interact" onClick={interact}>{activeInteractable === 'final-miss-leslie' ? 'Talk to Miss Leslie' : activeInteractable === 'final-heist-board' ? 'View Heist Board' : `Interact: ${activeInteractable.replace('final-heist-', '').replaceAll('-', ' ')}`}</button>}
     {state.heistStatus === 'reward-choice' && <div className="final-modal-backdrop"><section className="final-reward-choice"><Sparkles /><small>First finale complete · $1,000 + 250 XP already awarded</small><h2>Choose one permanent reward</h2><button onClick={() => state.chooseFirstReward('rb')}><strong>14,000 Rascal Bucks</strong><span>Build toward any property or collectible.</span></button><button onClick={() => state.chooseFirstReward('home')}><strong>Free 25,000 RB starter home</strong><span>A one-use voucher for the eligible Storybook home.</span></button></section></div>}
     {zone === 'storybook' && <div className="final-property-tip"><Home /><span>{state.ownedStarterHome ? 'Your home is ready—use the MY HOME door.' : `Starter home: ${STARTER_HOME_PRICE.toLocaleString()} RB${state.homeVoucher ? ' · voucher ready' : ''}`}</span></div>}
     {animationName && <div className="final-animation-banner">Now playing: {animationName}</div>}

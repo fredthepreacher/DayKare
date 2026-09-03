@@ -448,9 +448,11 @@ export function Journal() {
               <h3 className="daykare-section-head"><Target className="w-5 h-5 text-violet-600" /> Miss Leslie Heists</h3>
               <div className="daykare-entry-card">
                 <strong>{final.heistStatus === 'active' ? HEIST_STEPS[Math.min(final.heistStep, HEIST_STEPS.length - 1)].title : final.firstHeistComplete ? 'Daily Sticker Parade Replay' : 'A new plan is waiting'}</strong>
-                <p>{final.heistStatus === 'active' ? HEIST_STEPS[Math.min(final.heistStep, HEIST_STEPS.length - 1)].objective : 'Visit Miss Leslie in her Heist Room to begin or resume.'}</p>
+                <p>{final.heistStatus === 'active' ? HEIST_STEPS[Math.min(final.heistStep, HEIST_STEPS.length - 1)].objective : 'Visit Miss Leslie in her purple Heist Hub past the playground to begin or resume.'}</p>
                 {HEIST_STEPS.map((step, index) => <div key={step.id} className="flex justify-between text-xs py-1"><span>{step.title}</span><b>{index < final.heistStep ? '✓' : index === final.heistStep && final.heistStatus === 'active' ? `${final.heistCompletedEvents.length}/${step.events.length}` : '□'}</b></div>)}
               </div>
+              {final.leoHeistIntroCompleted && <div className="daykare-entry-card"><strong>Leo's heist tip</strong><p>Heists begin at Miss Leslie's walk-up board. Scope a route, finish setup jobs with your crew, then complete the finale to earn Rascal Bucks for Stony Brook homes and property.</p><small>Reminders used: {final.leoHeistHintCount}/2</small></div>}
+              <div className="daykare-entry-card"><strong>Route Planner</strong><p>{final.routePlannerComplete ? `Setup advantage saved · best risk ${final.routePlannerBestRisk}.` : 'Walk up to the Heist Board and plan a safe route for a one-time +25 XP bonus.'}</p></div>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-violet-50 p-2 rounded-xl"><strong>{final.heistsCompleted}</strong><small className="block">Heists</small></div>
                 <div className="bg-green-50 p-2 rounded-xl"><strong>{final.successfulFinales}</strong><small className="block">Finales</small></div>

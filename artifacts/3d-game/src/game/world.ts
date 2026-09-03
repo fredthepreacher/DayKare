@@ -192,14 +192,21 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('cubbies', 'cubby', -7.6, -3.8, -7.7, -6.3, { cameraRole: 'substantial', maxY: 2.2 }),
   // Trimmed to the beanbag and shelf the player can actually see.
   box('reading-nook', 'furniture', 4.7, 6.5, -7.24, -5.96, { cameraRole: 'substantial', maxY: 1.1 }),
-  box('storage-box-a', 'box', -14.7, -13.3, 9.3, 10.7, { cameraRole: 'substantial' }),
-  box('storage-box-upper', 'box', -14.4, -13.6, 9.6, 10.4, {
+  box('storage-box-a', 'box', -14.7, -13.3, 13.7, 15.1, { cameraRole: 'substantial' }),
+  box('storage-box-upper', 'box', -14.4, -13.6, 14, 14.8, {
     collision: false,
     cameraRole: 'none',
     minY: 1,
     maxY: 1.8,
   }),
-  box('storage-box-b', 'box', -11.8, -10.2, 13.1, 14.9, { cameraRole: 'substantial' }),
+  box('storage-box-b', 'box', -11.1, -9.5, 13.7, 15.3, { cameraRole: 'substantial' }),
+  box('cafeteria-future-divider', 'wall', -15.7, -8.3, 13.05, 13.31),
+  box('cafeteria-counter', 'counter', -14.78, -9.22, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
+  box('cafeteria-table-a', 'table', -14.13, -12.57, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
+  box('cafeteria-table-b', 'table', -11.43, -9.87, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
+  box('heist-hub-back', 'furniture', 8.52, 12.78, 11.79, 11.97, { cameraRole: 'substantial', maxY: 2.4 }),
+  box('heist-hub-east', 'furniture', 12.62, 12.78, 9.3, 11.8, { cameraRole: 'substantial', maxY: 1.8 }),
+  box('heist-planning-desk', 'table', 9.38, 11.03, 10.24, 11.06, { cameraRole: 'substantial', maxY: 1.06 }),
   box('play-slide', 'playground', 11.3, 12.7, -6.2, -4.8, {
     cameraRole: 'substantial',
     maxY: 2,
@@ -347,7 +354,7 @@ export function validateWorldSurfaceAnchor(
     const minY = height - halfHeight;
     const maxY = height + halfHeight;
     const supportMaxY = solid.kind === 'wall' || solid.kind === 'boundary'
-      ? Math.max(solid.maxY ?? 0, 3.6)
+      ? solid.maxY ?? 3
       : solid.maxY;
     if (minY < (solid.minY ?? 0) - 0.001) issues.push(`artwork sinks below ${id}`);
     if (supportMaxY !== undefined && maxY > supportMaxY + 0.001) issues.push(`artwork exceeds ${id} height`);
@@ -381,6 +388,7 @@ export const WORLD_ANCHORS: WorldAnchor[] = [
   { id: 'classroom-circle', position: [0, 0, 0], room: 'classroom', activity: 'morning-play' },
   { id: 'art-table', position: [-10, 0, -12], room: 'art-room', activity: 'art-time' },
   { id: 'storage-shelves', position: [-13, 0, 12], room: 'storage', activity: 'storage' },
+  { id: 'cafeteria', position: [-12, 0, 9], room: 'storage', activity: 'breakfast' },
   { id: 'juice-counter', position: [3, 0, -3], room: 'classroom', activity: 'juice-club' },
   { id: 'playground-loop', position: [12, 0, 0], room: 'playground', activity: 'outdoor-play' },
   { id: 'pickup-line', position: [-6, 0, 0], room: 'hallway', activity: 'pickup' },
