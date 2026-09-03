@@ -544,7 +544,7 @@ try {
   const repairedSave = await reloadAndReadRepairedSave();
   assert.ok(
     repairedSave.timeOfDay >= 9 && repairedSave.timeOfDay < 10,
-    'the repaired clock starts in the authored morning block',
+    `the repaired clock starts in the authored morning block (received ${repairedSave.timeOfDay})`,
   );
   delete repairedSave.timeOfDay;
   assert.deepEqual(repairedSave, {
@@ -717,9 +717,9 @@ try {
   const tidyThreeModulePath = JSON.stringify(new URL('node_modules/.vite/deps/three.js', targetUrl).href);
   await setViewport(client, 390, 844, true);
   assert.equal(
-    await evaluate(client, `getComputedStyle(document.querySelector('[data-testid="final-economy"]')).display`),
-    'none',
-    'normal mobile daycare HUD does not pin the Rascal Bucks/Gems card',
+    await evaluate(client, `document.querySelector('[data-testid="final-economy"]') === null`),
+    true,
+    'normal mobile daycare HUD does not mount the Rascal Bucks/Gems card',
   );
   await evaluate(client, `(async () => {
     const quests = await import(${questModulePath});
