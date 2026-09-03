@@ -86,6 +86,21 @@ const storage = createJSONStorage(() => typeof window === 'undefined'
   ? { getItem: () => null, setItem: () => undefined, removeItem: () => undefined }
   : window.localStorage);
 
+/**
+ * Coerce a persisted number.
+ *
+ * `Math.max(0, Math.min(2, Math.floor(value ?? 0)))` looks like a clamp but is
+ * not one: a string or an object floors to NaN, and every comparison against
+ * NaN is false. A save with `leoHeistHintCount: "lots"` therefore passed the
+ * `>= 2` cap check forever, so Leo would have kept walking over with the same
+ * reminder for the rest of the game.
+ */
+function safeCount(value: unknown, max: number, fallback = 0): number {
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(max, parsed));
+}
+
 export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get) => ({
   avatar: DEFAULT_AVATAR,
   avatarConfirmed: false,
@@ -276,7 +291,7 @@ export const useFinalMasterStore = create<FinalMasterState>()(persist((set, get)
       ? saved.tutorialRewardedChapters.filter((id) => TUTORIAL_CHAPTERS.some((item) => item.id === id))
       : TUTORIAL_CHAPTERS.slice(0, chapter).map((item) => item.id);
     const routeRisk = saved.routePlannerBestRisk;
-    return { ...current, ...saved, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Math.max(0, Number(saved.tutorialMovementDistance) || 0), heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [], heistsCompleted: Math.max(0, Math.floor(saved.heistsCompleted ?? 0)), successfulFinales: Math.max(0, Math.floor(saved.successfulFinales ?? 0)), totalHeistRbEarned: Math.max(0, Math.floor(saved.totalHeistRbEarned ?? 0)), routePlannerComplete: saved.routePlannerComplete === true, routePlannerBestRisk: typeof routeRisk === 'number' && Number.isFinite(routeRisk) ? Math.max(0, Math.min(9, Math.floor(routeRisk))) : null, heistBoardOpen: false, leoHeistHintCount: Math.max(0, Math.min(2, Math.floor(saved.leoHeistHintCount ?? 0))), leoHeistIntroCompleted: saved.leoHeistIntroCompleted === true, leoHeistNextHintMinute: typeof saved.leoHeistNextHintMinute === 'number' && Number.isFinite(saved.leoHeistNextHintMinute) ? Math.max(0, Math.floor(saved.leoHeistNextHintMinute)) : null, leoHeistApproachActive: false, leoHeistWaypointActive: saved.leoHeistWaypointActive === true && saved.missLeslieHeistIntroduced !== true, missLeslieHeistIntroduced: saved.missLeslieHeistIntroduced === true || saved.heistStatus === 'active' || saved.firstHeistComplete === true };
+    return { ...current, ...saved, tutorialChapter: chapter, tutorialComplete: saved.tutorialComplete === true || chapter >= TUTORIAL_CHAPTERS.length, tutorialCompletedSteps: Array.isArray(saved.tutorialCompletedSteps) ? saved.tutorialCompletedSteps : [], tutorialRewardedChapters: rewarded, tutorialMovementDistance: Number.isFinite(Number(saved.tutorialMovementDistance)) ? Math.max(0, Number(saved.tutorialMovementDistance)) : 0, heistCompletedEvents: Array.isArray(saved.heistCompletedEvents) ? saved.heistCompletedEvents : [], heistsCompleted: safeCount(saved.heistsCompleted ?? 0, Number.MAX_SAFE_INTEGER), successfulFinales: safeCount(saved.successfulFinales ?? 0, Number.MAX_SAFE_INTEGER), totalHeistRbEarned: safeCount(saved.totalHeistRbEarned ?? 0, Number.MAX_SAFE_INTEGER), routePlannerComplete: saved.routePlannerComplete === true, routePlannerBestRisk: typeof routeRisk === 'number' && Number.isFinite(routeRisk) ? Math.max(0, Math.min(9, Math.floor(routeRisk))) : null, heistBoardOpen: false, leoHeistHintCount: safeCount(saved.leoHeistHintCount ?? 0, 2), leoHeistIntroCompleted: saved.leoHeistIntroCompleted === true, leoHeistNextHintMinute: typeof saved.leoHeistNextHintMinute === 'number' && Number.isFinite(saved.leoHeistNextHintMinute) ? Math.max(0, Math.floor(saved.leoHeistNextHintMinute)) : null, leoHeistApproachActive: false, leoHeistWaypointActive: saved.leoHeistWaypointActive === true && saved.missLeslieHeistIntroduced !== true, missLeslieHeistIntroduced: saved.missLeslieHeistIntroduced === true || saved.heistStatus === 'active' || saved.firstHeistComplete === true };
   },
 }));
 
