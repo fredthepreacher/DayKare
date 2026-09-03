@@ -32,7 +32,7 @@ export function getNpcNavigationSnapshot() {
 }
 
 export function getPortalWaypoints(start: THREE.Vector3, target: THREE.Vector3) {
-  type HubRoom = 'classroom' | 'hallway' | 'playground' | 'art-room' | 'storage';
+  type HubRoom = 'classroom' | 'hallway' | 'playground' | 'art-room' | 'storage' | 'cafeteria';
   const roomFor = (point: THREE.Vector3): HubRoom => {
     if (point.x > 8) return 'playground';
     if (point.x < -8) {
@@ -40,6 +40,7 @@ export function getPortalWaypoints(start: THREE.Vector3, target: THREE.Vector3) 
       if (point.z > 8) return 'storage';
       return 'hallway';
     }
+    if (point.z > 8) return 'cafeteria';
     return 'classroom';
   };
   const roomCenters: Record<HubRoom, THREE.Vector3> = {
@@ -48,6 +49,7 @@ export function getPortalWaypoints(start: THREE.Vector3, target: THREE.Vector3) 
     playground: new THREE.Vector3(12, 0, 0),
     'art-room': new THREE.Vector3(-12, 0, -12),
     storage: new THREE.Vector3(-12, 0, 12),
+    cafeteria: new THREE.Vector3(0, 0, 10),
   };
   const edges = WORLD_PORTALS.map((portal) => ({
     portal,

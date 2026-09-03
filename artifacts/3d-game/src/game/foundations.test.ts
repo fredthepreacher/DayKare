@@ -799,14 +799,14 @@ assert.ok(
   'the collider does not extend past the visible ramp geometry',
 );
 const upperStorageBox = getWorldSolidTransform('storage-box-upper', 0.8, 1.4);
-// The storage shelves moved north (z 10 -> 14.4) when the cafeteria took over
-// the front of this room. The transform still has to derive from the collider
+// The storage shelves remain deep in the restricted room. The transform still
+// has to derive from the collider
 // rather than from a remembered constant, which is what this asserts.
 assert.deepEqual(upperStorageBox.position, [-14, 1.4, 14.4]);
 assert.deepEqual(upperStorageBox.size, [0.8000000000000007, 0.8, 0.8000000000000007]);
 assert.deepEqual(
-  getWorldSolidSurfaceTransform('main-south-wall', 'north', 1.72, 4.6),
-  { position: [4.6, 1.72, 7.66], rotation: [0, Math.PI, 0] },
+  getWorldSolidSurfaceTransform('main-south-wall-east', 'north', 1.72, 5),
+  { position: [5, 1.72, 7.66], rotation: [0, Math.PI, 0] },
   'wall art placement derives from the authored wall face',
 );
 assert.deepEqual(

@@ -220,7 +220,9 @@ export const WORLD_SOLIDS: WorldSolid[] = [
   box('west-boundary', 'boundary', -16.3, -15.7, -16, 16),
   box('east-boundary', 'boundary', 15.7, 16.3, -16, 16),
   box('main-north-wall', 'wall', -8, 8, -8.3, -7.7),
-  box('main-south-wall', 'wall', -8, 8, 7.7, 8.3),
+  // A real doorway connects the classroom to the cafeteria wing.
+  box('main-south-wall-west', 'wall', -8, -2.2, 7.7, 8.3),
+  box('main-south-wall-east', 'wall', 2.2, 8, 7.7, 8.3),
   box('playground-divider-north', 'wall', 7.7, 8.3, -8, -2.15),
   box('playground-divider-south', 'wall', 7.7, 8.3, 2.15, 8),
   box('hall-divider-north', 'wall', -8.3, -7.7, -8, -2.15),
@@ -258,39 +260,14 @@ export const WORLD_SOLIDS: WorldSolid[] = [
     maxY: 1.8,
   }),
   box('storage-box-b', 'box', -11.1, -9.5, 13.7, 15.3, { cameraRole: 'substantial' }),
-  // The divider that partitions the cafeteria from the space behind it.
-  //
-  // It used to be ONE panel spanning the full room width, which sealed the back
-  // of the room completely - and the back of the room is where the storage
-  // shelves and `binky-storage` live. Where's Binky? is the opening Story quest,
-  // so that partition soft-locked a new save's first objective. An accessibility
-  // audit flagged the target as unreachable and the storage room as only 77%
-  // reachable.
-  //
-  // It is now two panels with a 2.6 m doorway on the western side, lined up with
-  // the storage nook. The cafeteria still reads as its own room; the shelves
-  // behind it stay reachable.
-  box('cafeteria-future-divider-west', 'wall', -15.7, -13.9, 13.05, 13.31),
-  box('cafeteria-future-divider-east', 'wall', -11.3, -8.3, 13.05, 13.31),
-  // The serving counter, in two segments with a service pass between them.
-  //
-  // As a single 5.6 m run it spanned the room's entire walkable width: inflated
-  // by the player radius it covered x -15.2 to -8.8 against walkable bounds of
-  // -15.28 to -8.72, so there was no way past it at all. The cafeteria was a
-  // dead end and everything behind it - the storage shelves, the Lost & Found,
-  // Binky - was cut off. The pass lines up with the doorway in the divider
-  // above, so one lane runs door -> counter -> shelves.
-  box('cafeteria-counter-west', 'counter', -14.78, -13.8, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
-  box('cafeteria-counter-east', 'counter', -11.4, -9.22, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
-  // Both tables moved to the side walls. At their old centres (-13.35 and
-  // -10.65, z 10) their inflated footprints reached z 8.44 - a third of a metre
-  // from the doorway at z 8 - so walking in through the door clipped a table and
-  // the collision resolver shoved the player 0.28 m in one frame, against a
-  // 0.133 m step budget. That is the doorway-stall failure in the portal suite.
-  // Against the walls they leave a 2.4 m central lane from the door to the
-  // serving counter.
-  box('cafeteria-table-a', 'table', -15.18, -13.62, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
-  box('cafeteria-table-b', 'table', -10.38, -8.82, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
+  // Cafeteria: its own central wing, physically separate from restricted storage.
+  box('cafeteria-west-wall', 'wall', -8.3, -7.7, 8, 13.3),
+  box('cafeteria-east-wall', 'wall', 7.7, 8.3, 8, 13.3),
+  box('cafeteria-future-divider', 'wall', -8, 8, 13.0, 13.3),
+  box('cafeteria-counter-west', 'counter', -6, -3.5, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
+  box('cafeteria-counter-east', 'counter', 3.5, 6, 11.82, 12.54, { cameraRole: 'substantial', maxY: 1.25 }),
+  box('cafeteria-table-a', 'table', -3.38, -1.82, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
+  box('cafeteria-table-b', 'table', 1.82, 3.38, 9.22, 10.78, { shape: 'circle', radius: 0.78, maxY: 0.6 }),
   // The heist hub's back wall, shortened at its western end.
   //
   // At its full span (x 8.52 -> 12.78) it met the Maker Market gate (x 13 ->
@@ -538,6 +515,7 @@ export const WORLD_PORTALS: WorldPortal[] = [
   { id: 'main-play-east', axis: 'x', position: [8, 0, 0], width: 4.3, connects: ['classroom', 'playground'] },
   { id: 'hall-art-north', axis: 'z', position: [-12, 0, -8], width: 4, connects: ['hallway', 'art-room'] },
   { id: 'hall-storage-south', axis: 'z', position: [-12, 0, 8], width: 4, connects: ['hallway', 'storage'] },
+  { id: 'main-cafeteria-south', axis: 'z', position: [0, 0, 8], width: 4.4, connects: ['classroom', 'cafeteria'] },
 ];
 
 export const WORLD_WALKABLE_REGIONS: WalkableRegion[] = [
@@ -545,6 +523,7 @@ export const WORLD_WALKABLE_REGIONS: WalkableRegion[] = [
   { id: 'hallway', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: -7.7, maxZ: 7.7 },
   { id: 'art-room', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: -15.7, maxZ: -8.3 },
   { id: 'storage', zone: 'hub', minX: -15.7, maxX: -8.3, minZ: 8.3, maxZ: 15.7 },
+  { id: 'cafeteria', zone: 'hub', minX: -7.7, maxX: 7.7, minZ: 8.3, maxZ: 12.9 },
   { id: 'playground', zone: 'hub', minX: 8.3, maxX: 15.7, minZ: -15.7, maxZ: 15.7 },
   { id: 'garden', zone: 'garden', minX: -17.7, maxX: 17.7, minZ: -17.7, maxZ: 17.7 },
   { id: 'storybook-neighborhood', zone: 'storybook', minX: -23.7, maxX: 23.7, minZ: -23.7, maxZ: 23.7 },
@@ -565,7 +544,7 @@ export const WORLD_ANCHORS: WorldAnchor[] = [
   { id: 'classroom-circle', position: [0, 0, 0], room: 'classroom', activity: 'morning-play' },
   { id: 'art-table', position: [-10, 0, -12], room: 'art-room', activity: 'art-time' },
   { id: 'storage-shelves', position: [-13, 0, 12], room: 'storage', activity: 'storage' },
-  { id: 'cafeteria', position: [-12, 0, 9], room: 'storage', activity: 'breakfast' },
+  { id: 'cafeteria', position: [0, 0, 9.4], room: 'cafeteria', activity: 'breakfast' },
   { id: 'juice-counter', position: [3, 0, -3], room: 'classroom', activity: 'juice-club' },
   { id: 'playground-loop', position: [12, 0, 0], room: 'playground', activity: 'outdoor-play' },
   { id: 'pickup-line', position: [-6, 0, 0], room: 'hallway', activity: 'pickup' },

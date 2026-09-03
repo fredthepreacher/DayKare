@@ -20,6 +20,7 @@ resetEscapeRetrieval(true);
 assert.equal(isDaycareEscape([0, 0, 0], 'hub', false), false, 'ordinary daycare exploration never starts a chase');
 assert.equal(isDaycareEscape([-7, 0, 7], 'hub', false), false, 'walking near Storage remains ordinary exploration');
 assert.equal(isDaycareEscape([-9, 0, 9], 'hub', false), false, 'the Storage doorway has a comfortable warning buffer');
+assert.equal(isDaycareEscape([0, 0, 11.3], 'hub', false), false, 'the cafeteria is never mistaken for restricted Storage');
 assert.equal(isDaycareEscape([-11, 0, 11], 'hub', false), true, 'going clearly into unauthorized Storage starts retrieval');
 assert.equal(isDaycareEscape([-11, 0, 11], 'hub', true), false, 'quest authorization overrides the restricted-area gate');
 assert.equal(isDaycareEscape([18, 0, 0], 'hub', false), true, 'crossing the real outer boundary starts retrieval');

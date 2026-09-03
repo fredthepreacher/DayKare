@@ -461,7 +461,7 @@ const find = (entries: BoardEntry[], id: string) => {
   // The old map drew three rooms at invented percentages and omitted the two
   // largest. This one is a projection of the world.
   const roomIds = view.rooms.map((room) => room.id).sort();
-  assert.deepEqual(roomIds, ['art-room', 'classroom', 'hallway', 'playground', 'storage']);
+  assert.deepEqual(roomIds, ['art-room', 'cafeteria', 'classroom', 'hallway', 'playground', 'storage']);
   assert.ok(view.rooms.every((room) => room.label && room.label !== room.id), 'rooms are named for players');
 
   assert.equal(view.doors.length, WORLD_PORTALS.length, 'every doorway is drawn');

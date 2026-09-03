@@ -860,7 +860,7 @@ try {
     const interruptedSession = sessions.getSharedActivitySession('hub', 'art-time', 1, true);
     const cameraTarget = new Vector3(0, 1, 0);
     const camera = world.resolveCameraPosition(cameraTarget, new Vector3(10, 1, -8.4));
-    const artwork = world.getWorldSolidSurfaceTransform('main-south-wall', 'north', 1.72, 4.6);
+    const artwork = world.getWorldSolidSurfaceTransform('main-south-wall-east', 'north', 1.72, 5);
     const npc = new Group();
     npc.position.set(6.8, 0, -3.4);
     const moved = npcs.stepNpc('browser-facing-check', npc, new Vector3(8.4, 0, -1.8), null, 1, 4, 'garden');

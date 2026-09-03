@@ -78,7 +78,7 @@ function floodFrom(seed: readonly [number, number, number], zone: GameZone, boun
 const hub = floodFrom([0, 0, 0], 'hub', { minX: -17, maxX: 17, minZ: -17, maxZ: 17 });
 
 const HUB_TARGETS: [string, readonly number[]][] = [
-  ['cafeteria entrance', [-12, 0, 11.4]],
+  ['cafeteria entrance', [0, 0, 8.8]],
   ...CAFETERIA_SEATS.map((seat) => [`cafeteria ${seat.id}`, seat.position] as [string, readonly number[]]),
   ['Miss Leslie', MISS_LESLIE_POSITION],
   ['Heist Board', HEIST_BOARD_APPROACH],

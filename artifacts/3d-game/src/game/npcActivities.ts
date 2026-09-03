@@ -51,28 +51,19 @@ const CHILD_ORDER = ['Leo', 'Mia', 'Sam', 'Zoe', 'Eli', 'Noah', 'Lily', 'Finn', 
 /**
  * Where children sit to eat.
  *
- * These ring the two cafeteria tables. When the tables moved to the side walls -
- * they had been close enough to the doorway that walking in shoved the player -
- * the outer seats ended up INSIDE the tabletops, so a child at breakfast was
- * standing in the furniture. The seats now sit on each table's inner and side
- * faces, which also keeps the central lane between them clear.
+ * These ring the two tables in the dedicated central cafeteria wing.
  */
 const CAFETERIA_NPC_SEATS: [number, number, number][] = [
-  // West table, centre (-14.4, 10), radius 0.78. A child's collision radius is
-  // 0.34, so a seat has to sit at least 1.12 m from the centre - 1.0 m still
-  // put them inside the tabletop.
-  [-13.2, 0, 10], [-14.4, 0, 8.8], [-14.4, 0, 11.2],
-  // East table, centre (-9.6, 10), radius 0.78.
-  [-10.8, 0, 10], [-9.6, 0, 8.8], [-9.6, 0, 11.2],
-  // Standing spots along the lane and in front of the serving pass.
-  [-13.2, 0, 11.0], [-10.8, 0, 11.0], [-13.2, 0, 9.0],
-  [-10.8, 0, 9.0], [-12, 0, 11.25],
+  [-3.8, 0, 10], [-2.6, 0, 8.8], [-2.6, 0, 11.2],
+  [3.8, 0, 10], [2.6, 0, 8.8], [2.6, 0, 11.2],
+  [-5.4, 0, 9.2], [-5.4, 0, 10.7], [5.4, 0, 9.2],
+  [5.4, 0, 10.7], [0, 0, 11.1],
 ];
 export const MIN_CHILD_ACTIVITY_DWELL_SECONDS = 7.2;
 export const MAX_CHILD_ACTIVITY_DWELL_SECONDS = 8.5;
 
 const HUB_STATIONS: Record<string, Station[]> = {
-  breakfast: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: CAFETERIA_NPC_SEATS[index], focus: [-12, 0, 10], duration: 6.4 })),
+  breakfast: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: CAFETERIA_NPC_SEATS[index], focus: [0, 0, 10], duration: 6.4 })),
   'morning-play': [
     { activity: 'blocks', mode: 'toy-play', position: [-2.8, 0, 1.4], focus: [-1.8, 0, 1.4], duration: 6.2 },
     { activity: 'picture-books', mode: 'reading', position: [4.05, 0, -5.05], focus: [4.8, 0, -5.5], duration: 6 },
@@ -100,7 +91,7 @@ const HUB_STATIONS: Record<string, Station[]> = {
     { activity: 'drawing', mode: 'coloring', position: [-9.8, 0, -15], focus: [-9.8, 0, -14], duration: 6.1 },
   ],
   'show-and-tell': CHILD_ORDER.map((_, index) => { const angle = index / CHILD_ORDER.length * Math.PI * 2; return { activity: 'circle-time', mode: 'circle-time', position: [Math.cos(angle) * 2.1, 0, 2.3 + Math.sin(angle) * 2.1], focus: [0, 0, 2.3], duration: 6.4 }; }),
-  lunch: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: CAFETERIA_NPC_SEATS[index], focus: [-12, 0, 10], duration: 6.4 })),
+  lunch: CHILD_ORDER.map((_, index) => ({ activity: 'snacking', mode: 'snacking', position: CAFETERIA_NPC_SEATS[index], focus: [0, 0, 10], duration: 6.4 })),
   'juice-club': [
     { activity: 'snacking', mode: 'snacking', position: [5.2, 0, -3.8], focus: [4.4, 0, -3.2], duration: 4.6 },
     { activity: 'conversation', mode: 'conversation', position: [4.8, 0, -0.7], focus: [3.8, 0, -0.7], duration: 4.2 },

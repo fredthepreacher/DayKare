@@ -577,7 +577,7 @@ export function teacherPatrolSpots(
   defaultPos: [number, number, number],
 ): [number, number, number][] {
   if (name === 'Ms. Harper') {
-    if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-12.3, 0, 10.4]];
+    if (schedule === 'breakfast' || schedule === 'lunch') return [[0, 0, 8.9], [-5.2, 0, 10.4]];
     if (schedule === 'show-and-tell') return [[0, 0, 0.2], [0, 0, 4.8]];
     if (schedule === 'nap') return [[-5.8, 0, 4.8], [5.8, 0, 4.8]];
     if (schedule === 'art-time') return [[-12.35, 0, -10], [-12.35, 0, -13.8]];
@@ -585,7 +585,7 @@ export function teacherPatrolSpots(
     if (schedule === 'pickup') return [[-6, 0, -1.6], [-6, 0, 2]];
     return [defaultPos, [-4.5, 0, 2.8]];
   }
-  if (schedule === 'breakfast' || schedule === 'lunch') return [[-12, 0, 8.9], [-12.3, 0, 10.4]];
+  if (schedule === 'breakfast' || schedule === 'lunch') return [[0, 0, 8.9], [-5.2, 0, 10.4]];
   if (schedule === 'show-and-tell') return [[0, 0, 0.2], [2.8, 0, 2.3]];
   if (schedule === 'nap') return [[5.8, 0, 4.8], [-5.8, 0, 4.8]];
   if (schedule === 'art-time') return [[-12.35, 0, -9.8], [-12.35, 0, -14.2], [-12, 0, -7]];

@@ -17,7 +17,7 @@ export const FREE_SCHEDULES = new Set<ScheduleBlockId>(['morning-play', 'juice-c
 const POLICIES: Partial<Record<ScheduleBlockId, SchedulePolicy>> = {
   breakfast: {
     zone: 'hub',
-    anchor: [-12, 0, 9.2],
+    anchor: [0, 0, 9.8],
     radius: 4.6,
     teacher: 'Mr. Davis',
     instruction: 'Breakfast is together in the Cafeteria.',
@@ -45,7 +45,7 @@ const POLICIES: Partial<Record<ScheduleBlockId, SchedulePolicy>> = {
   },
   lunch: {
     zone: 'hub',
-    anchor: [-12, 0, 9.2],
+    anchor: [0, 0, 9.8],
     radius: 4.6,
     teacher: 'Mr. Davis',
     instruction: 'Lunch is together in the Cafeteria.',

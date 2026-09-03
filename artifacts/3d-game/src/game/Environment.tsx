@@ -19,6 +19,7 @@ export function Environment() {
   const floorGrass = isImaginationMode ? "#590d22" : "#99c279";
   const floorStorage = isImaginationMode ? "#1a0b16" : "#c4af98";
   const floorHall = isImaginationMode ? "#0d1b2a" : "#dbc1a1";
+  const floorCafeteria = isImaginationMode ? "#38204f" : "#f7e2a1";
   
   const wallColor = isImaginationMode ? "#3c096c" : "#faf5ee";
 
@@ -80,6 +81,12 @@ export function Environment() {
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-12, 0, 12]} receiveShadow>
         <planeGeometry args={[8, 8]} />
         <meshStandardMaterial color={floorStorage} />
+      </mesh>
+
+      {/* Cafeteria wing (center south), separate from restricted storage. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 10.65]} receiveShadow>
+        <planeGeometry args={[16, 5.3]} />
+        <meshStandardMaterial color={floorCafeteria} />
       </mesh>
 
       {/* Playground (Right) */}
