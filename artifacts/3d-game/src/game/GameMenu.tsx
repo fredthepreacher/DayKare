@@ -95,7 +95,7 @@ export function GameMenu({
       borderClass: 'border-[#9270b8]',
       hoverClass: 'hover:bg-[#c19be0]',
       titleColor: 'text-[#3e245b]',
-      description: 'Care Coins, passes & optional extras'
+      description: 'Care Gems, passes & optional extras'
     },
     {
       id: 'customize', 

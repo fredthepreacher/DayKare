@@ -378,8 +378,8 @@ export function MonetizationShop() {
           <strong>Kindness check-in</strong>
           <span>
             {entitlements.subscriptionTier === "none"
-              ? "5 Care Coins daily for everyone"
-              : "Your pass increases today’s Care Coin gift"}
+              ? "250 Rascal Bucks daily for everyone"
+              : "Your pass increases today’s Rascal Bucks gift"}
           </span>
         </div>
         <button

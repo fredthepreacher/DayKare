@@ -105,6 +105,13 @@ import { DAY_END_MINUTE } from './gameClock';
 
   // A save with no Care Coins at all still loads.
   assert.doesNotThrow(() => options.merge!({}, useMonetizationStore.getState()));
+
+  // And nothing the player can read still names the retired currency.
+  const shopStrings = [
+    ...MONETIZATION_CATALOG.map((product) => `${product.name} ${product.description}`),
+    ...MONETIZATION_CATALOG.map((product) => formatProductPrice(product)),
+  ].join(' ');
+  assert.equal(/care coin/i.test(shopStrings), false, 'no shop copy still mentions Care Coins');
 }
 
 {

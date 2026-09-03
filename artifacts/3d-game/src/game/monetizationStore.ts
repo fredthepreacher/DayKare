@@ -299,7 +299,7 @@ export const useMonetizationStore = create<MonetizationStore>()(
             ? MONETIZATION_CONFIG.familyPass.dailyRascalBucks
             : entitlements.subscriptionTier === "kare_pass"
               ? MONETIZATION_CONFIG.karePass.dailyRascalBucks
-              : 5;
+              : 5 * LEGACY_CARE_COIN_TO_RASCAL_BUCKS;
         creditRascalBucks(amount);
         set({ entitlements: { ...entitlements, claimedDailyRewardDay: today } });
         get().track({
